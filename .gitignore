@@ -1,0 +1,26 @@
+# 비밀값
+.env
+.env.*
+!.env.example
+
+# Claude 개인 설정
+.claude/settings.local.json
+CLAUDE.local.md
+
+# OS / 에디터
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+dist/
+*.egg-info/
