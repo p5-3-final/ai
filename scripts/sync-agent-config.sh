@@ -94,4 +94,9 @@ mkdir -p "$out"
 rm -rf "$out/rules" "$out/skills"
 cp -R "$tmp/rules" "$out/rules"
 cp -R "$tmp/skills" "$out/skills"
-echo "sync 완료: $out (rules $(ls "$out/rules" | wc -l | tr -d ' ')개, skills $(ls "$out/skills" | wc -l | tr -d ' ')개)"
+
+# 대상 폴더가 비어 있으면 glob이 패턴 문자열 그대로 남아 1개로 세이므로 nullglob을 켠다.
+shopt -s nullglob
+rules=("$out"/rules/*)
+skills=("$out"/skills/*)
+echo "sync 완료: $out (rules ${#rules[@]}개, skills ${#skills[@]}개)"
