@@ -1,6 +1,6 @@
 ---
 trigger: glob
-globs: "src/**/*.py, tests/**/*.py, evals/**/*.py"
+globs: "services/**/*.py, libs/**/*.py, evals/**/*.py"
 ---
 <!-- 자동 생성 파일: .claude/rules/ 원본을 수정하고 scripts/sync-agent-config.sh 를 실행하세요 -->
 
@@ -19,7 +19,7 @@ globs: "src/**/*.py, tests/**/*.py, evals/**/*.py"
   - dict를 그대로 넘기지 않는다.
 - 의존성은 FastAPI `Depends`로 주입한다. 전역 싱글턴을 import해서 쓰지 않는다. 그래야 테스트에서 교체할 수 있다.
 - 예외
-  - 도메인 예외는 `core/errors.py`의 기본 예외를 상속해서 만든다.
+  - 도메인 예외는 `libs/common`의 기본 예외를 상속해서 만든다.
   - `except Exception: pass`는 금지한다. 다시 던질 때는 `raise ... from e`를 쓴다.
 - 경로는 `pathlib.Path`, 시간은 timezone-aware `datetime`(`datetime.now(UTC)`)을 쓴다.
 - 주석과 docstring은 루트 AGENTS.md의 "주석 규칙"을 따른다.

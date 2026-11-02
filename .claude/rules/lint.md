@@ -1,6 +1,6 @@
 ---
 paths:
-  - "pyproject.toml"
+  - "**/pyproject.toml"
 ---
 
 # lint 설정 (ai)
