@@ -23,7 +23,7 @@ globs: ".github/workflows/**, **/Dockerfile, **/*.sh, .editorconfig, lefthook.ym
 
 ## PR 제목 검사
 - `amannn/action-semantic-pull-request`의 `types`는 루트 AGENTS.md "Git 규칙"의 type 목록과 같게 지정한다. action 기본값(`style`, `revert` 포함)을 그대로 쓰지 않는다.
-- scope는 서비스, 모듈, 환경 이름이다(`vlm-worker`, `ai-gateway`, `envs-dev` 등).
+- scope는 서비스, 모듈, 환경 이름이다(`frame-encoder`, `ai-gateway`, `envs-dev` 등).
 
 ## workflow
 - workflow를 고쳤다면 `actionlint`와 `zizmor .github/workflows`를 실행하고 결과를 보고한다. CI에도 같은 검사 job을 둔다.

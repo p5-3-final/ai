@@ -28,21 +28,21 @@ ai/
 │   ├── contracts/                # 이벤트 Pydantic 모델 (docs/contracts/events의 JSON Schema가 원본)
 │   └── ai-client/                # ai-gateway 호출 클라이언트 (/v1/analyze, /v1/embed)
 ├── services/
-│   ├── ai-gateway/               # FastAPI. 모델 라우팅, 캐시·예산·토큰 버킷, Adapter(Mock·Local·OpenAI)
+│   ├── ai-gateway/               # FastAPI. 모델 라우팅, 캐시·예산·토큰 버킷, Adapter(Mock·Local·OpenAI), 질의용 SigLIP 2 텍스트 인코더
 │   │   └── prompts/              # taskType별 프롬프트·출력 스키마 (Prompt Registry, 버전 관리)
 │   ├── normalize/                # 영상 검증, 정규화 사본 (FFmpeg)
-│   ├── chunk-processor/          # 청크 디코딩, 구간 샘플링, 객체 추적(YOLO), 이벤트 후보, 블러
+│   ├── chunk-processor/          # 청크 디코딩, 키프레임 추출·중복 제거·블러, 객체 추적(YOLO), 이벤트 후보
 │   ├── track-stitcher/           # 청크 경계 트랙 연결
-│   ├── track-analyzer/           # 트랙 속성 분석
-│   ├── event-analyzer/           # 이벤트 후보 병합, 판정
-│   ├── vlm-worker/               # 구간 설명, 구간 VLM 이벤트 후보
-│   ├── embedding-worker/         # 설명 텍스트 묶음 임베딩
-│   └── aggregator/               # 청크 요약, 전체 요약, 이벤트 타임라인
+│   ├── frame-encoder/            # 키프레임 → SigLIP 2 이미지 벡터 (PyTorch)
+│   ├── track-analyzer/           # 이벤트 관련·클릭한 트랙 속성 분석
+│   ├── event-analyzer/           # 청크 후보 묶음 VLM 판정
+│   ├── embedding-worker/         # 이벤트 설명문·트랙 속성·프레임 주석 묶음 임베딩
+│   └── aggregator/               # 경계 이벤트 병합, 시간 기준 규칙(배회), 타임라인, 텍스트 요약
 ├── evals/                        # Golden Set 평가 스크립트, 결과 기록
 ├── notebooks/                    # 실험용 (services·libs에서 import 금지, 배포 제외)
 └── specs/SPEC-NNN-*/             # plan.md, tasks.md
 ```
-- 멤버마다 `pyproject.toml`, `src/<패키지>/`, `tests/`를 둔다. 폴더 이름은 kebab-case, 패키지 이름은 snake_case다(`vlm-worker` → `vlm_worker`).
+- 멤버마다 `pyproject.toml`, `src/<패키지>/`, `tests/`를 둔다. 폴더 이름은 kebab-case, 패키지 이름은 snake_case다(`frame-encoder` → `frame_encoder`).
 - 서비스는 다른 서비스를 import하지 않는다. 공통 코드는 `libs/`로 옮긴다. 서비스마다 Dockerfile을 두고 독립 이미지로 배포한다.
 - 외부 AI API는 ai-gateway만 호출한다. 워커는 `libs/ai-client`로 ai-gateway를 부른다.
 
@@ -50,9 +50,9 @@ ai/
 ```bash
 uv sync --all-packages                          # 의존성 설치 (lock 기준, 전 멤버)
 uv run --package ai-gateway fastapi dev services/ai-gateway/src/ai_gateway/main.py  # ai-gateway 실행 (:8000)
-uv run --package vlm-worker python -m vlm_worker   # 워커 실행
+uv run --package event-analyzer python -m event_analyzer   # 워커 실행
 uv run pytest                                   # 전체 테스트
-uv run pytest services/vlm-worker -k segment    # 일부만
+uv run pytest services/event-analyzer -k judge  # 일부만
 uv run ruff check --fix . && uv run ruff format .   # 고치기
 uv run ruff check . && uv run ruff format --check . # 검사만
 uv run mypy services libs
@@ -74,7 +74,7 @@ uv run python -m evals.run --suite <name>       # 평가
 - **모델 로딩**: 모델은 요청마다 로드하지 않고 `lifespan`에서 한 번 로드해서 `app.state`에 보관한다. 모델 가중치와 데이터셋은 git에 커밋하지 않고 S3에 둔다.
 - **설정**: `pydantic-settings`의 `Settings` 클래스로 환경변수를 읽는다. `os.environ`을 직접 읽지 않는다. 비밀값은 `SecretStr`로 감싼다.
 - **외부 LLM·API 호출**: 타임아웃, 재시도(지수 백오프), 토큰·비용 로깅을 반드시 둔다. API 키는 로그에 남기지 않는다.
-- **프롬프트**: 프롬프트는 코드에 긴 문자열로 하드코딩하지 않는다. `services/ai-gateway/prompts/`에 버전을 붙여 관리한다(`segment_describe_v2.md`).
+- **프롬프트**: 프롬프트는 코드에 긴 문자열로 하드코딩하지 않는다. `services/ai-gateway/prompts/`에 버전을 붙여 관리한다(`event_judge_v2.md`).
 - **평가**: 모델이나 프롬프트를 바꾸면 `evals`를 실행하고, 변경 전후 지표를 PR 본문에 첨부한다.
 - **로그**: `logging` 모듈로 JSON 구조화 로그를 남긴다. `print`는 금지한다. 사용자 입력 원문과 개인정보는 로그에 남기지 않는다.
 - **health**: ai-gateway는 `/health`(liveness)와 `/ready`를 제공한다. 워커는 `libs/common`의 health 엔드포인트로 같은 경로를 연다.
