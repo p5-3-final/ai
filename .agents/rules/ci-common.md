@@ -18,7 +18,7 @@ globs: ".github/workflows/**, **/Dockerfile, **/*.sh, .editorconfig, lefthook.ym
 
 ## git hook (lefthook)
 - `lefthook.yml`의 `pre-commit`에서 바뀐 파일(`{staged_files}`)에만 포맷과 lint를 실행한다. 전체 테스트는 넣지 않는다(커밋이 느려진다).
-- hook은 빠른 피드백용이고, 관문은 CI다. CI는 같은 검사를 전체 대상으로 다시 실행한다.
+- hook은 빠른 피드백용이고, 관문은 CI다. CI는 같은 검사를 전체 대상으로 다시 실행한다. 단, shellcheck는 로컬 검사만 하고 CI에서는 실행하지 않는다.
 - `--no-verify`로 hook을 건너뛰지 않는다.
 
 ## PR 제목 검사
