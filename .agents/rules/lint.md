@@ -1,6 +1,6 @@
 ---
 trigger: glob
-globs: "pyproject.toml"
+globs: "**/pyproject.toml"
 ---
 <!-- 자동 생성 파일: .claude/rules/ 원본을 수정하고 scripts/sync-agent-config.sh 를 실행하세요 -->
 
