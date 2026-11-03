@@ -24,6 +24,11 @@ COPY services services
 # 소스 경로를 가리키는 편집 설치가 아니라 가상환경 안에 복사해 넣어야 runtime 단계로 옮길 수 있다.
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --no-editable --package ai-gateway
+# torch wheel에 함께 들어오는 torch 자체 테스트·C++ 헤더·테스트 실행 파일은 실행에 쓰지 않는다(약 220MB, #21).
+# bin의 torch_shm_manager는 멀티프로세싱 텐서 공유가 쓰므로 남긴다.
+RUN torch_dir=/opt/venv/lib/python3.12/site-packages/torch \
+    && rm -rf "$torch_dir/test" "$torch_dir/include" \
+    && find "$torch_dir/bin" -maxdepth 1 -type f \( -name 'test_*' -o -name '*Test' \) -delete
 
 # --build-context vlm-contracts:docs=<docs>/docs/contracts로 받은 계약 폴더.
 # 이미지처럼 태그를 붙여 받아야 hadolint가 출처를 알 수 있다.
