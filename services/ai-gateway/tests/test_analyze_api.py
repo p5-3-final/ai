@@ -1,4 +1,5 @@
 import json
+import logging
 from pathlib import Path
 from unittest.mock import ANY
 
@@ -251,3 +252,24 @@ async def test_spec009_nfr5_malformed_traceparent_is_ignored(contracts_dir: Path
     assert response.status_code == 200
     assert adapter.calls[0].traceparent is None
     assert gw.call_log.entries[0].trace_id is None
+
+
+async def test_spec009_nfr3_logs_have_no_images_or_raw_output(
+    contracts_dir: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    raw = "비밀스러운 모델 원문 응답"
+    adapter = FakeAdapter(reply=raw)
+
+    with caplog.at_level(logging.DEBUG):
+        async with gateway(contracts_dir, adapter=adapter) as gw:
+            await post_analyze(gw.client, analyze_body())
+
+    completed = [r for r in caplog.records if r.getMessage() == "analyze completed"]
+    assert len(completed) == 1
+    assert vars(completed[0])["status"] == "invalid_output"
+    assert vars(completed[0])["call_id"] == str(gw.call_log.entries[0].call_id)
+    for record in caplog.records:
+        rendered = f"{record.getMessage()} {vars(record)}"
+        assert raw not in rendered
+        assert "jpeg-0" not in rendered
+        assert "A동 적재 구역" not in rendered

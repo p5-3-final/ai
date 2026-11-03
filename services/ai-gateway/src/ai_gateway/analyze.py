@@ -1,5 +1,6 @@
 """`/v1/analyze` 유스케이스(SPEC-009 R-1~R-11, R-17)."""
 
+import logging
 import time
 from dataclasses import dataclass, field
 from typing import Protocol
@@ -24,6 +25,8 @@ from ai_gateway.profile import GatewayProfile, TaskProfile
 from ai_gateway.prompts import PromptRegistry
 
 type JsonObject = dict[str, object]
+
+logger = logging.getLogger(__name__)
 
 
 class CallLogWriter(Protocol):
@@ -89,7 +92,7 @@ class AnalyzeService:
         if settings.adapter is None or settings.model is None:
             # SPEC-009 R-8: 모델이 없으면 결과를 지어내지 않고 unverified로 돌려준다.
             output = fallback_output(command.task_type, command.variables, "unverified")
-            await self._call_log.save(call.entry("unavailable", output=output))
+            await self._record(call.entry("unavailable", output=output))
             return call.result(output)
 
         try:
@@ -107,10 +110,10 @@ class AnalyzeService:
             status: CallStatus = (
                 "unavailable" if isinstance(e, ProviderUnavailableError) else "failed"
             )
-            await self._call_log.save(call.entry(status, output=None, error_code=e.code))
+            await self._record(call.entry(status, output=None, error_code=e.code))
             raise
         parsed = parse_output(task, completion.text, command.variables)
-        await self._call_log.save(
+        await self._record(
             call.entry(
                 "success" if parsed.valid else "invalid_output",
                 output=parsed.output,
@@ -118,6 +121,28 @@ class AnalyzeService:
             )
         )
         return call.result(parsed.output)
+
+    async def _record(self, entry: CallLogEntry) -> None:
+        await self._call_log.save(entry)
+        # 이미지·입력 변수·모델 원문은 개인정보나 영상 내용이 담길 수 있어 로그에 넣지 않는다.
+        # 원문은 호출 로그 DB에만 있다(SPEC-009 NFR-3).
+        logger.info(
+            "analyze completed",
+            extra={
+                "call_id": str(entry.call_id),
+                "caller": entry.caller,
+                "source_id": str(entry.source_id),
+                "task_type": entry.task_type,
+                "model_id": entry.model_id,
+                "prompt_version": entry.prompt_version,
+                "status": entry.status,
+                "error_code": entry.error_code,
+                "latency_ms": entry.latency_ms,
+                "input_tokens": entry.input_tokens,
+                "output_tokens": entry.output_tokens,
+                "trace_id": entry.trace_id,
+            },
+        )
 
 
 @dataclass(frozen=True, slots=True)
