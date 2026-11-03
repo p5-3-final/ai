@@ -1,0 +1,22 @@
+[project]
+name = "vlm-encoders"
+version = "0.1.0"
+description = "이미지·질의 인코더 인터페이스와 구현(open_clip). ai-gateway와 frame-encoder가 함께 쓴다(SPEC-011)"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "open-clip-torch>=3.3.0",
+    "pillow>=13.0.0",
+    "safetensors>=0.8.0",
+    "torch>=2.15.0",
+    "torchvision>=0.29.2",
+    "vlm-common",
+    "vlm-storage",
+]
+
+[tool.uv.sources]
+vlm-common = { workspace = true }
+vlm-storage = { workspace = true }
+
+[build-system]
+requires = ["uv_build>=0.12,<0.13"]
+build-backend = "uv_build"
