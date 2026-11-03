@@ -26,8 +26,9 @@ ai/
 ├── pyproject.toml / uv.lock      # workspace 루트. 멤버 목록과 공통 개발 도구(ruff, mypy, pytest). lock은 하나
 ├── libs/
 │   ├── common/                   # config(Settings), logging, errors, health, 프로필 로딩·검증
-│   ├── messaging/                # Kafka 소비·발행, retry 토픽, 연속 offset 커밋, eventId 멱등 처리
+│   ├── messaging/                # Kafka 소비·발행, retry·DLQ 토픽, 처리 결과가 정해진 뒤 수동 커밋
 │   ├── contracts/                # 이벤트 Pydantic 모델 (docs/contracts/events의 JSON Schema가 원본)
+│   ├── storage/                  # 객체 저장소 인터페이스(ObjectStorage)와 S3 API 구현, 테스트용 메모리 구현
 │   └── ai-client/                # ai-gateway 호출 클라이언트 (/v1/analyze, /v1/embed, /v1/parse)
 ├── services/
 │   ├── ai-gateway/               # FastAPI. 외부 AI 호출 관문, 질의 해석·질의 벡터
@@ -45,7 +46,8 @@ ai/
 ├── notebooks/                    # 실험용 (services·libs에서 import 금지, 배포 제외)
 └── specs/SPEC-NNN-*/             # plan.md, tasks.md
 ```
-- 멤버마다 `pyproject.toml`, `src/<패키지>/`, `tests/`를 둔다. 폴더 이름은 kebab-case, 패키지 이름은 snake_case다(`frame-encoder` → `frame_encoder`).
+- 멤버마다 `pyproject.toml`, `src/<패키지>/`, `tests/`를 둔다. 폴더 이름은 kebab-case, 패키지 이름은 snake_case다(`frame-encoder` → `frame_encoder`). `libs/`는 이름이 흔해 겹치지 않도록 `vlm_` 접두사를 붙인다(`libs/common` → 배포 이름 `vlm-common`, 패키지 `vlm_common`).
+- 새 멤버를 만들면 루트 `pyproject.toml`의 `[tool.uv.workspace] members`에 추가한다. 다른 멤버를 의존하면 `[tool.uv.sources]`에 `{ workspace = true }`로 적는다.
 - 서비스는 다른 서비스를 import하지 않는다. 공통 코드는 `libs/`로 옮긴다. 서비스마다 Dockerfile을 두고 독립 이미지로 배포한다.
 - 외부 AI API는 ai-gateway만 호출한다. 워커는 `libs/ai-client`로 ai-gateway를 부른다.
 - 자체 실행 모델(인코더·탐지기)의 공통 인터페이스와 구현은 `libs/`에 두어 여러 서비스가 같은 구현을 쓴다(예: frame-encoder와 ai-gateway의 인코더).
@@ -57,12 +59,13 @@ uv run --package ai-gateway fastapi dev services/ai-gateway/src/ai_gateway/main.
 uv run --package event-analyzer python -m event_analyzer   # 워커 실행
 uv run pytest                                   # 전체 테스트
 uv run pytest services/event-analyzer -k judge  # 일부만
+uv run pytest -m "not integration"              # Docker(testcontainers)가 필요한 테스트 제외
 uv run ruff check --fix . && uv run ruff format .   # 고치기
 uv run ruff check . && uv run ruff format --check . # 검사만
-uv run mypy services libs
+uv run mypy                                     # 대상은 pyproject.toml [tool.mypy] files
 uv run python -m evals.run --suite <name>       # 평가
 ```
-작업을 끝내기 전에 `ruff check`, `ruff format --check`, `mypy services libs`, `pytest`를 실행한다.
+작업을 끝내기 전에 `ruff check`, `ruff format --check`, `mypy`, `pytest`를 실행한다.
 
 ## lint
 도구: ruff(format, check), mypy(strict). 공통 도구(workflow, Dockerfile, lefthook)는 `.claude/rules/ci-common.md`에 있다.
@@ -95,5 +98,5 @@ uv run python -m evals.run --suite <name>       # 평가
 - 모델 출력처럼 결과가 비결정적인 부분은 정확한 문자열을 비교하지 말고 스키마와 불변 조건을 검증한다.
 
 ## CI
-- PR일 때: `ruff check`, `ruff format --check`, `mypy services libs`, `pytest`를 실행한다. 공통 검사(hadolint, actionlint, zizmor, PR 제목)는 `.claude/rules/ci-common.md`를 따른다. main 머지일 때: 바뀐 서비스(또는 그 서비스가 쓰는 `libs/`)만 이미지 빌드 → ECR push(OIDC) → gitops 레포 `envs/dev` 태그 갱신
+- PR일 때(`.github/workflows/checks.yml`): `ruff check`, `ruff format --check`, `mypy`, `pytest`를 실행한다. 공통 검사(hadolint, actionlint, zizmor, PR 제목)는 `.claude/rules/ci-common.md`를 따른다. main 머지일 때: 바뀐 서비스(또는 그 서비스가 쓰는 `libs/`)만 이미지 빌드 → ECR push(OIDC) → gitops 레포 `envs/dev` 태그 갱신
 - Dockerfile은 멀티스테이지로 만든다. uv로 의존성을 설치하고, non-root 사용자로 실행한다. 모델 가중치는 이미지에 넣지 않고 기동할 때 다운로드한다.

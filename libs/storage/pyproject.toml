@@ -1,0 +1,17 @@
+[project]
+name = "vlm-storage"
+version = "0.1.0"
+description = "S3 API 객체 저장소 인터페이스와 구현(운영 S3, 로컬 SeaweedFS)"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "boto3>=1.43.123",
+    "pydantic-settings>=2.16.2",
+    "vlm-common",
+]
+
+[tool.uv.sources]
+vlm-common = { workspace = true }
+
+[build-system]
+requires = ["uv_build>=0.12,<0.13"]
+build-backend = "uv_build"

@@ -1,0 +1,58 @@
+# workspace 루트. 배포 단위가 아니라 멤버 목록과 공통 개발 도구만 둔다(ADR-0001).
+[project]
+name = "ai-workspace"
+version = "0.0.0"
+requires-python = ">=3.12,<3.13"
+
+[tool.uv]
+package = false
+
+[tool.uv.workspace]
+# 빈 서비스 폴더는 pyproject.toml이 생길 때 멤버로 추가한다(glob을 쓰면 uv가 빈 폴더에서 실패한다).
+members = ["libs/common", "libs/contracts", "libs/messaging", "libs/storage"]
+
+[dependency-groups]
+dev = [
+    "mypy>=2.4.1",
+    "pydantic-settings>=2.16.2",
+    "pytest>=9.2.0",
+    "pytest-asyncio>=1.4.1.post1",
+    "ruff>=0.17.3",
+    "testcontainers[kafka]>=4.15.0",
+    "types-boto3[s3]>=1.43.123",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = ["notebooks"]
+
+[tool.ruff.lint]
+select = [
+  "E", "W", "F", "I", "N", "B", "SIM", "RUF", "UP", "T20", "BLE", "S110",
+  "DTZ", "PTH", "TID251", "S", "ASYNC", "PT", "FAST",
+]
+
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"os.environ".msg = "Settings(pydantic-settings)로 읽는다"
+"os.getenv".msg = "Settings(pydantic-settings)로 읽는다"
+
+[tool.ruff.lint.per-file-ignores]
+"**/tests/**" = ["S101"]
+
+[tool.mypy]
+strict = true
+plugins = ["pydantic.mypy"]
+python_version = "3.12"
+# 실행은 인자 없이 `uv run mypy`. mypy는 .py가 없는 폴더를 오류로 보므로 첫 서비스 코드가 생기면 "services"를 더한다.
+files = ["libs"]
+explicit_package_bases = true
+mypy_path = ["$MYPY_CONFIG_FILE_DIR/libs/common/src", "$MYPY_CONFIG_FILE_DIR/libs/contracts/src", "$MYPY_CONFIG_FILE_DIR/libs/messaging/src", "$MYPY_CONFIG_FILE_DIR/libs/storage/src"]
+
+[tool.pytest.ini_options]
+# 멤버마다 tests/가 있어 같은 파일 이름이 겹치므로 importlib 모드로 모은다.
+addopts = "--import-mode=importlib"
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["libs", "services"]
+markers = ["integration: Docker로 실제 Kafka 등 외부 구성 요소를 띄우는 테스트"]
