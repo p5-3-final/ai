@@ -74,6 +74,7 @@ R-15~R-21, NFR-6은 backend(media-service) 담당이다.
 | `services/normalize/src/normalize/service.py` | `NormalizeService.handle(event, ctx)` 처리 순서 전체 |
 | `services/normalize/src/normalize/__main__.py` | 설정·로그·health·저장소·발행기·워커 연결 |
 | `services/normalize/Dockerfile` | `runtime`(ffmpeg, non-root), `test`(개발 의존성) 단계 |
+| `libs/testing` | 테스트 전용 testcontainers 도우미(Kafka·SeaweedFS). libs·서비스 테스트가 같이 쓴다 |
 | `.github/workflows/checks.yml` | hadolint, normalize 이미지 `test` 단계 실행 job |
 | 루트 `pyproject.toml` | 멤버 `services/normalize` 추가, mypy `files`에 `services` 추가 |
 
@@ -118,10 +119,10 @@ sequenceDiagram
 | --- | --- | --- |
 | 1 | ffprobe 실패 | `UNREADABLE` (probe 단계에서) |
 | 2 | 영상 스트림 없음 | `NO_VIDEO_STREAM` |
-| 3 | 길이 또는 평균 fps 없음·0 | `MISSING_METADATA` |
+| 3 | 길이 또는 평균 fps 없음·0 이하 | `MISSING_METADATA` |
 | 4 | 길이 < 하한 | `TOO_SHORT` |
 | 5 | 길이 > 상한 | `TOO_LONG` |
-| 6 | H.264이고 평균 fps와 기본 fps(`r_frame_rate`)가 1% 안에서 같음 | 복사 |
+| 6 | H.264이고 평균 fps와 기본 fps(`r_frame_rate`)가 1% 안에서 같음. 평균 fps는 `-count_packets`의 패킷 수 ÷ 영상 스트림 길이(mkv는 `avg_frame_rate`가 가변 프레임률을 숨긴다) | 복사 |
 | 7 | 그 밖 | 재인코딩, fps = min(평균 fps, 상한) |
 
 - ffmpeg가 0이 아닌 코드로 끝나면 `DECODE_FAILED`로 거절한다. 저장소·Kafka 오류는 예외를 그대로 던져 워커가 재시도한다(R-13).
@@ -136,7 +137,7 @@ sequenceDiagram
 | 시스템 ffmpeg + subprocess | 새 파이썬 의존성 없음, 운영과 같은 ffmpeg로 테스트 | 로컬에 ffmpeg 필요 → Docker로 테스트 | ✅ (사용자 확인) |
 | PyAV | 시스템 설치 불필요 | 내장 빌드의 x264·라이선스 확인, HLS 옵션 직접 구현 | |
 | VFR을 프레임 간격 분석으로 판정 | 정확함 | 전체 프레임 읽기라 느림 | |
-| 평균·기본 fps 비교로 VFR 판정 | ffprobe 한 번이면 됨 | 일부 VFR을 놓칠 수 있음(놓쳐도 복사 사본은 재생 가능) | ✅ |
+| 패킷 수로 잰 평균 fps와 기본 fps 비교로 VFR 판정 | ffprobe 한 번(디코딩 없음) | 패킷을 끝까지 읽음 | ✅ (컨테이너가 적은 avg_frame_rate만 보면 mkv VFR을 놓쳐서 바꿈) |
 
 ## 6. 테스트 전략
 
