@@ -77,4 +77,4 @@ updated: 2026-11-03
 
 - [x] T035 프로필(`local.toml`: MobileCLIP2-S0·Ollama `bge-m3`, `local-mock.toml`: mock), `AGENTS.md`, `.env.example` 갱신 — `services/ai-gateway/profiles/`, `AGENTS.md`, `.env.example` (9a5b824)
 - [x] T036 [NFR-1] [NFR-2] 실제 가중치로 지연과 성공 지표 확인(마커 `model`) — 테스트 `t/test_embed_latency.py` (9a5b824)
-- [ ] T037 docs 레포: 로컬 compose 모델 버킷·가중치 올리기 절차, Ollama `bge-m3` 안내(별도 PR) 후 로컬 스택에서 확인
+- [x] T037 docs 레포: 로컬 compose 모델 버킷·가중치 올리기 절차, Ollama `bge-m3` 안내(별도 PR) 후 로컬 스택에서 확인 (docs 로컬 compose PR)
