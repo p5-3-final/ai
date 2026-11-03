@@ -153,11 +153,14 @@ def test_uploaded_video_becomes_ready_with_stored_outputs(
     result = _wait_for(bootstrap, "video.normalized", source, timeout_s=60)
 
     assert started["eventType"] == "video.normalizing"
-    assert result["result"] == "READY"
+    assert (result["schemaVersion"], result["result"]) == (2, "READY")
     assert result["fps"] == 25
     assert result["transcoded"] is False
-    assert storage.exists(normalized_key(source))
-    assert storage.exists(hls_playlist_key(source))
+    assert result["durationMs"] == 3000
+    normalization = uuid.UUID(str(result["normalizationId"]))
+    assert result["normalizedKey"] == normalized_key(source, normalization)
+    assert storage.exists(normalized_key(source, normalization))
+    assert storage.exists(hls_playlist_key(source, normalization))
 
 
 def test_non_video_file_is_rejected(
@@ -170,4 +173,5 @@ def test_non_video_file_is_rejected(
     result = _wait_for(bootstrap, "video.normalized", source, timeout_s=60)
 
     assert (result["result"], result["rejectReason"]) == ("REJECTED", "UNREADABLE")
-    assert not storage.exists(normalized_key(source))
+    normalization = uuid.UUID(str(result["normalizationId"]))
+    assert not storage.exists(normalized_key(source, normalization))

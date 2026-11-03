@@ -39,6 +39,7 @@ def build_worker(
             ),
             hls_segment_s=normalize.hls_segment_s,
             work_dir=normalize.work_dir,
+            normalization_version=normalize.version,
         ),
     )
     return KafkaWorker(

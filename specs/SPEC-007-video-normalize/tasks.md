@@ -48,6 +48,11 @@ updated: 2026-11-03
 - [x] T019 [NFR-1] [NFR-2] 성능 측정 스크립트와 결과 기록 — `scripts/bench_normalize.sh` (aaa53b9)
 - [x] T020 환경변수 예시(`.env.example`), AGENTS 명령 갱신. 로컬 compose·`local/seaweedfs/s3.json`은 docs 브랜치 `feat/SPEC-007-local-normalize`에 두고 ai를 main에 합칠 때 함께 머지
 
+## Phase 6: v2 계약 반영 (docs#40, ADR-0009)
+
+- [x] T021 [R-6] [R-14] `VideoNormalized`를 v2로(normalizationId·normalizationVersion·durationMs, durationSec 일치 검증), 계약 테스트가 버전별 원본을 읽도록 — 테스트 `libs/contracts/tests/`, 구현 `events.py`
+- [x] T022 [R-6] [R-14] normalizationId·결과별 경로·eventId, 밀리초 반올림, `NORMALIZE_VERSION` 설정 — 테스트 `test_ids.py`, `test_service.py`, `test_worker_e2e.py`, 구현 `ids.py`, `service.py`, `settings.py`
+
 ## 완료 조건 (Definition of Done)
 
 - [ ] 이 레포가 담당하는 모든 R-*의 테스트 통과

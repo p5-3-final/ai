@@ -28,3 +28,6 @@ class NormalizeSettings(BaseSettings):
     max_duration_s: float = Field(default=14_400.0, gt=0)
     max_fps: float = Field(default=30.0, gt=0)
     hls_segment_s: float = Field(default=6.0, gt=0)
+    # 정규화 방식(코덱·기준값)을 바꾸면 올린다.
+    # 같은 영상도 새 normalizationId로 저장된다(SPEC-007 R-14).
+    version: str = Field(default="normalize-v1", pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,99}$")

@@ -61,17 +61,22 @@ RejectReason = Literal[
 
 
 class VideoNormalized(Event):
-    """영상 정규화가 끝났다. 발행: normalize (SPEC-007 R-6~R-12).
+    """영상 정규화가 끝났다. 발행: normalize, 소비: media-service, pipeline-service.
 
-    모든 필드를 항상 싣고, 결과에 해당하지 않는 값은 None(JSON null)이다.
+    원본은 `video.normalized.v2.schema.json`이다(SPEC-007 R-6~R-14, SPEC-008, ADR-0009).
+    모든 필드를 항상 싣고, 결과에 해당하지 않는 값은 None(JSON null)이다. 연동 시간은 정수
+    밀리초(`duration_ms`)이고 `duration_sec`는 그 값을 1000으로 나눈 호환 표시다.
     """
 
     event_type: Literal["video.normalized"] = "video.normalized"
-    schema_version: Literal[1] = 1
+    schema_version: Literal[2] = 2
+    normalization_id: UUID
+    normalization_version: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,99}$")
     result: Literal["READY", "REJECTED"]
     reject_reason: RejectReason | None
-    normalized_key: str | None
-    hls_playlist_key: str | None
+    normalized_key: str | None = Field(min_length=1)
+    hls_playlist_key: str | None = Field(min_length=1)
+    duration_ms: int | None = Field(ge=1)
     duration_sec: float | None = Field(gt=0)
     fps: float | None = Field(gt=0, le=240)
     width: int | None = Field(ge=1)
@@ -83,19 +88,23 @@ class VideoNormalized(Event):
         media = (
             self.normalized_key,
             self.hls_playlist_key,
+            self.duration_ms,
             self.duration_sec,
             self.fps,
             self.width,
             self.height,
             self.transcoded,
         )
-        # 계약의 if/then/else: READY면 미디어 필드가 모두 있고 사유가 없다. REJECTED면 그 반대다.
+        # 계약의 oneOf: READY면 미디어 필드가 모두 있고 사유가 없다. REJECTED면 그 반대다.
         if self.result == "READY" and (self.reject_reason is not None or None in media):
             raise ValueError("READY requires all media fields and no rejectReason")
         if self.result == "REJECTED" and (
             self.reject_reason is None or any(v is not None for v in media)
         ):
             raise ValueError("REJECTED requires rejectReason and null media fields")
+        # 소비자(pipeline)가 정확히 같은지 확인하므로 초 값은 밀리초에서만 만든다.
+        if self.duration_ms is not None and self.duration_sec != self.duration_ms / 1000:
+            raise ValueError("durationSec must equal durationMs / 1000")
         return self
 
 

@@ -10,7 +10,8 @@ updated: 2026-11-03
 # Plan: SPEC-007 영상 정규화 — ai
 
 - spec: docs 레포 `docs/specs/SPEC-007-video-normalize/spec.md`
-- 계약: docs 레포 `docs/contracts/events/video.normalizing.schema.json`, `video.normalized.schema.json`, `docs/contracts/asyncapi/normalize.yaml`
+- 계약: docs 레포 `docs/contracts/events/video.normalizing.schema.json`, `video.normalized.v2.schema.json`(발행 버전), `docs/contracts/asyncapi/normalize.yaml`
+- 연동 규칙: docs ADR-0009(불변 정규화 결과, 정수 밀리초, 키 sourceId), SPEC-008(pipeline은 v2만 수신)
 
 ## 1. 요약
 
@@ -63,14 +64,14 @@ R-15~R-21, NFR-6은 backend(media-service) 담당이다.
 
 | 경로 | 변경 |
 | --- | --- |
-| `libs/contracts/src/vlm_contracts/events.py` | `VideoNormalizing`, `VideoNormalized`(결과별 null 규칙 검증), `RejectReason` 추가 |
+| `libs/contracts/src/vlm_contracts/events.py` | `VideoNormalizing`, `VideoNormalized`(v2: normalizationId·normalizationVersion·durationMs, 결과별 null 규칙, durationSec = durationMs/1000 검증), `RejectReason` 추가 |
 | `libs/common/src/vlm_common/health.py` | `HealthState`(beat, ready), `serve_health(state, port)` — 표준 라이브러리 HTTP 서버를 데몬 스레드로 |
 | `libs/messaging/src/vlm_messaging/worker.py` | 선택 인자 `health`: 루프마다 `beat()`, 구독 시작 후 `mark_ready()` |
 | `services/normalize/src/normalize/settings.py` | `NormalizeSettings`: Kafka, 그룹, 작업 폴더, 길이 하한·상한, fps 상한, HLS 조각 길이, health 포트 |
 | `services/normalize/src/normalize/probe.py` | ffprobe JSON → `ProbeResult`(영상 유무, 코덱, 길이, 평균·기본 fps, 해상도) |
 | `services/normalize/src/normalize/decision.py` | `decide(probe, limits)` → `Reject(reason)` 또는 `Normalize(mode=copy\|transcode, fps)` |
 | `services/normalize/src/normalize/ffmpeg.py` | `MediaTool` 프로토콜과 `FfmpegTool`(probe, normalize, make_hls). `MediaReadError`, `DecodeError` |
-| `services/normalize/src/normalize/ids.py` | 저장 경로·이벤트 ID(uuid5) 결정 함수 |
+| `services/normalize/src/normalize/ids.py` | normalizationId·저장 경로·이벤트 ID(uuid5) 결정 함수, 초 → 정수 밀리초 반올림 |
 | `services/normalize/src/normalize/service.py` | `NormalizeService.handle(event, ctx)` 처리 순서 전체 |
 | `services/normalize/src/normalize/__main__.py` | 설정·로그·health·저장소·발행기·워커 연결 |
 | `services/normalize/Dockerfile` | `runtime`(ffmpeg, non-root), `test`(개발 의존성) 단계 |
@@ -80,16 +81,19 @@ R-15~R-21, NFR-6은 backend(media-service) 담당이다.
 
 ### 데이터 모델
 
-해당 없음(DB 없음). 저장 경로는 결정적이다.
+해당 없음(DB 없음). 정규화 결과는 불변이고 경로는 결과 ID로 정해진다(SPEC-007 R-14, ADR-0009).
 
-- 정규화 사본: `sources/<sourceId>/normalized/video.mp4`
-- HLS: `sources/<sourceId>/normalized/hls/index.m3u8`, `seg_00000.ts` …
+- normalizationId: `uuid5(NAMESPACE_URL, "vlm:normalization:<video.uploaded eventId>:<normalizationVersion>")`. 같은 메시지를 다시 받으면 같은 결과, 정규화 버전(`NORMALIZE_VERSION`)이 바뀌면 새 결과다.
+- 정규화 사본: `sources/<sourceId>/normalizations/<normalizationId>/normalized.mp4`
+- HLS: `sources/<sourceId>/normalizations/<normalizationId>/hls/index.m3u8`, `seg_00000.ts` …
+- 길이: 사본 길이(초)를 10진수로 바꿔 밀리초 반올림(최소 1). `durationSec`는 `durationMs / 1000`으로만 만든다(pipeline이 정확히 같은지 검사).
 
 ### API / 이벤트
 
 - 소비: `video.uploaded` (그룹 `normalize`, 재시도 `video.uploaded.normalize.retry`, DLQ `normalize.dlq`)
-- 발행: `video.normalizing`, `video.normalized` (키 sourceId, traceparent 이어 감)
-- 이벤트 ID: `uuid5(NAMESPACE_URL, "vlm:<eventType>:<sourceId>")`
+- 발행: `video.normalizing`(v1), `video.normalized`(v2) (키 sourceId, traceparent 이어 감)
+- 이벤트 ID: `video.normalizing`은 `uuid5(…, "vlm:video.normalizing:<sourceId>")`, `video.normalized`는 `uuid5(…, "vlm:video.normalized:<normalizationId>")`
+- 사본 길이를 읽지 못하면 READY를 만들 수 없어 예외로 재시도한다(원본 탓이 아니므로 거절하지 않음).
 
 ### 상호작용
 

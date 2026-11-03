@@ -8,7 +8,14 @@ from uuid import UUID
 import pytest
 from normalize.decision import Limits, Normalize
 from normalize.ffmpeg import DecodeError
-from normalize.ids import event_id, hls_playlist_key, hls_prefix, normalized_key
+from normalize.ids import (
+    hls_playlist_key,
+    hls_prefix,
+    normalization_id,
+    normalized_event_id,
+    normalized_key,
+    normalizing_event_id,
+)
 from normalize.probe import MediaReadError, ProbeResult
 from normalize.service import NormalizeConfig, NormalizeService
 from vlm_contracts.events import Event, VideoNormalized, VideoNormalizing, VideoUploaded
@@ -19,6 +26,9 @@ SOURCE = UUID("0192f0d2-1a2b-7c3d-8e4f-5a6b7c8d9e0f")
 OWNER = UUID("0192f0c4-6d1e-7a3b-9c2d-1e2f3a4b5c6d")
 NOW = datetime(2026, 11, 3, 9, 0, tzinfo=UTC)
 ORIGINAL_KEY = f"sources/{SOURCE}/original"
+UPLOADED_ID = UUID("0192f0d3-0000-7000-8000-000000000001")
+VERSION = "normalize-v1"
+NID = normalization_id(UPLOADED_ID, VERSION)
 
 H264_CFR = ProbeResult(
     has_video=True,
@@ -118,6 +128,7 @@ def _harness(
         limits=Limits(min_duration_s=1.0, max_duration_s=14_400.0, max_fps=30.0),
         hls_segment_s=6.0,
         work_dir=work_dir,
+        normalization_version=VERSION,
     )
     service = NormalizeService(storage, media, publisher, config, clock=lambda: NOW)
     return Harness(service, storage, media, publisher, work_dir)
@@ -125,7 +136,7 @@ def _harness(
 
 def _uploaded() -> VideoUploaded:
     return VideoUploaded(
-        event_id=UUID("0192f0d3-0000-7000-8000-000000000001"),
+        event_id=UPLOADED_ID,
         occurred_at=NOW,
         source_id=SOURCE,
         owner_id=OWNER,
@@ -163,7 +174,7 @@ async def test_r2_accepted_video_is_stored(tmp_path: Path) -> None:
 
     await h.service.handle(_uploaded(), CTX)
 
-    assert h.storage.get_bytes(normalized_key(SOURCE)) == b"mp4"
+    assert h.storage.get_bytes(normalized_key(SOURCE, NID)) == b"mp4"
 
 
 async def test_r3_r4_plan_from_decision_is_passed_to_ffmpeg(tmp_path: Path) -> None:
@@ -181,9 +192,9 @@ async def test_r5_hls_segments_are_stored_before_playlist(tmp_path: Path) -> Non
 
     await h.service.handle(_uploaded(), CTX)
 
-    assert h.storage.get_bytes(hls_playlist_key(SOURCE)) == b"index.m3u8"
-    assert h.storage.exists(f"{hls_prefix(SOURCE)}seg_00000.ts")
-    assert h.storage.exists(f"{hls_prefix(SOURCE)}seg_00001.ts")
+    assert h.storage.get_bytes(hls_playlist_key(SOURCE, NID)) == b"index.m3u8"
+    assert h.storage.exists(f"{hls_prefix(SOURCE, NID)}seg_00000.ts")
+    assert h.storage.exists(f"{hls_prefix(SOURCE, NID)}seg_00001.ts")
 
 
 async def test_r6_ready_event_payload(tmp_path: Path) -> None:
@@ -194,10 +205,11 @@ async def test_r6_ready_event_payload(tmp_path: Path) -> None:
     event = _normalized(h)
     assert event.result == "READY"
     assert event.reject_reason is None
-    assert event.normalized_key == normalized_key(SOURCE)
-    assert event.hls_playlist_key == hls_playlist_key(SOURCE)
+    assert (event.normalization_id, event.normalization_version) == (NID, VERSION)
+    assert event.normalized_key == normalized_key(SOURCE, NID)
+    assert event.hls_playlist_key == hls_playlist_key(SOURCE, NID)
     # 길이·fps·해상도는 원본이 아니라 정규화 사본에서 읽은 값이다.
-    assert event.duration_sec == 60.04
+    assert (event.duration_ms, event.duration_sec) == (60_040, 60.04)
     assert (event.fps, event.width, event.height, event.transcoded) == (30.0, 1280, 720, False)
     assert event.owner_id == OWNER
     assert event.occurred_at == NOW
@@ -209,7 +221,7 @@ async def test_r6_ready_is_published_after_uploads(tmp_path: Path) -> None:
     await h.service.handle(_uploaded(), CTX)
 
     assert h.media.calls[-1] == "publish:video.normalized"
-    assert h.storage.exists(hls_playlist_key(SOURCE))
+    assert h.storage.exists(hls_playlist_key(SOURCE, NID))
 
 
 async def test_events_carry_trace_and_source_key(tmp_path: Path) -> None:
@@ -229,8 +241,9 @@ async def test_r7_unreadable_original_is_rejected(tmp_path: Path) -> None:
 
     event = _normalized(h)
     assert (event.result, event.reject_reason) == ("REJECTED", "UNREADABLE")
+    assert (event.normalization_id, event.normalization_version) == (NID, VERSION)
     assert event.normalized_key is None
-    assert not h.storage.exists(normalized_key(SOURCE))
+    assert not h.storage.exists(normalized_key(SOURCE, NID))
 
 
 async def test_r8_decision_reject_is_published_without_ffmpeg(tmp_path: Path) -> None:
@@ -258,7 +271,7 @@ async def test_r12_decode_failure_rejects(tmp_path: Path) -> None:
     await h.service.handle(_uploaded(), CTX)
 
     assert _normalized(h).reject_reason == "DECODE_FAILED"
-    assert not h.storage.exists(normalized_key(SOURCE))
+    assert not h.storage.exists(normalized_key(SOURCE, NID))
 
 
 async def test_r13_storage_error_propagates_without_result(tmp_path: Path) -> None:
@@ -277,14 +290,7 @@ async def test_r14_reprocessing_publishes_same_event_ids(tmp_path: Path) -> None
     await h.service.handle(_uploaded(), CTX)
 
     ids = [e.event_id for _, e, _, _ in h.publisher.published]
-    assert (
-        ids
-        == [
-            event_id("video.normalizing", SOURCE),
-            event_id("video.normalized", SOURCE),
-        ]
-        * 2
-    )
+    assert ids == [normalizing_event_id(SOURCE), normalized_event_id(NID)] * 2
 
 
 async def test_deleted_original_ends_without_result(tmp_path: Path) -> None:
