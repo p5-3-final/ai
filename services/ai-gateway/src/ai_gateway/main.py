@@ -13,16 +13,18 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from vlm_common.health import HealthState
 from vlm_common.logging import configure_logging
 from vlm_common.profile import ProfileError, load_profile
+from vlm_encoders.base import ImageTextEncoder
 from vlm_storage.s3 import S3Storage, StorageSettings
 from vlm_storage.storage import ObjectStorage
 
-from ai_gateway.adapters.base import VlmAdapter
+from ai_gateway.adapters.base import TextEmbeddingAdapter, VlmAdapter
 from ai_gateway.adapters.mock import MockAdapter
 from ai_gateway.adapters.openai import OpenAiAdapter
 from ai_gateway.analyze import AnalyzeService, CallLogWriter
 from ai_gateway.api import router
 from ai_gateway.call_log import CallLog
 from ai_gateway.deletion import start_deletion_worker
+from ai_gateway.embed import EmbedService
 from ai_gateway.images import ImageReader
 from ai_gateway.problems import install_problem_handlers
 from ai_gateway.profile import GatewayProfile, check_profile
@@ -48,6 +50,9 @@ class GatewayDeps:
     # 기동 검증·DB 확인이 끝나고 video.deleted 구독을 시작했는지(R-23).
     is_ready: Callable[[], bool]
     close: Callable[[], Awaitable[None]] = field(default=_nothing)
+    # 프로필에 [encoder]가 없으면 None이다(SPEC-011 R-14).
+    encoder: ImageTextEncoder | None = None
+    embedders: dict[str, TextEmbeddingAdapter] = field(default_factory=dict)
 
 
 def create_app(build: Callable[[], Awaitable[GatewayDeps]]) -> FastAPI:
@@ -58,6 +63,9 @@ def create_app(build: Callable[[], Awaitable[GatewayDeps]]) -> FastAPI:
         deps = await build()
         app.state.analyze = AnalyzeService(
             deps.profile, deps.prompts, ImageReader(deps.storage), deps.adapters, deps.call_log
+        )
+        app.state.embed = EmbedService(
+            deps.profile, deps.encoder, ImageReader(deps.storage), deps.embedders, deps.call_log
         )
         app.state.is_ready = deps.is_ready
         try:

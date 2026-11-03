@@ -31,6 +31,22 @@ class ImageNotFoundError(GatewayRequestError):
     code = "AI_IMAGE_NOT_FOUND"
 
 
+class TooManyInputsError(GatewayRequestError):
+    code = "AI_TOO_MANY_INPUTS"
+
+
+class ImageUnreadableError(GatewayRequestError):
+    code = "AI_IMAGE_UNREADABLE"
+
+
+class ModelNotConfiguredError(GatewayRequestError):
+    """프로필에 그 taskType의 모델이 없다. 설정을 바꾸기 전에는 다시 보내도 같다(SPEC-011 R-14)."""
+
+    code = "AI_MODEL_NOT_CONFIGURED"
+    status = 503
+    title = "Service Unavailable"
+
+
 class CallerForbiddenError(GatewayRequestError):
     code = "AI_CALLER_FORBIDDEN"
     status = 403

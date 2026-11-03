@@ -16,6 +16,7 @@ from openai.types.chat import (
 
 from ai_gateway.adapters.base import (
     Completion,
+    Embeddings,
     ImageInput,
     ProviderFailedError,
     ProviderUnavailableError,
@@ -88,13 +89,8 @@ class OpenAiAdapter:
                     max_completion_tokens=max_output_tokens,
                     extra_headers=headers,
                 )
-        except openai.APIStatusError as e:
-            if e.status_code == 429 or e.status_code >= 500:
-                raise ProviderUnavailableError(f"provider returned {e.status_code}") from e
-            raise ProviderFailedError(f"provider rejected the request: {e.status_code}") from e
-        except openai.APIConnectionError as e:
-            # 시간 초과(APITimeoutError)도 여기에 속한다.
-            raise ProviderUnavailableError(f"provider is unreachable: {type(e).__name__}") from e
+        except (openai.APIStatusError, openai.APIConnectionError) as e:
+            raise _provider_error(e) from e
         usage = response.usage
         text = response.choices[0].message.content if response.choices else None
         return Completion(
@@ -102,6 +98,40 @@ class OpenAiAdapter:
             input_tokens=usage.prompt_tokens if usage else None,
             output_tokens=usage.completion_tokens if usage else None,
         )
+
+    async def embed(
+        self,
+        *,
+        model: str,
+        texts: list[str],
+        timeout_s: float,
+        max_retries: int,
+        traceparent: str | None,
+    ) -> Embeddings:
+        client = self._client.with_options(timeout=timeout_s, max_retries=max_retries)
+        headers = {"traceparent": traceparent} if traceparent else None
+        try:
+            response = await client.embeddings.create(
+                model=model, input=texts, extra_headers=headers
+            )
+        except (openai.APIStatusError, openai.APIConnectionError) as e:
+            raise _provider_error(e) from e
+        # 응답 순서는 보장되지 않아 index로 입력 순서를 맞춘다(SPEC-011 R-3).
+        data = sorted(response.data, key=lambda d: d.index)
+        return Embeddings(
+            vectors=[d.embedding for d in data],
+            input_tokens=response.usage.prompt_tokens if response.usage else None,
+        )
+
+
+def _provider_error(error: openai.APIError) -> ProviderUnavailableError | ProviderFailedError:
+    """공급자 오류를 다시 시도할 수 있는지로 나눈다(SPEC-009 R-18·R-19, SPEC-011 R-20·R-21)."""
+    if isinstance(error, openai.APIStatusError):
+        if error.status_code == 429 or error.status_code >= 500:
+            return ProviderUnavailableError(f"provider returned {error.status_code}")
+        return ProviderFailedError(f"provider rejected the request: {error.status_code}")
+    # 시간 초과(APITimeoutError)도 연결 오류에 속한다.
+    return ProviderUnavailableError(f"provider is unreachable: {type(error).__name__}")
 
 
 def _image_part(image: ImageInput) -> ChatCompletionContentPartImageParam:

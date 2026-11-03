@@ -6,6 +6,7 @@ import httpx2
 import pytest
 from ai_gateway.adapters.base import (
     Completion,
+    Embeddings,
     ImageInput,
     ProviderFailedError,
     ProviderUnavailableError,
@@ -168,3 +169,60 @@ async def test_spec009_nfr5_traceparent_is_forwarded_to_provider() -> None:
     )
 
     assert seen[0].headers["traceparent"] == TRACEPARENT
+
+
+def _embeddings(vectors: list[list[float]], order: list[int] | None = None) -> dict[str, object]:
+    indexes = order if order is not None else list(range(len(vectors)))
+    return {
+        "object": "list",
+        "model": "m",
+        "data": [{"object": "embedding", "index": i, "embedding": vectors[i]} for i in indexes],
+        "usage": {"prompt_tokens": 9, "total_tokens": 9},
+    }
+
+
+async def _embed(adapter: OpenAiAdapter, texts: list[str], retries: int = 0) -> Embeddings:
+    return await adapter.embed(
+        model="bge-m3", texts=texts, timeout_s=5, max_retries=retries, traceparent=TRACEPARENT
+    )
+
+
+async def test_spec011_r3_embeds_texts_in_input_order() -> None:
+    """[SPEC-011 R-3] 공급자가 순서를 바꿔 돌려줘도 index로 입력 순서를 맞춘다."""
+    seen: list[httpx2.Request] = []
+
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        seen.append(request)
+        return httpx2.Response(200, json=_embeddings([[1.0, 0.0], [0.0, 1.0]], order=[1, 0]))
+
+    result = await _embed(_adapter(handler, compatible=True), ["첫째", "둘째"])
+
+    assert result.vectors == [[1.0, 0.0], [0.0, 1.0]]
+    assert result.input_tokens == 9
+    [request] = seen
+    assert request.url.path == "/v1/embeddings"
+    body = json.loads(request.content)
+    assert (body["model"], body["input"]) == ("bge-m3", ["첫째", "둘째"])
+    assert request.headers["traceparent"] == TRACEPARENT
+
+
+@pytest.mark.parametrize(
+    "handler",
+    [
+        _status(429),
+        _status(500),
+        _raise(httpx2.ReadTimeout("slow")),
+        _raise(httpx2.ConnectError("down")),
+    ],
+)
+async def test_spec011_r20_transient_embedding_errors_are_unavailable(handler: Handler) -> None:
+    """[SPEC-011 R-20] 시간 초과·연결 불가·429·5xx는 일시적으로 사용할 수 없음이다."""
+    with pytest.raises(ProviderUnavailableError):
+        await _embed(_adapter(handler), ["a"])
+
+
+@pytest.mark.parametrize("code", [400, 401, 404])
+async def test_spec011_r21_rejected_embedding_requests_are_failed(code: int) -> None:
+    """[SPEC-011 R-21] 429 외 4xx는 공급자 거부다."""
+    with pytest.raises(ProviderFailedError):
+        await _embed(_adapter(_status(code)), ["a"])

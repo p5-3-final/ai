@@ -5,7 +5,7 @@
 
 import json
 
-from ai_gateway.adapters.base import Completion, ImageInput
+from ai_gateway.adapters.base import Completion, Embeddings, ImageInput
 from ai_gateway.prompts import PromptMessage
 
 _INPUT_BLOCK = "```json\n"
@@ -44,6 +44,17 @@ class MockAdapter:
         return Completion(
             text=json.dumps(reply, ensure_ascii=False), input_tokens=None, output_tokens=None
         )
+
+    async def embed(
+        self,
+        *,
+        model: str,
+        texts: list[str],
+        timeout_s: float,
+        max_retries: int,
+        traceparent: str | None,
+    ) -> Embeddings:
+        raise NotImplementedError
 
 
 def _input_json(variable_part: str) -> dict[str, object]:

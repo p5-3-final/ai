@@ -8,12 +8,20 @@ from pathlib import Path
 from uuid import UUID
 
 import httpx
-from ai_gateway.adapters.base import Completion, ImageInput, VlmAdapter
+from ai_gateway.adapters.base import (
+    Completion,
+    Embeddings,
+    ImageInput,
+    TextEmbeddingAdapter,
+    VlmAdapter,
+)
 from ai_gateway.analyze import CallLogWriter
 from ai_gateway.call_log import CallLogEntry
 from ai_gateway.main import GatewayDeps, create_app
 from ai_gateway.profile import GatewayProfile
 from ai_gateway.prompts import PromptMessage, PromptRegistry
+from vlm_encoders.base import ImageTextEncoder
+from vlm_encoders.mock import MockEncoder
 from vlm_storage.memory import InMemoryStorage
 
 SOURCE = UUID("0192f0d2-1a2b-7c3d-8e4f-5a6b7c8d9e0f")
@@ -30,8 +38,35 @@ CANDIDATE: dict[str, object] = {
 }
 
 
-def profile(**task: object) -> GatewayProfile:
-    """테스트 프로필. `task`로 event_judge 설정을 바꾼다."""
+ENCODER_ID = "mock:MobileCLIP2-S0:dfndr2b:mean-4"
+QUERY_IMAGE = "queries/0192f0d2-9a8b-7c6d-8e4f-5a6b7c8d9e0f/query.jpg"
+
+
+def embed_settings() -> dict[str, object]:
+    """임베딩 테스트 프로필의 `[encoder]`·`[embed.*]`. 고쳐서 `profile(extra=...)`로 넘긴다."""
+    return {
+        "encoder": {"kind": "mock", "model_id": ENCODER_ID, "dimension": 8},
+        "embed": {
+            "embed_visual_text": {"max_inputs": 3, "max_text_chars": 40},
+            "embed_image": {
+                "max_inputs": 2,
+                "allowed_patterns": [r"^queries/[^/]+/[^/]+\.(jpg|png)$"],
+            },
+            "embed_text": {
+                "adapter": "fake",
+                "model": "fake-embedding",
+                "dimension": 4,
+                "max_inputs": 3,
+                "max_text_chars": 40,
+                "timeout_s": 5,
+                "max_retries": 0,
+            },
+        },
+    }
+
+
+def profile(extra: dict[str, object] | None = None, **task: object) -> GatewayProfile:
+    """테스트 프로필. `task`로 event_judge 설정을, `extra`로 최상위 항목을 바꾼다."""
     event_judge: dict[str, object] = {
         "adapter": "fake",
         "model": "fake-vlm",
@@ -47,6 +82,7 @@ def profile(**task: object) -> GatewayProfile:
             "images": {"allowed_patterns": [r"^sources/{source_id}/.+/blurred/[^/]+\.(jpg|png)$"]},
             "adapters": {"fake": {"kind": "mock"}},
             "tasks": {"event_judge": event_judge},
+            **(extra or {}),
         }
     )
 
@@ -92,6 +128,37 @@ class FakeAdapter:
         return Completion(text=self.reply, input_tokens=100, output_tokens=20)
 
 
+@dataclass(frozen=True)
+class EmbedCall:
+    model: str
+    texts: list[str]
+    traceparent: str | None
+
+
+@dataclass
+class FakeEmbedder:
+    """`vectors`를 그대로 돌려주고(없으면 차원 4의 결정적 벡터) 받은 요청을 기록한다."""
+
+    reply: list[list[float]] | Exception | None = None
+    calls: list[EmbedCall] = field(default_factory=list)
+
+    async def embed(
+        self,
+        *,
+        model: str,
+        texts: list[str],
+        timeout_s: float,
+        max_retries: int,
+        traceparent: str | None,
+    ) -> Embeddings:
+        self.calls.append(EmbedCall(model, texts, traceparent))
+        if isinstance(self.reply, Exception):
+            raise self.reply
+        if self.reply is not None:
+            return Embeddings(vectors=self.reply, input_tokens=7)
+        return Embeddings(vectors=[[float(len(t)), 1.0, 0.0, 0.0] for t in texts], input_tokens=7)
+
+
 @dataclass
 class RecordingCallLog:
     entries: list[CallLogEntry] = field(default_factory=list)
@@ -117,6 +184,8 @@ async def gateway(
     ready: Callable[[], bool] = lambda: True,
     adapters: dict[str, VlmAdapter] | None = None,
     call_log: CallLogWriter | None = None,
+    encoder: ImageTextEncoder | None = None,
+    embedders: dict[str, TextEmbeddingAdapter] | None = None,
 ) -> AsyncIterator[Gateway]:
     """가짜 Adapter·메모리 저장소·기록용 호출 로그로 앱을 띄운다."""
     storage = InMemoryStorage()
@@ -133,6 +202,8 @@ async def gateway(
         adapters=adapters if adapters is not None else {"fake": fake},
         call_log=call_log if call_log is not None else recording,
         is_ready=ready,
+        encoder=encoder,
+        embedders=embedders or {},
     )
 
     async def build() -> GatewayDeps:
@@ -161,3 +232,14 @@ async def post_analyze(
 ) -> httpx.Response:
     headers = {"X-Caller": caller} if caller is not None else {}
     return await client.post("/v1/analyze", json=body, headers=headers)
+
+
+def mock_encoder() -> MockEncoder:
+    return MockEncoder(ENCODER_ID, 8)
+
+
+async def post_embed(
+    client: httpx.AsyncClient, body: dict[str, object], caller: str | None = CALLER
+) -> httpx.Response:
+    headers = {"X-Caller": caller} if caller is not None else {}
+    return await client.post("/v1/embed", json=body, headers=headers)

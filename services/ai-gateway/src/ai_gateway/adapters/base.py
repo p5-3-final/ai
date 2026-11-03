@@ -24,6 +24,14 @@ class Completion:
     output_tokens: int | None
 
 
+@dataclass(frozen=True, slots=True)
+class Embeddings:
+    """입력 순서대로의 벡터와 공급자가 알려준 입력 토큰 수."""
+
+    vectors: list[list[float]]
+    input_tokens: int | None
+
+
 class ProviderUnavailableError(GatewayRequestError):
     """시간 초과, 연결 불가, 429·5xx. 호출자가 다시 시도할 수 있다(SPEC-009 R-18)."""
 
@@ -55,6 +63,27 @@ class VlmAdapter(Protocol):
         traceparent: str | None,
     ) -> Completion:
         """모델을 한 번 부른다.
+
+        Raises:
+            ProviderUnavailableError: 일시적으로 쓸 수 없을 때.
+            ProviderFailedError: 공급자가 요청을 거부했을 때.
+        """
+        ...
+
+
+class TextEmbeddingAdapter(Protocol):
+    """텍스트 임베딩 공급자 하나(SPEC-011 `embed_text`)."""
+
+    async def embed(
+        self,
+        *,
+        model: str,
+        texts: list[str],
+        timeout_s: float,
+        max_retries: int,
+        traceparent: str | None,
+    ) -> Embeddings:
+        """문장마다 벡터를 만든다.
 
         Raises:
             ProviderUnavailableError: 일시적으로 쓸 수 없을 때.

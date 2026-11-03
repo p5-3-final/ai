@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
 
 from ai_gateway.analyze import AnalyzeCommand, AnalyzeService
+from ai_gateway.embed import EmbedCommand, EmbedService
 
 router = APIRouter()
 
@@ -59,10 +60,7 @@ async def analyze(
             source_id=body.source_id,
             image_keys=[i.storage_key for i in body.images],
             variables=body.variables,
-            # 형식이 틀린 추적 헤더 때문에 분석을 거절하지 않는다. 없는 것으로 본다.
-            traceparent=traceparent
-            if traceparent and _TRACEPARENT.fullmatch(traceparent)
-            else None,
+            traceparent=_valid_traceparent(traceparent),
         )
     )
     return AnalyzeResponse(
@@ -77,3 +75,52 @@ async def analyze(
 def _valid_traceparent(value: str | None) -> str | None:
     # 형식이 틀린 추적 헤더 때문에 분석을 거절하지 않는다. 없는 것으로 본다.
     return value if value and _TRACEPARENT.fullmatch(value) else None
+
+
+class EmbedImageRef(_Body):
+    storage_key: str = Field(min_length=1, max_length=1024)
+
+
+class EmbedRequest(_Body):
+    # 모르는 taskType도 형식 오류가 아니라 AI_UNKNOWN_TASK_TYPE으로 알리려고 enum으로 막지 않는다.
+    task_type: str
+    texts: list[str] | None = None
+    images: list[EmbedImageRef] | None = None
+
+
+class EmbedResponse(_Body):
+    call_id: UUID
+    task_type: str
+    model_id: str
+    dimension: int
+    vectors: list[list[float]]
+
+
+def _embed_service(request: Request) -> EmbedService:
+    service: EmbedService = request.app.state.embed
+    return service
+
+
+@router.post("/v1/embed", response_model_by_alias=True)
+async def embed(
+    body: EmbedRequest,
+    service: Annotated[EmbedService, Depends(_embed_service)],
+    x_caller: Annotated[str | None, Header()] = None,
+    traceparent: Annotated[str | None, Header()] = None,
+) -> EmbedResponse:
+    result = await service.embed(
+        EmbedCommand(
+            caller=x_caller or "",
+            task_type=body.task_type,
+            texts=body.texts,
+            image_keys=[i.storage_key for i in body.images] if body.images is not None else None,
+            traceparent=_valid_traceparent(traceparent),
+        )
+    )
+    return EmbedResponse(
+        call_id=result.call_id,
+        task_type=result.task_type,
+        model_id=result.model_id,
+        dimension=result.dimension,
+        vectors=result.vectors,
+    )

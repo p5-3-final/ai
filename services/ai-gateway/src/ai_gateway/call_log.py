@@ -23,15 +23,18 @@ def new_call_id() -> UUID:
 
 @dataclass(frozen=True, slots=True)
 class CallLogEntry:
-    """호출 한 건. 모델 미설정이면 `adapter`·`model_id`가 없다(R-8)."""
+    """호출 한 건. 모델 미설정이면 `adapter`·`model_id`가 없다(R-8).
+
+    임베딩 호출은 영상 ID·프롬프트 버전이 없고 입력 수를 남긴다(SPEC-011 R-23).
+    """
 
     call_id: UUID
     caller: str
-    source_id: UUID
+    source_id: UUID | None
     task_type: str
     adapter: str | None
     model_id: str | None
-    prompt_version: str
+    prompt_version: str | None
     status: CallStatus
     error_code: str | None
     latency_ms: int
@@ -42,6 +45,7 @@ class CallLogEntry:
     input_tokens: int | None
     output_tokens: int | None
     trace_id: str | None
+    input_count: int | None = None
 
 
 class CallLog:
