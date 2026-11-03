@@ -22,3 +22,7 @@ class GatewaySettings(ServiceSettings):
     kafka_bootstrap: str = Field(validation_alias="KAFKA_BOOTSTRAP")
     group_id: str = "ai-gateway"
     openai_api_key: SecretStr | None = None
+    # 인코더 가중치를 받는 모델 버킷(SPEC-011 R-15). 영상 버킷(S3_BUCKET)과 권한을 나눈다.
+    models_bucket: str | None = None
+    # 가중치 로컬 캐시. 운영은 Pod의 emptyDir을 여기에 붙여 재시작 때 다시 받지 않는다.
+    model_cache_dir: Path = Path("/var/cache/vlm-models")

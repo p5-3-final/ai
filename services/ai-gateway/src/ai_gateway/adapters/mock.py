@@ -5,14 +5,23 @@
 
 import json
 
-from ai_gateway.adapters.base import Completion, ImageInput
+from vlm_encoders.mock import MockEncoder
+
+from ai_gateway.adapters.base import Completion, Embeddings, ImageInput
 from ai_gateway.prompts import PromptMessage
 
 _INPUT_BLOCK = "```json\n"
 
 
 class MockAdapter:
-    """입력 JSON의 후보를 그대로 "확인됨"으로 판정한 event_judge 결과를 돌려준다."""
+    """입력 JSON의 후보를 그대로 "확인됨"으로 판정한 event_judge 결과를 돌려준다.
+
+    Args:
+        embedding_dimension: `embed`가 돌려줄 벡터 차원(프로필의 embed_text 차원).
+    """
+
+    def __init__(self, embedding_dimension: int = 8) -> None:
+        self._embedding_dimension = embedding_dimension
 
     async def complete(
         self,
@@ -44,6 +53,19 @@ class MockAdapter:
         return Completion(
             text=json.dumps(reply, ensure_ascii=False), input_tokens=None, output_tokens=None
         )
+
+    async def embed(
+        self,
+        *,
+        model: str,
+        texts: list[str],
+        timeout_s: float,
+        max_retries: int,
+        traceparent: str | None,
+    ) -> Embeddings:
+        # 입력 해시로 만든 결정적 벡터. 차원은 프로필의 embed_text 차원을 따른다.
+        vectors = MockEncoder(model, self._embedding_dimension).encode_texts(texts)
+        return Embeddings(vectors=vectors, input_tokens=None)
 
 
 def _input_json(variable_part: str) -> dict[str, object]:

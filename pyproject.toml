@@ -9,10 +9,20 @@ package = false
 
 [tool.uv.workspace]
 # 빈 서비스 폴더는 pyproject.toml이 생길 때 멤버로 추가한다(glob을 쓰면 uv가 빈 폴더에서 실패한다).
-members = ["libs/common", "libs/contracts", "libs/messaging", "libs/storage", "libs/testing", "services/ai-gateway", "services/normalize"]
+members = ["libs/common", "libs/contracts", "libs/encoders", "libs/messaging", "libs/storage", "libs/testing", "services/ai-gateway", "services/normalize"]
 
 [tool.uv.sources]
 vlm-testing = { workspace = true }
+# PyPI의 Linux torch는 CUDA 판이라 이미지가 수 GB가 된다. 인코더는 CPU로 돌리므로 Linux(이미지·CI)는
+# PyTorch CPU 인덱스에서 받는다. macOS는 PyPI 판이 CPU용이다.
+torch = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
+torchvision = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+# torch·torchvision만 이 인덱스에서 받는다. 다른 패키지는 PyPI에서 찾는다.
+explicit = true
 
 [dependency-groups]
 dev = [
@@ -55,7 +65,7 @@ python_version = "3.12"
 # 실행은 인자 없이 `uv run mypy`. mypy는 .py가 없는 폴더를 오류로 보므로 코드가 있는 폴더만 둔다.
 files = ["libs", "services/ai-gateway", "services/normalize"]
 explicit_package_bases = true
-mypy_path = ["$MYPY_CONFIG_FILE_DIR/libs/common/src", "$MYPY_CONFIG_FILE_DIR/libs/contracts/src", "$MYPY_CONFIG_FILE_DIR/libs/messaging/src", "$MYPY_CONFIG_FILE_DIR/libs/storage/src", "$MYPY_CONFIG_FILE_DIR/libs/testing/src", "$MYPY_CONFIG_FILE_DIR/services/ai-gateway/src", "$MYPY_CONFIG_FILE_DIR/services/normalize/src"]
+mypy_path = ["$MYPY_CONFIG_FILE_DIR/libs/common/src", "$MYPY_CONFIG_FILE_DIR/libs/contracts/src", "$MYPY_CONFIG_FILE_DIR/libs/encoders/src", "$MYPY_CONFIG_FILE_DIR/libs/messaging/src", "$MYPY_CONFIG_FILE_DIR/libs/storage/src", "$MYPY_CONFIG_FILE_DIR/libs/testing/src", "$MYPY_CONFIG_FILE_DIR/services/ai-gateway/src", "$MYPY_CONFIG_FILE_DIR/services/normalize/src"]
 
 [tool.pytest.ini_options]
 # 멤버마다 tests/가 있어 같은 파일 이름이 겹치므로 importlib 모드로 모은다.
@@ -68,4 +78,5 @@ testpaths = ["libs", "services"]
 markers = [
   "integration: Docker로 실제 Kafka 등 외부 구성 요소를 띄우는 테스트",
   "ffmpeg: 시스템 ffmpeg가 필요한 테스트. 서비스 이미지 안에서 실행한다(scripts/test-in-docker.sh)",
+  "model: 실제 모델 가중치를 내려받는 테스트. CI에서 돌리지 않고 로컬에서 -m model로 실행한다",
 ]

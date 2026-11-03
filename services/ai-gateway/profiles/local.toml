@@ -28,3 +28,35 @@ max_images = 12
 # 로컬 CPU 추론은 느리다
 timeout_s = 120
 max_retries = 1
+
+# 이미지·질의 인코더(SPEC-011). frame-encoder와 같은 모델 ID여야 같은 인덱스를 찾는다.
+# 가중치: Hugging Face timm/MobileCLIP2-S0-OpenCLIP의 open_clip_model.safetensors(Apple AMLR, 비상용)를
+# 모델 버킷(AI_GATEWAY_MODELS_BUCKET)의 아래 키에 올려 둔다. 절차는 docs local/README.md
+[encoder]
+kind = "open_clip"
+model_id = "open_clip:MobileCLIP2-S0:dfndr2b:mean-4"
+dimension = 512
+weights_key = "open_clip/MobileCLIP2-S0/dfndr2b/open_clip_model.safetensors"
+weights_sha256 = "ab91a1a0c4330d6b1913e24d5035dfdea15423316aaec649610c6b1c6ddd0e95"
+
+[embed.embed_visual_text]
+max_inputs = 16
+# 영어 검색 문장. 인코더 텍스트 입력은 77토큰에서 잘린다
+max_text_chars = 300
+
+[embed.embed_image]
+max_inputs = 8
+# 검색용 이미지는 search-service가 질의 전용 폴더에 올린다
+allowed_patterns = ['^queries/[^/]+/[^/]+\.(jpg|jpeg|png|webp)$']
+
+[embed.embed_text]
+# VLM과 같은 호스트 Ollama(ollama pull bge-m3)
+adapter = "ollama"
+# 한국어 이벤트 설명문·검색 문장을 다뤄 다국어 모델을 쓴다. 운영은 text-embedding-3-small(1536차원)
+model = "bge-m3"
+dimension = 1024
+# embedding-worker가 설명문을 묶어 보낸다
+max_inputs = 64
+max_text_chars = 2000
+timeout_s = 30
+max_retries = 1

@@ -83,7 +83,7 @@ jobs:
       # 통합 테스트는 testcontainers로 Kafka·SeaweedFS를 띄운다(GitHub 호스트 러너에 Docker가 있다).
       # ffmpeg 테스트는 아래 service-images job이 운영과 같은 이미지에서 돌린다.
       - name: pytest
-        run: uv run pytest -m "not ffmpeg"
+        run: uv run pytest -m "not ffmpeg and not model"
         env:
           CONTRACTS_DIR: ${{ github.workspace }}/docs-repo/docs/contracts
 

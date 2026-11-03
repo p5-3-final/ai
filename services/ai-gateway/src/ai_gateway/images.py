@@ -48,6 +48,24 @@ class ImagePolicy:
                 raise ImagePathForbiddenError(f"only blurred copies can be sent: {key}")
 
 
+class QueryImagePolicy:
+    """검색용 이미지 경로 검사(SPEC-011 R-10). 영상 폴더가 아니라 taskType별 패턴만 본다."""
+
+    def __init__(self, patterns: list[str]) -> None:
+        self._patterns = [re.compile(p) for p in patterns]
+
+    def check(self, keys: list[str]) -> None:
+        """하나라도 어긋나면 요청 전체를 거절한다.
+
+        Raises:
+            ImagePathForbiddenError: 허용 패턴에 맞지 않거나 `..`가 든 경로가 있을 때.
+        """
+        for key in keys:
+            # 패턴이 넓게 쓰여도 상위 폴더로 빠져나가는 경로는 막는다.
+            if ".." in key.split("/") or not any(p.fullmatch(key) for p in self._patterns):
+                raise ImagePathForbiddenError(f"image path is not allowed for this task: {key}")
+
+
 class ImageReader:
     """저장소에서 이미지를 읽는다. boto3가 동기라 스레드에서 병렬로 읽는다."""
 

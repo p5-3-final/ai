@@ -58,3 +58,23 @@ async def test_rejects_unknown_status(database_url: str) -> None:
                 )
             )
     await engine.dispose()
+
+
+async def test_spec011_r23_accepts_embed_call_without_source_and_prompt(database_url: str) -> None:
+    """[SPEC-011 R-23] 질의 임베딩에는 영상 ID·프롬프트가 없고 입력 수를 남긴다."""
+    await upgrade(database_url)
+    engine = create_async_engine(database_url)
+    async with engine.begin() as conn:
+        call_id = await conn.scalar(
+            text(
+                "INSERT INTO ai.ai_call_log (call_id, caller, task_type, status, latency_ms,"
+                " image_keys, request_config, input_count)"
+                " VALUES (gen_random_uuid(), 'search-service', 'embed_visual_text', 'success',"
+                " 3, '{}', '{}', 2) RETURNING call_id"
+            )
+        )
+        count = await conn.scalar(
+            text("SELECT input_count FROM ai.ai_call_log WHERE call_id = :id"), {"id": call_id}
+        )
+    await engine.dispose()
+    assert count == 2

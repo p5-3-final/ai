@@ -1,4 +1,4 @@
-"""SPEC-009 NFR-2: 공급자 SDK는 Adapter 구현 안에서만 부른다."""
+"""SPEC-009 NFR-2, SPEC-011 NFR-4: 공급자 SDK·인코더 라이브러리는 구현 한 곳에서만 부른다."""
 
 import ast
 from pathlib import Path
@@ -14,6 +14,11 @@ ALLOWED = {
     "boto3": set(),
     "botocore": set(),
     "confluent_kafka": set(),
+    # 인코더 라이브러리는 libs/encoders 구현을 거쳐서만 쓴다(SPEC-011 NFR-4).
+    "open_clip": set(),
+    "torch": set(),
+    "safetensors": set(),
+    "PIL": set(),
 }
 
 
