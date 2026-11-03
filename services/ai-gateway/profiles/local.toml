@@ -16,7 +16,8 @@ base_url = "http://ollama:11434/v1"
 
 [tasks.event_judge]
 adapter = "ollama"
-model = "qwen3-vl:8b"
+# 16GB 개발 머신에서 Docker와 함께 돌릴 수 있는 크기. 메모리가 넉넉하면 8b로 올린다.
+model = "qwen3-vl:4b"
 max_output_tokens = 800
 # 후보 전후 5초 근거 프레임(docs overview "분석 처리 흐름" 8단계)
 max_images = 12
