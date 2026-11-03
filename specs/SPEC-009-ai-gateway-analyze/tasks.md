@@ -51,7 +51,7 @@ updated: 2026-11-03
 - [x] T020 [R-18] [R-19] API에서 503·502와 로그 상태 — 테스트 `t/test_analyze_api.py`, 구현 `gw/analyze.py`, `gw/api.py`
 - [x] T021 [NFR-5] `traceparent` 이어 받기와 공급자 호출 헤더 — 테스트 `t/test_openai_adapter.py`, 구현 `gw/tracing.py`
 - [x] T022 [NFR-3] 로그에 이미지·원문·키 없음 — 테스트 `t/test_analyze_api.py`(caplog), 구현 확인
-- [ ] T023 [P] mock Adapter — 테스트 `t/test_mock_adapter.py`, 구현 `gw/adapters/mock.py`
+- [x] T023 [P] mock Adapter — 테스트 `t/test_mock_adapter.py`, 구현 `gw/adapters/mock.py`
 
 ## Phase 6: US-5 삭제 전파 (P2)
 
