@@ -191,6 +191,22 @@ class EmbedService:
 
     async def _record(self, entry: CallLogEntry) -> None:
         await self._call_log.save(entry)
+        # 검색 문장은 개인정보일 수 있고 벡터는 크기만 커서 로그에 넣지 않는다(SPEC-011 NFR-5).
+        logger.info(
+            "embed completed",
+            extra={
+                "call_id": str(entry.call_id),
+                "caller": entry.caller,
+                "task_type": entry.task_type,
+                "model_id": entry.model_id,
+                "status": entry.status,
+                "error_code": entry.error_code,
+                "latency_ms": entry.latency_ms,
+                "input_count": entry.input_count,
+                "input_tokens": entry.input_tokens,
+                "trace_id": entry.trace_id,
+            },
+        )
 
 
 def _encoder_plan(

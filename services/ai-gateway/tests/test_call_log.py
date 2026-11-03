@@ -107,3 +107,37 @@ async def test_spec009_nfr6_call_ids_are_unique_across_concurrent_calls(
     await asyncio.gather(*(CallLog(engine).save(e) for e in entries))
 
     assert len({e.call_id for e in entries}) == 50
+
+
+async def test_spec011_r23_saves_embed_call_without_source_or_prompt(engine: AsyncEngine) -> None:
+    """[SPEC-011 R-23] 임베딩 호출은 영상 ID·프롬프트 없이 입력 수와 함께 남는다."""
+    entry = replace(
+        _entry(),
+        source_id=None,
+        task_type="embed_visual_text",
+        adapter="open_clip",
+        model_id="open_clip:MobileCLIP2-S0:dfndr2b:mean-4",
+        prompt_version=None,
+        image_keys=[],
+        request_config={},
+        output={"dimension": 512},
+        raw_output=None,
+        input_tokens=None,
+        output_tokens=None,
+        input_count=2,
+    )
+
+    await CallLog(engine).save(entry)
+
+    async with engine.connect() as conn:
+        row = (
+            (
+                await conn.execute(
+                    text("SELECT * FROM ai.ai_call_log WHERE call_id = :id"), {"id": entry.call_id}
+                )
+            )
+            .mappings()
+            .one()
+        )
+    assert (row["source_id"], row["prompt_version"], row["input_count"]) == (None, None, 2)
+    assert row["output"] == {"dimension": 512}

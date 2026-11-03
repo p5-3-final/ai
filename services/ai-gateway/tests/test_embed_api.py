@@ -1,5 +1,8 @@
+import asyncio
 import io
+import logging
 import math
+import time
 from pathlib import Path
 
 import pytest
@@ -9,6 +12,7 @@ from gateway_support import (
     ENCODER_ID,
     QUERY_IMAGE,
     SOURCE,
+    FakeAdapter,
     FakeEmbedder,
     embed_settings,
     gateway,
@@ -325,3 +329,114 @@ async def test_spec011_r20_r21_provider_errors_are_logged(
 
     assert (result, problem["code"]) == (status, code)
     assert [(e.status, e.error_code) for e in entries] == [(log_status, code)]
+
+
+async def test_spec011_r23_logs_embed_call_without_vectors_or_texts(contracts_dir: Path) -> None:
+    """[SPEC-011 R-23] 호출자·모델·입력 수·토큰·상태를 남기고 벡터와 문장 원문은 남기지 않는다."""
+    embedder = FakeEmbedder()
+    traceparent = "00-0123456789abcdef0123456789abcdef-0123456789abcdef-01"
+
+    async with gateway(
+        contracts_dir, profile(embed_settings()), embedders={"fake": embedder}
+    ) as gw:
+        response = await gw.client.post(
+            "/v1/embed",
+            json={"taskType": "embed_text", "texts": ["비밀 검색어", "둘째"]},
+            headers={"X-Caller": "event-analyzer", "traceparent": traceparent},
+        )
+
+    [entry] = gw.call_log.entries
+    assert str(entry.call_id) == response.json()["callId"]
+    assert (entry.caller, entry.task_type, entry.adapter, entry.model_id) == (
+        "event-analyzer",
+        "embed_text",
+        "fake",
+        "fake-embedding",
+    )
+    assert (entry.status, entry.input_count, entry.input_tokens) == ("success", 2, 7)
+    assert (entry.source_id, entry.prompt_version, entry.raw_output) == (None, None, None)
+    assert entry.trace_id == "0123456789abcdef0123456789abcdef"
+    assert "비밀 검색어" not in repr(entry)
+    assert entry.output == {"dimension": 4}
+
+
+async def test_spec011_r23_logs_query_image_paths(contracts_dir: Path) -> None:
+    """[SPEC-011 R-23] embed_image는 보낸 이미지 경로를 남긴다."""
+    async with gateway(
+        contracts_dir, profile(embed_settings()), encoder=mock_encoder(), prepare=_put_query_image
+    ) as gw:
+        await post_embed(
+            gw.client, {"taskType": "embed_image", "images": [{"storageKey": QUERY_IMAGE}]}
+        )
+
+    [entry] = gw.call_log.entries
+    assert (entry.image_keys, entry.model_id, entry.input_count) == ([QUERY_IMAGE], ENCODER_ID, 1)
+
+
+async def test_spec011_r22_visual_text_works_while_providers_are_down(contracts_dir: Path) -> None:
+    """[SPEC-011 R-22] VLM·텍스트 임베딩 공급자가 내려가도 시각 질의 벡터는 만든다."""
+    down = ProviderUnavailableError("down")
+
+    async with gateway(
+        contracts_dir,
+        profile(embed_settings()),
+        adapter=FakeAdapter(reply=down),
+        encoder=mock_encoder(),
+        embedders={"fake": FakeEmbedder(reply=down)},
+    ) as gw:
+        response = await post_embed(gw.client, {"taskType": "embed_visual_text", "texts": ["a"]})
+
+    assert response.status_code == 200
+
+
+class _SlowEncoder:
+    """인코딩에 1.5초 걸리는 대역. 이벤트 루프에서 돌리면 그동안 다른 요청을 받지 못한다."""
+
+    model_id = ENCODER_ID
+    dimension = 8
+
+    def encode_texts(self, texts: list[str]) -> list[list[float]]:
+        time.sleep(1.5)
+        return mock_encoder().encode_texts(texts)
+
+    def encode_images(self, images: list[bytes]) -> list[list[float]]:
+        return mock_encoder().encode_images(images)
+
+
+async def test_spec011_nfr3_health_responds_while_encoding(contracts_dir: Path) -> None:
+    """[SPEC-011 NFR-3] 인코딩 중에도 /health가 1초 안에 응답한다."""
+    async with gateway(contracts_dir, profile(embed_settings()), encoder=_SlowEncoder()) as gw:
+        started = time.perf_counter()
+        encoding = asyncio.create_task(
+            post_embed(gw.client, {"taskType": "embed_visual_text", "texts": ["a"]})
+        )
+        # 인코딩이 시작되도록 한 번 양보한다. 루프가 막히면 이 대기부터 1.5초 늦어진다.
+        await asyncio.sleep(0.1)
+        health = await gw.client.get("/health")
+        elapsed = time.perf_counter() - started
+        await encoding
+
+    assert health.status_code == 200
+    assert elapsed < 1.0
+
+
+async def test_spec011_nfr5_logs_have_no_texts_or_vectors(
+    contracts_dir: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """[SPEC-011 NFR-5] 완료 로그는 남기되 문장 원문과 벡터는 남기지 않는다."""
+    embedder = FakeEmbedder(reply=[[0.123456789, 0.0, 0.0, 0.0]])
+
+    with caplog.at_level(logging.DEBUG):
+        async with gateway(
+            contracts_dir, profile(embed_settings()), embedders={"fake": embedder}
+        ) as gw:
+            await post_embed(gw.client, {"taskType": "embed_text", "texts": ["비밀 검색어"]})
+
+    completed = [r for r in caplog.records if r.getMessage() == "embed completed"]
+    assert len(completed) == 1
+    assert vars(completed[0])["call_id"] == str(gw.call_log.entries[0].call_id)
+    assert vars(completed[0])["input_count"] == 1
+    for record in caplog.records:
+        rendered = f"{record.getMessage()} {vars(record)}"
+        assert "비밀 검색어" not in rendered
+        assert "0.123456789" not in rendered
