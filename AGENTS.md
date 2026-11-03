@@ -26,7 +26,7 @@ ai/
 ├── pyproject.toml / uv.lock      # workspace 루트. 멤버 목록과 공통 개발 도구(ruff, mypy, pytest). lock은 하나
 ├── libs/
 │   ├── common/                   # config(Settings), logging, errors, health, 프로필 로딩·검증
-│   ├── messaging/                # Kafka 소비·발행, retry 토픽, 연속 offset 커밋, eventId 멱등 처리
+│   ├── messaging/                # Kafka 소비·발행, retry·DLQ 토픽, 처리 결과가 정해진 뒤 수동 커밋
 │   ├── contracts/                # 이벤트 Pydantic 모델 (docs/contracts/events의 JSON Schema가 원본)
 │   └── ai-client/                # ai-gateway 호출 클라이언트 (/v1/analyze, /v1/embed, /v1/parse)
 ├── services/
@@ -58,6 +58,7 @@ uv run --package ai-gateway fastapi dev services/ai-gateway/src/ai_gateway/main.
 uv run --package event-analyzer python -m event_analyzer   # 워커 실행
 uv run pytest                                   # 전체 테스트
 uv run pytest services/event-analyzer -k judge  # 일부만
+uv run pytest -m "not integration"              # Docker(testcontainers)가 필요한 테스트 제외
 uv run ruff check --fix . && uv run ruff format .   # 고치기
 uv run ruff check . && uv run ruff format --check . # 검사만
 uv run mypy                                     # 대상은 pyproject.toml [tool.mypy] files

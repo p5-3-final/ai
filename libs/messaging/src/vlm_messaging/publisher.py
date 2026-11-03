@@ -3,7 +3,6 @@
 from collections.abc import Sequence
 
 from confluent_kafka import KafkaError, KafkaException, Message, Producer
-
 from vlm_common.errors import VlmError
 from vlm_contracts.events import Event
 

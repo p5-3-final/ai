@@ -1,5 +1,4 @@
 import pytest
-
 from vlm_messaging.retry import RetryPolicy
 from vlm_messaging.topics import dlq_topic, retry_topic
 

@@ -33,7 +33,7 @@ class RetryPolicy:
             attempt: 곧 할 시도 번호.
             rand: [0, 1) 균등 난수.
         """
-        ceiling = min(self.max_delay_s, self.base_delay_s * 2 ** (attempt - 2))
+        ceiling = min(self.max_delay_s, self.base_delay_s * 2.0 ** (attempt - 2))
         return ceiling * (0.5 + 0.5 * rand)
 
     def exhausted(self, attempt: int) -> bool:

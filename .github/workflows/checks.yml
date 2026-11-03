@@ -58,6 +58,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # 계약 테스트가 docs 레포의 이벤트 JSON Schema 원본을 읽는다(public 레포라 토큰이 필요 없다).
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: p5-3-final/docs
+          path: docs-repo
+          persist-credentials: false
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           enable-cache: false
@@ -69,5 +75,8 @@ jobs:
         run: uv run ruff format --check .
       - name: mypy
         run: uv run mypy
+      # messaging 통합 테스트는 testcontainers로 Kafka를 띄운다(GitHub 호스트 러너에 Docker가 있다).
       - name: pytest
         run: uv run pytest
+        env:
+          CONTRACTS_DIR: ${{ github.workspace }}/docs-repo/docs/contracts

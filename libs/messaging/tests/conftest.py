@@ -4,14 +4,14 @@ from collections.abc import Callable, Iterator
 
 import pytest
 from confluent_kafka import Consumer, Message
-from confluent_kafka.admin import AdminClient, NewTopic
+from confluent_kafka.admin import AdminClient
+from confluent_kafka.cimpl import NewTopic
 from testcontainers.core.container import DockerContainer
 from testcontainers.core.wait_strategies import LogMessageWaitStrategy
 
 # 로컬 compose(local/docker-compose.yml)와 같은 이미지로 검증한다.
 KAFKA_IMAGE = (
-    "apache/kafka:4.3.2"
-    "@sha256:852a0d49fc4e656b022e7f23785411802c9a088c78a7c5e39f33969de9c227a7"
+    "apache/kafka:4.3.2@sha256:852a0d49fc4e656b022e7f23785411802c9a088c78a7c5e39f33969de9c227a7"
 )
 
 

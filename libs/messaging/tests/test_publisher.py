@@ -5,7 +5,6 @@ from datetime import UTC, datetime
 
 import pytest
 from confluent_kafka import Message
-
 from vlm_contracts.events import VideoDeleted
 from vlm_messaging.publisher import KafkaPublisher, PublishError
 
