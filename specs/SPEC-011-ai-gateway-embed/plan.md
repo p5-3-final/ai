@@ -1,7 +1,7 @@
 ---
 spec: SPEC-011
 repo: ai
-status: Draft
+status: Approved
 owner: <이름>
 created: 2026-11-03
 updated: 2026-11-03
@@ -78,16 +78,16 @@ ai-gateway에 `/v1/embed`를 더한다. `embed_visual_text`·`embed_image`는 �
 | `enc/open_clip.py` | `OpenClipEncoder.load(model_id, weights_path, dimension)`: `open_clip.create_model_and_transforms(arch, pretrained=<로컬 경로>, image_mean=…, image_std=…, image_interpolation=…, image_resize_mode=…)`. 로컬 경로로 읽으면 전처리 값이 비므로 `open_clip.get_pretrained_cfg(arch, tag)`에서 가져와 넘긴다. 로드 뒤 텍스트·이미지 쪽 출력 차원을 한 번 계산해 프로필 차원과 비교한다(R-17). `torch.inference_mode`, eval 모드. 이미지 디코딩은 Pillow, 실패하면 `ImageDecodeError`(R-12) |
 | `enc/mock.py` | `MockEncoder`: 입력의 sha256으로 결정적 벡터를 만들어 정규화한다. CI·로컬 mock 프로필 전용 |
 | `gw/profile.py` | `[encoder]`(종류 `open_clip`·`mock`, 모델 ID, 차원, 가중치 키, sha256) 선택 항목. `[embed.<taskType>]`: 공통 `max_inputs`, 문장 taskType은 `max_text_chars`, `embed_image`는 `allowed_patterns`, `embed_text`는 `adapter`·`model`·`dimension`·`timeout_s`·`max_retries`. 인코더 taskType인데 `[encoder]`가 없으면 모델 미설정(R-14). `check_profile`에 mock 인코더 규칙(R-24) |
-| `gw/settings.py` | `models_bucket`(모델 버킷, 기본 없음), `model_cache_dir`(기본 `/tmp/vlm-models`) |
-| `gw/adapters/base.py` | `TextEmbeddingAdapter` Protocol(`embed(model, texts, timeout_s, max_retries, traceparent) -> Embeddings`), `Embeddings`(벡터 목록, 입력 토큰 수) |
-| `gw/adapters/openai.py` | `embed`: `client.embeddings.create`. 오류 분류는 `complete`와 같다(R-20, R-21) |
-| `gw/adapters/mock.py` | `embed`: 결정적 벡터(입력 해시) |
+| `gw/settings.py` | `models_bucket`(모델 버킷, 기본 없음), `model_cache_dir`(기본 `/var/cache/vlm-models`, 이미지에서 실행 사용자 소유로 만든다. 공유 `/tmp`는 ruff S108에 걸린다) |
+| `gw/adapters/base.py` | `TextEmbeddingAdapter` Protocol(`embed(model, texts, timeout_s, max_retries, traceparent) -> Embeddings`), `Embeddings`(벡터 목록, 입력 토큰 수), 둘을 합친 `Adapter` Protocol(`build_adapters`의 반환 타입) |
+| `gw/adapters/openai.py` | `embed`: `client.embeddings.create`, 응답은 `index`로 입력 순서를 맞춘다. 오류 분류는 `complete`와 함께 쓰는 `_provider_error`(R-20, R-21) |
+| `gw/adapters/mock.py` | `embed`: `MockEncoder`로 만든 결정적 벡터. 차원은 `build_adapters`가 프로필의 `embed_text` 차원으로 넘긴다 |
 | `gw/images.py` | 경로 검사를 패턴 목록을 받는 함수로 나눠 `embed_image` 패턴에도 쓴다. 영상 폴더 검사(SPEC-009 R-10)는 `/v1/analyze`에만 적용 |
 | `gw/embed.py` | 유스케이스: 호출자 → taskType → 입력 종류·개수·길이 → (모델 미설정이면 오류) → 경로 검사·이미지 읽기 → 인코더(스레드, NFR-3) 또는 Adapter → 차원·개수 확인(R-19)·정규화(R-4) → 호출 로그. VLM Adapter 상태를 보지 않는다(R-22) |
 | `gw/errors.py` | `TooManyInputsError`(`AI_TOO_MANY_INPUTS`), `ImageUnreadableError`(`AI_IMAGE_UNREADABLE`), `ModelNotConfiguredError`(`AI_MODEL_NOT_CONFIGURED`, 503) |
 | `gw/api.py` | `EmbedRequest`·`EmbedResponse`, `POST /v1/embed`. 중복된 `_valid_traceparent`를 analyze와 함께 쓰도록 정리 |
 | `gw/call_log.py`, `gw/db/` | `CallLogEntry`의 `source_id`·`prompt_version`을 비워 둘 수 있게, `input_count` 추가. 마이그레이션 `0002_call_log_embed.py` |
-| `gw/main.py` | `GatewayDeps`에 `encoder: ImageTextEncoder | None`, `embedders`. `build_production`이 `[encoder]`가 있으면 가중치를 받아 로드한다. 로드가 끝나야 lifespan이 끝나므로 그 전에는 `/ready`에 응답하지 않는다(R-25) |
+| `gw/main.py` | `GatewayDeps`에 `encoder: ImageTextEncoder | None`, `embedders`. `load_encoder(profile, models, cache_dir)`(모델 버킷을 주입받아 단위 테스트 가능)를 `build_production`이 스레드에서 부른다. 로드가 끝나야 lifespan이 끝나므로 그 전에는 `/ready`에 응답하지 않는다(R-25) |
 | `profiles/local.toml` | `[encoder]` open_clip MobileCLIP2-S0(가중치 키·sha256), `[embed.*]`, Ollama `bge-m3`(1024차원) |
 | `profiles/local-mock.toml` | `[encoder] kind = "mock"`, `embed_text`는 mock Adapter |
 | `services/ai-gateway/pyproject.toml`, `Dockerfile` | `vlm-encoders` 의존성. 가중치는 넣지 않는다(NFR-6). 캐시 폴더는 쓰기 가능한 `/tmp` 아래 |
@@ -150,7 +150,7 @@ sequenceDiagram
 
 ## 6. 테스트 전략
 
-- 단위: 모델 ID 해석, 가중치 받기(메모리 저장소: 해시 일치·불일치·캐시 재사용), mock 인코더, open_clip 인코더(무작위 초기화한 MobileCLIP2-S0를 임시 safetensors로 저장해 로드: 차원 확인·정규화·결정성·디코딩 실패. 실제 가중치를 내려받지 않는다), 전처리 값이 open_clip pretrained 설정과 같은지, 프로필 검증, openai Adapter `embed`(httpx2 MockTransport)
+- 단위: 모델 ID 해석, 가중치 받기(메모리 저장소: 해시 일치·불일치·캐시 재사용), mock 인코더, open_clip 인코더(무작위 초기화한 MobileCLIP2-S0를 임시 safetensors로 저장해 로드: 차원 확인·정규화·결정성·디코딩 실패. 실제 가중치를 내려받지 않는다), 이미지 벡터가 공식 pretrained 설정의 전처리로 만든 벡터와 같은지, 프로필 검증, openai Adapter `embed`(httpx2 MockTransport). 무작위 초기화 모델은 이미지가 달라도 거의 같은 벡터를 내서, 이미지 입력 순서는 픽셀 평균을 내는 가짜 모델을 생성자에 넣어 확인한다
 - API: `httpx.AsyncClient` + `ASGITransport`, mock 인코더·가짜 Adapter·메모리 저장소. 호출 로그는 testcontainers PostgreSQL(integration)
 - 통합: `production_app`으로 SeaweedFS 모델 버킷에서 가중치(무작위 초기화 파일)를 받아 기동·`/ready`·`/v1/embed`
 - 실제 모델(마커 `model`, CI 제외): 실제 가중치로 성공 지표("a forklift"가 지게차 이미지와 더 가까움)와 NFR-1·NFR-2 지연. 로컬에서 실행해 PR 본문에 결과를 남긴다
