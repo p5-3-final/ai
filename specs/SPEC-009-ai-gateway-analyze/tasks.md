@@ -24,8 +24,8 @@ updated: 2026-11-03
 
 - [x] T003 [R-14] 프로필 스키마와 검증(허용 호출자·이미지 패턴·Adapter·taskType 설정) — 테스트 `t/test_profile.py`, 구현 `gw/profile.py`
 - [x] T004 [R-15] mock 허용 설정 없이 mock Adapter를 고르면 기동 실패 — 테스트 `t/test_profile.py`, 구현 `gw/profile.py`
-- [ ] T005 [R-13] Prompt Registry: 계약 폴더 읽기, 분류 체계 $ref 해석, 내용 해시 버전 ID — 테스트 `t/test_prompts.py`, 구현 `gw/prompts.py`
-- [ ] T006 [R-12] 고정 접두부와 가변부 분리 — 테스트 `t/test_prompts.py`, 구현 `gw/prompts.py`
+- [x] T005 [R-13] Prompt Registry: 계약 폴더 읽기, 분류 체계 $ref 해석, 내용 해시 버전 ID — 테스트 `t/test_prompts.py`, 구현 `gw/prompts.py`
+- [x] T006 [R-12] 고정 접두부와 가변부 분리 — 테스트 `t/test_prompts.py`, 구현 `gw/prompts.py`
 
 ## Phase 3: US-1 이벤트 후보 판정 (P1)
 

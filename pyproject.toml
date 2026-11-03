@@ -25,6 +25,7 @@ dev = [
     "ruff>=0.17.3",
     "testcontainers[kafka]>=4.15.0",
     "types-boto3[s3]>=1.43.123",
+    "types-jsonschema>=4.26.0.20261006",
     "vlm-testing",
 ]
 
