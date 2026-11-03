@@ -62,7 +62,9 @@ def test_spec009_r13_any_content_change_changes_version(copied: Path, changed: s
 def test_spec009_r13_formatting_only_json_change_keeps_version(copied: Path) -> None:
     before = PromptRegistry.load(copied).get("event_judge")
     path = copied / "prompts/event_judge/output.schema.json"
-    path.write_text(json.dumps(json.loads(path.read_text(encoding="utf-8")), indent=8))
+    data = json.loads(path.read_text(encoding="utf-8"))
+    # 들여쓰기와 키 순서만 바꾼다.
+    path.write_text(json.dumps(dict(reversed(list(data.items()))), indent=8))
 
     after = PromptRegistry.load(copied).get("event_judge")
 

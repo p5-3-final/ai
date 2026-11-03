@@ -90,8 +90,6 @@ class PromptRegistry:
         )
         tasks: dict[str, PromptTask] = {}
         for task_dir in sorted(p for p in prompts_dir.iterdir() if p.is_dir()):
-            if task_dir.name.startswith(("_", ".")):
-                continue
             tasks[task_dir.name] = _load_task(task_dir, prefix, schemas, registry)
         return cls(tasks)
 
