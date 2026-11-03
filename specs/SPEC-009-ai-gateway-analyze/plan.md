@@ -36,7 +36,7 @@ updated: 2026-11-03
 | R-15 | `profile.py` | `test_startup.py::test_r15_*` |
 | R-16 | `api.py` | `test_analyze_api.py::test_r16_*` |
 | R-17 | `call_log.py` | `test_call_log.py`(PostgreSQL) |
-| R-18, R-19 | `adapters/openai.py` | `test_openai_adapter.py`(respx), `test_analyze_api.py::test_r18_*`, `test_r19_*` |
+| R-18, R-19 | `adapters/openai.py` | `test_openai_adapter.py`(httpx2 MockTransport), `test_analyze_api.py::test_r18_*`, `test_r19_*` |
 | R-20, R-21 | `deletion.py` | `test_deletion.py`(PostgreSQL), `test_deletion_e2e.py`(Kafka) |
 | R-22, R-23 | `main.py`, `health.py` | `test_health.py` |
 | NFR-1 | 전체 | `test_overhead.py`(integration, mock Adapter, 이미지 10장) |
@@ -66,7 +66,7 @@ updated: 2026-11-03
 
 | 경로 | 변경 |
 | --- | --- |
-| `pyproject.toml` | workspace 멤버·mypy 대상에 `services/ai-gateway` 추가, dev 의존성(httpx, respx, testcontainers[postgres]) |
+| `pyproject.toml` | workspace 멤버·mypy 대상에 `services/ai-gateway` 추가, dev 의존성(httpx, types-jsonschema), vlm-testing에 testcontainers[postgres] |
 | `services/ai-gateway/pyproject.toml` | 새 멤버. fastapi, uvicorn, sqlalchemy[asyncio], asyncpg, alembic, openai, jsonschema, vlm-common·contracts·messaging·storage |
 | `services/ai-gateway/src/ai_gateway/settings.py` | `GatewaySettings`(접두사 `AI_GATEWAY_`): DB URL, 프로필 경로, 계약 폴더, mock 허용, Kafka 주소·그룹, 공급자 API 키(`SecretStr`) |
 | `.../profile.py` | `GatewayProfile`(TOML, `vlm_common.profile`): 허용 호출자, 허용 이미지 패턴, `[adapters.<이름>]`(종류, base_url), `[tasks.<taskType>]`(Adapter, 모델, 출력 상한, 이미지 상한, 제한 시간, 재시도 수) |
@@ -156,7 +156,7 @@ sequenceDiagram
 
 ## 6. 테스트 전략
 
-- 단위: 경로 검사, Prompt Registry(버전 해시·고정 접두부·$ref 해석), 출력 추출·검증, 프로필 검증, openai Adapter(respx로 HTTP 대체: 정상·429·5xx·시간 초과·4xx·traceparent 헤더)
+- 단위: 경로 검사, Prompt Registry(버전 해시·고정 접두부·$ref 해석), 출력 추출·검증, 프로필 검증, openai Adapter(openai SDK 3.x가 쓰는 httpx2의 MockTransport로 HTTP 대체: 정상·429·5xx·시간 초과·4xx·traceparent 헤더)
 - API: `httpx.AsyncClient` + `ASGITransport`, 저장소는 `InMemoryStorage`, Adapter는 가짜 구현, 호출 로그는 testcontainers PostgreSQL(integration)
 - 통합: `video.deleted` → 원문 삭제(testcontainers Kafka + PostgreSQL)
 - 계약: 응답 예시·요청 모델을 `ai-gateway.yaml` 스키마와 대조, 프롬프트 폴더의 예시가 스키마를 통과하는지(`CONTRACTS_DIR`)
