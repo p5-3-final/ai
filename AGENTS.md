@@ -29,6 +29,7 @@ ai/
 │   ├── messaging/                # Kafka 소비·발행, retry·DLQ 토픽, 처리 결과가 정해진 뒤 수동 커밋
 │   ├── contracts/                # 이벤트 Pydantic 모델 (docs/contracts/events의 JSON Schema가 원본)
 │   ├── storage/                  # 객체 저장소 인터페이스(ObjectStorage)와 S3 API 구현, 테스트용 메모리 구현
+│   ├── testing/                  # 테스트 전용: testcontainers로 Kafka·SeaweedFS 띄우기 (운영 이미지에 넣지 않음)
 │   └── ai-client/                # ai-gateway 호출 클라이언트 (/v1/analyze, /v1/embed, /v1/parse)
 ├── services/
 │   ├── ai-gateway/               # FastAPI. 외부 AI 호출 관문, 질의 해석·질의 벡터
@@ -60,12 +61,14 @@ uv run --package event-analyzer python -m event_analyzer   # 워커 실행
 uv run pytest                                   # 전체 테스트
 uv run pytest services/event-analyzer -k judge  # 일부만
 uv run pytest -m "not integration"              # Docker(testcontainers)가 필요한 테스트 제외
+uv run pytest -m "not ffmpeg"                   # ffmpeg가 필요한 테스트 제외(로컬 빠른 반복)
+scripts/test-in-docker.sh normalize             # 서비스 이미지 안에서 그 서비스 테스트 전체(ffmpeg 포함)
 uv run ruff check --fix . && uv run ruff format .   # 고치기
 uv run ruff check . && uv run ruff format --check . # 검사만
 uv run mypy                                     # 대상은 pyproject.toml [tool.mypy] files
 uv run python -m evals.run --suite <name>       # 평가
 ```
-작업을 끝내기 전에 `ruff check`, `ruff format --check`, `mypy`, `pytest`를 실행한다.
+작업을 끝내기 전에 `ruff check`, `ruff format --check`, `mypy`, `pytest -m "not ffmpeg"`, 바꾼 서비스의 `scripts/test-in-docker.sh <서비스>`를 실행한다. ffmpeg처럼 시스템 패키지가 필요한 테스트는 `ffmpeg` 마커를 달고 운영과 같은 이미지에서 돌린다(로컬에 설치하지 않는다).
 
 ## lint
 도구: ruff(format, check), mypy(strict). 공통 도구(workflow, Dockerfile, lefthook)는 `.claude/rules/ci-common.md`에 있다.
@@ -98,5 +101,5 @@ uv run python -m evals.run --suite <name>       # 평가
 - 모델 출력처럼 결과가 비결정적인 부분은 정확한 문자열을 비교하지 말고 스키마와 불변 조건을 검증한다.
 
 ## CI
-- PR일 때(`.github/workflows/checks.yml`): `ruff check`, `ruff format --check`, `mypy`, `pytest`를 실행한다. 공통 검사(hadolint, actionlint, zizmor, PR 제목)는 `.claude/rules/ci-common.md`를 따른다. main 머지일 때: 바뀐 서비스(또는 그 서비스가 쓰는 `libs/`)만 이미지 빌드 → ECR push(OIDC) → gitops 레포 `envs/dev` 태그 갱신
+- PR일 때(`.github/workflows/checks.yml`): `ruff check`, `ruff format --check`, `mypy`, `pytest -m "not ffmpeg"`를 실행하고, `service-images` job이 서비스 이미지 안에서 `ffmpeg` 테스트와 runtime 빌드를 한다. 공통 검사(hadolint, actionlint, zizmor, PR 제목)는 `.claude/rules/ci-common.md`를 따른다. main 머지일 때: 바뀐 서비스(또는 그 서비스가 쓰는 `libs/`)만 이미지 빌드 → ECR push(OIDC) → gitops 레포 `envs/dev` 태그 갱신
 - Dockerfile은 멀티스테이지로 만든다. uv로 의존성을 설치하고, non-root 사용자로 실행한다. 모델 가중치는 이미지에 넣지 않고 기동할 때 다운로드한다.

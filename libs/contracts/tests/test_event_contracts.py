@@ -25,7 +25,28 @@ def _allowed_values(prop: JsonObject) -> set[object] | None:
         return {prop["const"]}
     if "enum" in prop:
         return set(cast(list[object], prop["enum"]))
+    if "anyOf" in prop:
+        # Pydantic은 `Literal[...] | None`을 anyOf로, 계약은 null을 넣은 enum으로 쓴다.
+        values: set[object] = set()
+        for option in cast(list[JsonObject], prop["anyOf"]):
+            if option.get("type") == "null":
+                values.add(None)
+                continue
+            allowed = _allowed_values(option)
+            if allowed is None:
+                return None
+            values |= allowed
+        return values
     return None
+
+
+def _schema_name(topic: str, model: type[Event]) -> str:
+    """버전별 원본(`<topic>.v<N>`)이 있으면 그 파일, 없으면 `<topic>`이다.
+
+    여러 버전을 함께 두는 토픽은 `<topic>.schema.json`이 버전들의 합집합이라 필드를 비교할 수 없다.
+    """
+    version = model.model_fields["schema_version"].default
+    return f"{topic}.v{version}" if version > 1 else topic
 
 
 @pytest.fixture(scope="module")
@@ -38,7 +59,7 @@ class TestEventContract:
     def test_examples_round_trip(
         self, load_schema: SchemaLoader, topic: str, model: type[Event]
     ) -> None:
-        schema = load_schema(topic)
+        schema = load_schema(_schema_name(topic, model))
         examples = cast(list[JsonObject], schema["examples"])
         assert examples, "계약에 예시가 있어야 왕복 검증을 할 수 있다"
 
@@ -49,7 +70,7 @@ class TestEventContract:
     def test_field_names_match(
         self, load_schema: SchemaLoader, envelope: JsonObject, topic: str, model: type[Event]
     ) -> None:
-        schema = load_schema(topic)
+        schema = load_schema(_schema_name(topic, model))
         expected = set(_properties(envelope)) | set(_properties(schema))
 
         actual = {field.alias or name for name, field in model.model_fields.items()}
@@ -59,7 +80,7 @@ class TestEventContract:
     def test_required_fields_are_required(
         self, load_schema: SchemaLoader, envelope: JsonObject, topic: str, model: type[Event]
     ) -> None:
-        schema = load_schema(topic)
+        schema = load_schema(_schema_name(topic, model))
         contract_required = _required(envelope) | _required(schema)
         # 계약의 const 필드(eventType, schemaVersion)는 모델이 기본값으로 채운다.
         consts = {k for k, v in _properties(schema).items() if "const" in v}
@@ -73,7 +94,7 @@ class TestEventContract:
     def test_enum_and_const_values_match(
         self, load_schema: SchemaLoader, topic: str, model: type[Event]
     ) -> None:
-        schema = load_schema(topic)
+        schema = load_schema(_schema_name(topic, model))
         model_props = _properties(cast(JsonObject, model.model_json_schema(by_alias=True)))
 
         for name, prop in _properties(schema).items():
@@ -102,3 +123,59 @@ def test_events_are_registered_by_topic() -> None:
     assert {"video.uploaded", "video.deleted"} <= set(EVENT_MODELS)
     for topic, model in EVENT_MODELS.items():
         assert model.model_fields["event_type"].default == topic
+
+
+def test_normalized_events_are_registered() -> None:
+    assert {"video.normalizing", "video.normalized"} <= set(EVENT_MODELS)
+
+
+@pytest.mark.parametrize(
+    "override",
+    [
+        {"rejectReason": "TOO_LONG"},
+        {"normalizedKey": None},
+        {"durationMs": None},
+    ],
+)
+def test_ready_result_requires_media_fields_and_no_reason(
+    load_schema: SchemaLoader, override: JsonObject
+) -> None:
+    ready = cast(list[JsonObject], load_schema("video.normalized.v2")["examples"])[0]
+    model = EVENT_MODELS["video.normalized"]
+
+    with pytest.raises(ValidationError, match="READY"):
+        model.model_validate({**ready, **override})
+
+
+@pytest.mark.parametrize(
+    "override",
+    [{"rejectReason": None}, {"normalizedKey": "sources/x/normalized/video.mp4"}, {"fps": 30}],
+)
+def test_rejected_result_requires_reason_and_no_media_fields(
+    load_schema: SchemaLoader, override: JsonObject
+) -> None:
+    rejected = cast(list[JsonObject], load_schema("video.normalized.v2")["examples"])[1]
+    model = EVENT_MODELS["video.normalized"]
+
+    with pytest.raises(ValidationError, match="REJECTED"):
+        model.model_validate({**rejected, **override})
+
+
+def test_v2_is_what_normalize_publishes() -> None:
+    assert EVENT_MODELS["video.normalized"].model_fields["schema_version"].default == 2
+
+
+def test_ready_duration_seconds_must_equal_milliseconds(load_schema: SchemaLoader) -> None:
+    ready = cast(list[JsonObject], load_schema("video.normalized.v2")["examples"])[0]
+    model = EVENT_MODELS["video.normalized"]
+
+    with pytest.raises(ValidationError, match="durationSec"):
+        model.model_validate({**ready, "durationSec": 125.0})
+
+
+def test_normalization_version_pattern_is_enforced(load_schema: SchemaLoader) -> None:
+    ready = cast(list[JsonObject], load_schema("video.normalized.v2")["examples"])[0]
+    model = EVENT_MODELS["video.normalized"]
+
+    with pytest.raises(ValidationError, match="normalizationVersion"):
+        model.model_validate({**ready, "normalizationVersion": "bad version!"})

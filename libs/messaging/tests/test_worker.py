@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 
 import pytest
 from confluent_kafka import Consumer, Message, Producer, TopicPartition
+from vlm_common.health import HealthState
 from vlm_contracts.events import VideoDeleted
 from vlm_messaging.publisher import KafkaPublisher
 from vlm_messaging.retry import RetryPolicy
@@ -75,11 +76,12 @@ def _worker(
     routes: Sequence[Route],
     retry: RetryPolicy = FAST_RETRY,
     kafka: dict[str, str] | None = None,
+    health: HealthState | None = None,
 ) -> KafkaWorker:
     config = WorkerConfig(
         bootstrap=setup.bootstrap, group_id=setup.group, retry=retry, kafka=kafka or {}
     )
-    return KafkaWorker(config, routes, setup.publisher)
+    return KafkaWorker(config, routes, setup.publisher, health=health)
 
 
 def _committed(setup: Setup) -> int:
@@ -277,3 +279,21 @@ def test_long_handler_keeps_group_membership(
 
     assert done.wait(30)
     assert _wait_until(lambda: _committed(setup) == 1, timeout=10)
+
+
+async def _ignore(event: VideoDeleted, ctx: MessageContext) -> None:
+    return None
+
+
+def test_r23_ready_after_subscribe_and_alive_while_idle(
+    setup: Setup, start: Callable[[KafkaWorker], threading.Thread]
+) -> None:
+    """[SPEC-007 R-22, R-23] 구독을 시작하면 준비 상태가 되고, 메시지가 없어도 루프가 살아 있다."""
+    health = HealthState(liveness_window_s=2.0)
+    assert not health.is_ready()
+
+    start(_worker(setup, [route(setup.topic, VideoDeleted, _ignore)], health=health))
+
+    assert _wait_until(health.is_ready, timeout=10)
+    time.sleep(3)
+    assert health.is_alive()

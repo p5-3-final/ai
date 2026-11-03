@@ -3,15 +3,20 @@ from collections.abc import Callable
 from pathlib import Path
 
 import pytest
+from pydantic import Field
 from pydantic_settings import BaseSettings
+
 
 # 루트 구조(project/repos/ai)에서 docs 레포는 두 단계 위에 있다.
 # CI는 CONTRACTS_DIR로 checkout 경로를 준다.
-_DEFAULT_CONTRACTS_DIR = Path(__file__).resolve().parents[5] / "docs" / "contracts"
+def _default_contracts_dir() -> Path:
+    parents = Path(__file__).resolve().parents
+    # 컨테이너처럼 루트 구조가 아니면 기본값이 없다. 그때는 CONTRACTS_DIR이 꼭 있어야 한다.
+    return parents[5] / "docs" / "contracts" if len(parents) > 5 else Path("/contracts")
 
 
 class _ContractSettings(BaseSettings):
-    contracts_dir: Path = _DEFAULT_CONTRACTS_DIR
+    contracts_dir: Path = Field(default_factory=_default_contracts_dir)
 
 
 type JsonObject = dict[str, object]

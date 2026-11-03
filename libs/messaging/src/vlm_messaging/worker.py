@@ -23,6 +23,7 @@ from dataclasses import dataclass, field
 from confluent_kafka import Consumer, KafkaException, Message, TopicPartition
 from pydantic import ValidationError
 from vlm_common.errors import VlmError
+from vlm_common.health import HealthState
 from vlm_contracts.events import Event
 
 from vlm_messaging.publisher import Headers, KafkaPublisher
@@ -119,7 +120,9 @@ class KafkaWorker:
     """`Route` 목록을 구독해 메시지를 하나씩 처리하는 워커.
 
     `run()`은 `stop()`이 불릴 때까지 돌아오지 않는다. 메인 스레드에서 부르면 SIGTERM·SIGINT에
-    `stop()`을 연결한다. 재시도·DLQ 토픽은 미리 만들어 두어야 한다(`required_topics()`).
+    `stop()`을 연결한다. `health`를 넘기면 구독을 시작한 뒤 준비 상태로 표시하고, 처리 중에도
+    poll할 때마다 생존 신호를 남긴다.
+    재시도·DLQ 토픽은 미리 만들어 두어야 한다(`required_topics()`).
     """
 
     def __init__(
@@ -130,8 +133,10 @@ class KafkaWorker:
         *,
         rand: Callable[[], float] = random.random,
         clock: Callable[[], float] = time.time,
+        health: HealthState | None = None,
     ) -> None:
         self._config = config
+        self._health = health
         self._routes = {r.topic: r for r in routes}
         self._original_of = {retry_topic(t, config.group_id): t for t in self._routes}
         self._publisher = publisher
@@ -177,8 +182,11 @@ class KafkaWorker:
             on_revoke=self._on_revoke,
             on_lost=self._on_revoke,
         )
+        if self._health is not None:
+            self._health.mark_ready()
         try:
             while not self._stopping.is_set():
+                self._beat()
                 self._resume_due()
                 msg = self._consumer.poll(self._config.poll_timeout_s)
                 if msg is None:
@@ -194,6 +202,10 @@ class KafkaWorker:
             # 자동 커밋을 끈 상태라 close는 offset을 커밋하지 않는다.
             self._consumer.close()
             loop.call_soon_threadsafe(loop.stop)
+
+    def _beat(self) -> None:
+        if self._health is not None:
+            self._health.beat()
 
     def _on_assign(self, _consumer: Consumer, partitions: list[TopicPartition]) -> None:
         logger.info("partitions assigned", extra={"partitions": _names(partitions)})
@@ -259,6 +271,7 @@ class KafkaWorker:
         self._consumer.pause(self._consumer.assignment())
         try:
             while not future.done():
+                self._beat()
                 if self._stopping.is_set():
                     return False
                 stray = self._consumer.poll(self._config.poll_timeout_s)
