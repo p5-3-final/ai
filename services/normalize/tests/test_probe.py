@@ -68,3 +68,23 @@ def test_first_video_stream_wins_over_cover_art() -> None:
 def test_r7_unparseable_output_raises_media_read_error() -> None:
     with pytest.raises(MediaReadError):
         parse_probe("not json")
+
+
+def test_r4_average_rate_is_measured_from_packet_count() -> None:
+    # mkv 등은 avg_frame_rate를 기본 프레임률과 같게 적어 가변 프레임률을 숨긴다.
+    stream = {**H264, "avg_frame_rate": "30/1", "r_frame_rate": "30/1", "nb_read_packets": "50"}
+
+    result = parse_probe(_raw([stream], {"duration": "3.0"}))
+
+    assert result.avg_fps == pytest.approx(16.667, abs=0.001)
+    assert result.base_fps == 30.0
+
+
+def test_packet_rate_uses_video_stream_duration_when_audio_is_longer() -> None:
+    stream = {**H264, "avg_frame_rate": "30/1", "r_frame_rate": "30/1"}
+    stream |= {"nb_read_packets": "60", "duration": "2.0"}
+
+    result = parse_probe(_raw([stream, AAC], {"duration": "3.0"}))
+
+    assert result.avg_fps == 30.0
+    assert result.duration_sec == 3.0

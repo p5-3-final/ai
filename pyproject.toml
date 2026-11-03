@@ -55,4 +55,7 @@ addopts = "--import-mode=importlib"
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 testpaths = ["libs", "services"]
-markers = ["integration: Docker로 실제 Kafka 등 외부 구성 요소를 띄우는 테스트"]
+markers = [
+  "integration: Docker로 실제 Kafka 등 외부 구성 요소를 띄우는 테스트",
+  "ffmpeg: 시스템 ffmpeg가 필요한 테스트. 서비스 이미지 안에서 실행한다(scripts/test-in-docker.sh)",
+]

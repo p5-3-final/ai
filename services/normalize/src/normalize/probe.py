@@ -18,7 +18,7 @@ class ProbeResult:
     """판정에 필요한 원본 정보.
 
     Attributes:
-        avg_fps: 평균 프레임률(`avg_frame_rate`).
+        avg_fps: 평균 프레임률. 패킷 수를 셌으면 패킷 수 ÷ 길이, 아니면 `avg_frame_rate`.
         base_fps: 기본 프레임률(`r_frame_rate`). 평균과 다르면 가변 프레임률로 본다.
     """
 
@@ -57,12 +57,23 @@ def parse_probe(raw: str) -> ProbeResult:
         has_video=video is not None,
         video_codec=_str(video.get("codec_name")) if video else None,
         duration_sec=duration,
-        avg_fps=_rate(video.get("avg_frame_rate")) if video else None,
+        avg_fps=_average_rate(video, fallback_duration=duration) if video else None,
         base_fps=_rate(video.get("r_frame_rate")) if video else None,
         width=_int(video.get("width")) if video else None,
         height=_int(video.get("height")) if video else None,
         audio_codec=_str(audio.get("codec_name")) if audio else None,
     )
+
+
+def _average_rate(video: dict[str, object], fallback_duration: float | None) -> float | None:
+    # mkv 등은 avg_frame_rate를 기본 프레임률과 같게 적어 가변 프레임률을 숨긴다.
+    # `-count_packets`로 센 패킷 수가 있으면 실제 평균으로 계산한다(SPEC-007 R-4).
+    # 음성이 더 길면 전체 길이로 나눈 값이 낮아지므로 영상 스트림 길이를 먼저 쓴다.
+    duration = _positive_float(video.get("duration")) or fallback_duration
+    packets = _positive_float(video.get("nb_read_packets"))
+    if packets is not None and duration is not None:
+        return packets / duration
+    return _rate(video.get("avg_frame_rate"))
 
 
 def _is_attached_picture(stream: dict[str, object]) -> bool:
