@@ -82,7 +82,7 @@ def seaweedfs() -> Iterator[str]:
 
 
 def create_bucket(endpoint: str, bucket: str, timeout_s: float = 60.0) -> None:
-    """버킷을 만든다. S3 게이트웨이가 열릴 때까지 다시 시도한다."""
+    """버킷을 만들고 객체를 쓸 수 있을 때까지 기다린다."""
     client = boto3.client(
         "s3",
         endpoint_url=endpoint,
@@ -94,9 +94,19 @@ def create_bucket(endpoint: str, bucket: str, timeout_s: float = 60.0) -> None:
     while True:
         try:
             client.create_bucket(Bucket=bucket)
-            return
+            break
         except (BotoCoreError, ClientError):
             # 컨테이너가 떠도 S3 게이트웨이는 몇 초 뒤에 열린다.
+            if time.monotonic() > deadline:
+                raise
+            time.sleep(0.5)
+    # 버킷이 생겨도 볼륨 서버가 준비되기 전에는 PutObject가 InternalError로 실패한다(CI에서 확인).
+    while True:
+        try:
+            client.put_object(Bucket=bucket, Key=".ready", Body=b"")
+            client.delete_object(Bucket=bucket, Key=".ready")
+            return
+        except (BotoCoreError, ClientError):
             if time.monotonic() > deadline:
                 raise
             time.sleep(0.5)
