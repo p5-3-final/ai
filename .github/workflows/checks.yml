@@ -38,7 +38,6 @@ jobs:
             ci
             perf
 
-  # Dockerfile 검사(hadolint)는 첫 서비스 Dockerfile이 생길 때 이 job에 더한다.
   workflow-lint:
     runs-on: ubuntu-latest
     steps:
@@ -51,6 +50,12 @@ jobs:
           args: -color
       - name: zizmor
         run: pipx run zizmor==1.31.1 --format plain .github/workflows
+      # 필수 검사 목록을 늘리지 않으려고 Dockerfile 검사도 이 job에서 한다(ci-common.md).
+      - name: hadolint
+        run: |
+          for dockerfile in services/*/Dockerfile; do
+            docker run --rm -i hadolint/hadolint@sha256:32dac94127fd60b7b7e3fbfc65e1383b9b5e25c9bfd7b8536de7a539fe68a12d < "${dockerfile}"
+          done
 
   python:
     runs-on: ubuntu-latest
@@ -75,8 +80,27 @@ jobs:
         run: uv run ruff format --check .
       - name: mypy
         run: uv run mypy
-      # messaging 통합 테스트는 testcontainers로 Kafka를 띄운다(GitHub 호스트 러너에 Docker가 있다).
+      # 통합 테스트는 testcontainers로 Kafka·SeaweedFS를 띄운다(GitHub 호스트 러너에 Docker가 있다).
+      # ffmpeg 테스트는 아래 service-images job이 운영과 같은 이미지에서 돌린다.
       - name: pytest
-        run: uv run pytest
+        run: uv run pytest -m "not ffmpeg"
         env:
           CONTRACTS_DIR: ${{ github.workspace }}/docs-repo/docs/contracts
+
+  service-images:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: p5-3-final/docs
+          path: docs-repo
+          persist-credentials: false
+      - name: normalize ffmpeg tests
+        run: scripts/test-in-docker.sh normalize -m ffmpeg
+        env:
+          CONTRACTS_DIR: ${{ github.workspace }}/docs-repo/docs/contracts
+      - name: normalize runtime image
+        run: docker build -f services/normalize/Dockerfile --target runtime -t vlm/normalize .
