@@ -18,7 +18,7 @@ updated: 2026-11-03
 ## Phase 1: 준비
 
 - [x] T001 workspace 멤버 추가, 의존성 설치, 빈 패키지·설정(`settings.py`) — `services/ai-gateway/pyproject.toml`, 루트 `pyproject.toml`
-- [x] T002 Alembic 환경과 `ai.ai_call_log` 마이그레이션 — `services/ai-gateway/migrations/`, 테스트 `t/test_migrations.py`(PostgreSQL)
+- [x] T002 Alembic 환경과 `ai.ai_call_log` 마이그레이션 — `gw/db/migrations/`, 테스트 `t/test_migrations.py`(PostgreSQL)
 
 ## Phase 2: 기동 검증 (US-3, US-6)
 
@@ -49,7 +49,7 @@ updated: 2026-11-03
 - [x] T018 [R-16] 호출자 헤더 없음·허용 목록 밖 거절 — 테스트 `t/test_analyze_api.py`, 구현 `gw/api.py`
 - [x] T019 [R-18] [R-19] openai Adapter: 메시지 구성, 일시 오류·거부 구분, 토큰 수 — 테스트 `t/test_openai_adapter.py`(httpx2 MockTransport), 구현 `gw/adapters/openai.py`
 - [x] T020 [R-18] [R-19] API에서 503·502와 로그 상태 — 테스트 `t/test_analyze_api.py`, 구현 `gw/analyze.py`, `gw/api.py`
-- [x] T021 [NFR-5] `traceparent` 이어 받기와 공급자 호출 헤더 — 테스트 `t/test_openai_adapter.py`, 구현 `gw/tracing.py`
+- [x] T021 [NFR-5] `traceparent` 이어 받기와 공급자 호출 헤더 — 테스트 `t/test_openai_adapter.py`, `t/test_analyze_api.py`, 구현 `gw/api.py`
 - [x] T022 [NFR-3] 로그에 이미지·원문·키 없음 — 테스트 `t/test_analyze_api.py`(caplog), 구현 확인
 - [x] T023 [P] mock Adapter — 테스트 `t/test_mock_adapter.py`, 구현 `gw/adapters/mock.py`
 
@@ -60,18 +60,18 @@ updated: 2026-11-03
 
 ## Phase 7: US-6 배포 상태 (P2)
 
-- [x] T026 [R-22] [R-23] `/health`, `/ready`(기동 검증·DB·구독) — 테스트 `t/test_health.py`, 구현 `gw/main.py`
+- [x] T026 [R-22] [R-23] `/health`, `/ready`(기동 검증·DB·구독) — 테스트 `t/test_health.py`, `t/test_startup.py`, `t/test_startup_e2e.py`, 구현 `gw/main.py`
 
 ## Phase 8: 마무리
 
 - [x] T027 [NFR-1] 자체 처리 시간 p95 측정 — 테스트 `t/test_overhead.py`(integration)
 - [x] T028 [NFR-2] [NFR-4] 공급자 SDK import 위치, API 키 `SecretStr` — 테스트 `t/test_architecture.py`, `t/test_profile.py`
 - [x] T029 계약 일치: 요청·응답 모델과 `ai-gateway.yaml`, 프롬프트 예시 — 테스트 `t/test_contract.py`
-- [ ] T030 Dockerfile(계약 빌드 컨텍스트), CI service-images, 로컬 프로필, `.env.example`, AGENTS.md(프롬프트 위치), README
+- [x] T030 Dockerfile(계약 빌드 컨텍스트), CI service-images, 로컬 프로필, `.env.example`, AGENTS.md(프롬프트 위치), README
 
 ## 완료 조건 (Definition of Done)
 
-- [ ] 이 레포가 담당하는 모든 R-*의 테스트 통과
-- [ ] lint, 타입 검사, 전체 테스트 통과
-- [ ] plan.md와 실제 구현이 일치함
+- [x] 이 레포가 담당하는 모든 R-*의 테스트 통과
+- [x] lint, 타입 검사, 전체 테스트 통과
+- [x] plan.md와 실제 구현이 일치함
 - [ ] docs 레포 spec 상태 갱신 (`Implementing` / `Done`)

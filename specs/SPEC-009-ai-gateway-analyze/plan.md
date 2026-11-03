@@ -32,7 +32,7 @@ updated: 2026-11-03
 | R-11 | `images.py` | `test_analyze_api.py::test_r11_*` |
 | R-12 | `prompts.py`, `adapters/openai.py` | `test_prompts.py::test_r12_*`, `test_openai_adapter.py` |
 | R-13 | `prompts.py` | `test_prompts.py::test_r13_*` |
-| R-14 | `profile.py`, `prompts.py`, `main.py`(lifespan) | `test_startup.py` |
+| R-14 | `profile.py`, `prompts.py`, `main.py`(lifespan) | `test_profile.py`, `test_prompts.py`, `test_startup.py`, `test_startup_e2e.py` |
 | R-15 | `profile.py` | `test_startup.py::test_r15_*` |
 | R-16 | `api.py` | `test_analyze_api.py::test_r16_*` |
 | R-17 | `call_log.py` | `test_call_log.py`(PostgreSQL) |
@@ -43,7 +43,7 @@ updated: 2026-11-03
 | NFR-2 | `adapters/` | `test_architecture.py`(openai import 위치 검사) |
 | NFR-3 | `analyze.py`, 로그 | `test_analyze_api.py::test_nfr3_*`(caplog) |
 | NFR-4 | `settings.py` | `test_startup.py::test_nfr4_*`(키가 `SecretStr`, repr에 노출 없음) |
-| NFR-5 | `tracing.py`, `adapters/openai.py` | `test_openai_adapter.py::test_nfr5_*` |
+| NFR-5 | `api.py`, `adapters/openai.py` | `test_openai_adapter.py::test_nfr5_*` |
 | NFR-6 | `call_log.py`(uuid4 호출 ID) | `test_call_log.py::test_nfr6_*` |
 
 ## 3. 원칙 점검
@@ -80,11 +80,11 @@ updated: 2026-11-03
 | `.../call_log.py` | `ai.ai_call_log` 저장, 영상별 원문 삭제 |
 | `.../api.py` | FastAPI 라우터, 요청·응답 Pydantic 모델(계약 일치), ProblemDetail 예외 핸들러 |
 | `.../deletion.py` | `video.deleted` 핸들러와 `KafkaWorker` 조립. 워커는 자기 이벤트 루프를 쓰므로 DB 엔진을 따로 만든다 |
-| `.../main.py` | `create_app`(lifespan: 프로필·프롬프트 검증, DB 확인, 워커 스레드 시작), `/health`·`/ready` |
-| `.../tracing.py` | `traceparent` 미들웨어, 로그 필드와 공급자 호출 헤더로 전달 |
-| `services/ai-gateway/migrations/` | Alembic 환경, `0001_create_ai_call_log.py` |
-| `services/ai-gateway/profiles/local.toml`, `test.toml` | 로컬(Ollama `openai_compatible`), 테스트(mock) 프로필 |
-| `services/ai-gateway/Dockerfile` | base·uv·test·build·runtime. runtime에 계약(`prompts/`, `taxonomy/`)을 `--build-context contracts=<docs>/docs/contracts`로 복사 |
+| `.../main.py` | `create_app`(lifespan), `build_production`(프로필·프롬프트·taskType 대응·DB 확인, 워커 스레드 시작), `production_app`(uvicorn factory), `/health`·`/ready` |
+| `.../api.py`(traceparent) | `traceparent` 헤더 검증 후 공급자 호출 헤더·호출 로그 trace_id·완료 로그로 전달(별도 미들웨어 없음) |
+| `.../db/` | 테이블 정의, Alembic 환경(`db/migrations/`, `0001_create_ai_call_log.py`), `python -m ai_gateway.db.migrate` |
+| `services/ai-gateway/profiles/local.toml`, `local-mock.toml` | 로컬(Ollama `openai_compatible`), 모델 없는 로컬(mock) 프로필. 테스트는 코드에서 프로필을 만든다 |
+| `services/ai-gateway/Dockerfile` | base·uv·build·runtime. runtime에 계약(`prompts/`, `taxonomy/`)을 `--build-context vlm-contracts:docs=<docs>/docs/contracts`로 복사(태그를 붙여야 hadolint DL3006·DL3022를 통과). 실행은 `uvicorn --factory ai_gateway.main:production_app` |
 | `services/ai-gateway/prompts/.gitkeep` | 삭제(프롬프트는 docs 계약) |
 | `.github/workflows/checks.yml` | service-images job에 ai-gateway runtime 빌드(계약 빌드 컨텍스트) |
 | `AGENTS.md` | 프롬프트 위치·버전 규칙, ai-gateway 실행 명령 갱신 |
@@ -158,7 +158,7 @@ sequenceDiagram
 
 - 단위: 경로 검사, Prompt Registry(버전 해시·고정 접두부·$ref 해석), 출력 추출·검증, 프로필 검증, openai Adapter(openai SDK 3.x가 쓰는 httpx2의 MockTransport로 HTTP 대체: 정상·429·5xx·시간 초과·4xx·traceparent 헤더)
 - API: `httpx.AsyncClient` + `ASGITransport`, 저장소는 `InMemoryStorage`, Adapter는 가짜 구현, 호출 로그는 testcontainers PostgreSQL(integration)
-- 통합: `video.deleted` → 원문 삭제(testcontainers Kafka + PostgreSQL)
+- 통합: `video.deleted` → 원문 삭제(testcontainers Kafka + PostgreSQL), 운영 조립 `production_app`으로 기동·준비·mock 분석(PostgreSQL + Kafka + SeaweedFS)
 - 계약: 응답 예시·요청 모델을 `ai-gateway.yaml` 스키마와 대조, 프롬프트 폴더의 예시가 스키마를 통과하는지(`CONTRACTS_DIR`)
 - 성능: NFR-1은 mock Adapter·실제 PostgreSQL로 50회 p95 측정(integration)
 
@@ -171,5 +171,5 @@ sequenceDiagram
 ## 8. 배포 고려사항
 
 - 환경변수: `AI_GATEWAY_DATABASE_URL`, `AI_GATEWAY_PROFILE_PATH`, `AI_GATEWAY_CONTRACTS_DIR`, `AI_GATEWAY_ALLOW_MOCK`, `AI_GATEWAY_GROUP_ID`, `KAFKA_BOOTSTRAP`, `AI_GATEWAY_OPENAI_API_KEY`(비밀값). 레포 `.env.example`에 추가한다. 루트 `local/` compose 추가는 normalize 로컬 구성과 함께 머지한다(docs 브랜치 대기 중).
-- 마이그레이션: 기동 전에 `alembic upgrade head`(컨테이너 entrypoint 앞 단계). 운영 Job 구성은 배포 spec.
+- 마이그레이션: 기동 전에 같은 이미지로 `python -m ai_gateway.db.migrate`를 한 번 실행한다. 운영 Job 구성은 배포 spec.
 - 배포 순서: 호출자(event-analyzer)보다 먼저.

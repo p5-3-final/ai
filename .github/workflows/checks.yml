@@ -104,3 +104,9 @@ jobs:
           CONTRACTS_DIR: ${{ github.workspace }}/docs-repo/docs/contracts
       - name: normalize runtime image
         run: docker build -f services/normalize/Dockerfile --target runtime -t vlm/normalize .
+      # 프롬프트·분류 체계는 docs 계약을 이름 있는 빌드 컨텍스트로 넘긴다(SPEC-009).
+      - name: ai-gateway runtime image
+        run: >-
+          docker build -f services/ai-gateway/Dockerfile
+          --build-context vlm-contracts:docs=docs-repo/docs/contracts
+          -t vlm/ai-gateway .

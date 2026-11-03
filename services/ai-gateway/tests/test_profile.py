@@ -1,7 +1,9 @@
 from pathlib import Path
 
 import pytest
+from ai_gateway.main import check_tasks
 from ai_gateway.profile import GatewayProfile, check_profile
+from ai_gateway.prompts import PromptRegistry
 from vlm_common.profile import ProfileError, load_profile
 
 VALID = """
@@ -92,3 +94,13 @@ def test_spec009_r15_mock_requires_explicit_allow(tmp_path: Path) -> None:
     with pytest.raises(ProfileError, match="mock"):
         check_profile(profile, allow_mock=False, has_openai_key=False)
     check_profile(profile, allow_mock=True, has_openai_key=False)
+
+
+@pytest.mark.parametrize("name", ["local.toml", "local-mock.toml"])
+def test_spec009_r14_committed_profiles_are_valid(contracts_dir: Path, name: str) -> None:
+    path = Path(__file__).resolve().parents[1] / "profiles" / name
+
+    profile = load_profile(path, GatewayProfile)
+
+    check_profile(profile, allow_mock=True, has_openai_key=False)
+    check_tasks(profile, PromptRegistry.load(contracts_dir))

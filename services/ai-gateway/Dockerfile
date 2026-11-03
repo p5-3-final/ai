@@ -1,0 +1,46 @@
+# syntax=docker/dockerfile:1
+# ai-gateway 이미지. 빌드 컨텍스트는 레포 루트이고, 프롬프트·분류 체계는 docs 계약을 따로 넘긴다.
+#   docker build -f services/ai-gateway/Dockerfile \
+#     --build-context vlm-contracts:docs=../../docs/contracts -t vlm/ai-gateway .
+# 마이그레이션은 앱보다 먼저 같은 이미지로 한 번 실행한다(Kubernetes Job·로컬 compose 단계):
+#   docker run --rm vlm/ai-gateway python -m ai_gateway.db.migrate
+
+FROM python:3.12-slim-trixie@sha256:b18b261e1b4974b4f321451ad5251ded85abb22c2b8b262da527dda1d031ab30 AS base
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    UV_PYTHON_DOWNLOADS=never \
+    UV_LINK_MODE=copy \
+    UV_PROJECT_ENVIRONMENT=/opt/venv \
+    PATH=/opt/venv/bin:$PATH
+WORKDIR /app
+
+FROM base AS uv
+COPY --from=ghcr.io/astral-sh/uv:0.12.21@sha256:a7aed3216253ee804de3e2d8afa5073baa1a177335345d43845cd4165e43b711 /uv /usr/local/bin/uv
+
+FROM uv AS build
+COPY pyproject.toml uv.lock ./
+COPY libs libs
+COPY services services
+# 소스 경로를 가리키는 편집 설치가 아니라 가상환경 안에 복사해 넣어야 runtime 단계로 옮길 수 있다.
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-dev --no-editable --package ai-gateway
+
+# --build-context vlm-contracts:docs=<docs>/docs/contracts로 받은 계약 폴더.
+# 이미지처럼 태그를 붙여 받아야 hadolint가 출처를 알 수 있다.
+FROM vlm-contracts:docs AS docs-contracts
+
+FROM base AS runtime
+# Kubernetes runAsNonRoot가 확인할 수 있도록 숫자 UID로 실행한다.
+RUN groupadd --system --gid 10001 app \
+    && useradd --system --uid 10001 --gid app --no-create-home app
+COPY --from=build /opt/venv /opt/venv
+# Prompt Registry 원본(SPEC-009). 이미지와 프롬프트 버전이 함께 묶이도록 빌드할 때 넣는다.
+COPY --from=docs-contracts prompts /app/contracts/prompts
+COPY --from=docs-contracts taxonomy /app/contracts/taxonomy
+COPY services/ai-gateway/profiles /app/profiles
+ENV AI_GATEWAY_CONTRACTS_DIR=/app/contracts \
+    AI_GATEWAY_PROFILE_PATH=/app/profiles/local.toml
+USER 10001:10001
+EXPOSE 8000
+# 접근 로그는 구조화 로그와 형식이 달라 끄고, 호출마다 "analyze completed"를 남긴다.
+CMD ["uvicorn", "--factory", "ai_gateway.main:production_app", "--host", "0.0.0.0", "--port", "8000", "--no-access-log"]
