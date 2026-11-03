@@ -9,20 +9,24 @@ package = false
 
 [tool.uv.workspace]
 # 빈 서비스 폴더는 pyproject.toml이 생길 때 멤버로 추가한다(glob을 쓰면 uv가 빈 폴더에서 실패한다).
-members = ["libs/common", "libs/contracts", "libs/messaging", "libs/storage", "libs/testing", "services/normalize"]
+members = ["libs/common", "libs/contracts", "libs/messaging", "libs/storage", "libs/testing", "services/ai-gateway", "services/normalize"]
 
 [tool.uv.sources]
 vlm-testing = { workspace = true }
 
 [dependency-groups]
 dev = [
+    "httpx>=0.28.1",
     "mypy>=2.4.1",
     "pydantic-settings>=2.16.2",
     "pytest>=9.2.0",
     "pytest-asyncio>=1.4.1.post1",
+    "pyyaml>=6.0.3",
     "ruff>=0.17.3",
     "testcontainers[kafka]>=4.15.0",
     "types-boto3[s3]>=1.43.123",
+    "types-jsonschema>=4.26.0.20261006",
+    "types-pyyaml>=6.0.12.20261030",
     "vlm-testing",
 ]
 
@@ -49,13 +53,15 @@ strict = true
 plugins = ["pydantic.mypy"]
 python_version = "3.12"
 # 실행은 인자 없이 `uv run mypy`. mypy는 .py가 없는 폴더를 오류로 보므로 코드가 있는 폴더만 둔다.
-files = ["libs", "services/normalize"]
+files = ["libs", "services/ai-gateway", "services/normalize"]
 explicit_package_bases = true
-mypy_path = ["$MYPY_CONFIG_FILE_DIR/libs/common/src", "$MYPY_CONFIG_FILE_DIR/libs/contracts/src", "$MYPY_CONFIG_FILE_DIR/libs/messaging/src", "$MYPY_CONFIG_FILE_DIR/libs/storage/src", "$MYPY_CONFIG_FILE_DIR/libs/testing/src", "$MYPY_CONFIG_FILE_DIR/services/normalize/src"]
+mypy_path = ["$MYPY_CONFIG_FILE_DIR/libs/common/src", "$MYPY_CONFIG_FILE_DIR/libs/contracts/src", "$MYPY_CONFIG_FILE_DIR/libs/messaging/src", "$MYPY_CONFIG_FILE_DIR/libs/storage/src", "$MYPY_CONFIG_FILE_DIR/libs/testing/src", "$MYPY_CONFIG_FILE_DIR/services/ai-gateway/src", "$MYPY_CONFIG_FILE_DIR/services/normalize/src"]
 
 [tool.pytest.ini_options]
 # 멤버마다 tests/가 있어 같은 파일 이름이 겹치므로 importlib 모드로 모은다.
 addopts = "--import-mode=importlib"
+# importlib 모드는 테스트 폴더를 sys.path에 넣지 않는다. 여러 테스트 파일이 쓰는 도우미 모듈만 따로 연다.
+pythonpath = ["services/ai-gateway/tests"]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 testpaths = ["libs", "services"]

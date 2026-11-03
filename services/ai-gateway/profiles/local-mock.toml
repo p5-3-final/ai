@@ -1,0 +1,18 @@
+# 모델 없이 흐름만 확인하는 로컬 프로필. AI_GATEWAY_ALLOW_MOCK=true일 때만 뜬다(SPEC-009 R-15).
+
+[callers]
+allowed = ["event-analyzer", "track-analyzer", "embedding-worker", "aggregator", "search-service", "quality-service"]
+
+[images]
+allowed_patterns = ['^sources/{source_id}/.+/blurred/[^/]+\.(jpg|jpeg|png|webp)$']
+
+[adapters.mock]
+kind = "mock"
+
+[tasks.event_judge]
+adapter = "mock"
+model = "mock"
+max_output_tokens = 800
+max_images = 12
+timeout_s = 5
+max_retries = 0

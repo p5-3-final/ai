@@ -1,0 +1,25 @@
+# 로컬 compose 프로필. 로컬 Ollama(OpenAI 호환 API)의 Qwen3-VL을 쓴다(docs ADR-0008 "로컬").
+# 모델을 바꿀 때는 이 파일만 바꾼다. 코드는 바꾸지 않는다.
+
+[callers]
+# docs overview "AI Gateway"의 호출자
+allowed = ["event-analyzer", "track-analyzer", "embedding-worker", "aggregator", "search-service", "quality-service"]
+
+[images]
+# 블러 사본만 외부로 보낸다(SPEC-009 R-9). 실제 경로 규칙은 블러 사본을 만드는 chunk-processor 계약이
+# 정해지면 맞춘다. {source_id}는 요청의 sourceId로 바뀐다.
+allowed_patterns = ['^sources/{source_id}/.+/blurred/[^/]+\.(jpg|jpeg|png|webp)$']
+
+[adapters.ollama]
+kind = "openai_compatible"
+base_url = "http://ollama:11434/v1"
+
+[tasks.event_judge]
+adapter = "ollama"
+model = "qwen3-vl:8b"
+max_output_tokens = 800
+# 후보 전후 5초 근거 프레임(docs overview "분석 처리 흐름" 8단계)
+max_images = 12
+# 로컬 CPU 추론은 느리다
+timeout_s = 120
+max_retries = 1

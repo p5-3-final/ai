@@ -1,13 +1,13 @@
 [project]
 name = "vlm-testing"
 version = "0.1.0"
-description = "테스트 전용: testcontainers로 Kafka·SeaweedFS를 띄우는 도우미. 운영 이미지에 넣지 않는다"
+description = "테스트 전용: testcontainers로 Kafka·SeaweedFS·PostgreSQL을 띄우는 도우미. 운영 이미지에 넣지 않는다"
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "boto3>=1.43.123",
     "confluent-kafka>=2.16.1",
     "pydantic-settings>=2.16.2",
-    "testcontainers[kafka]>=4.15.0",
+    "testcontainers[kafka,postgres]>=4.15.0",
 ]
 
 [build-system]

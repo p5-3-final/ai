@@ -1,0 +1,28 @@
+[project]
+name = "ai-gateway"
+version = "0.1.0"
+description = "외부 AI 호출 관문: /v1/analyze, Prompt Registry, VLM Adapter, 호출 로그 (SPEC-009)"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "alembic>=1.20.1",
+    "asyncpg>=0.32.0",
+    "fastapi>=0.162.0",
+    "jsonschema>=4.26.0",
+    "openai>=3.42.1",
+    "sqlalchemy[asyncio]>=2.1.6",
+    "uvicorn>=0.54.0",
+    "vlm-common",
+    "vlm-contracts",
+    "vlm-messaging",
+    "vlm-storage",
+]
+
+[tool.uv.sources]
+vlm-common = { workspace = true }
+vlm-contracts = { workspace = true }
+vlm-messaging = { workspace = true }
+vlm-storage = { workspace = true }
+
+[build-system]
+requires = ["uv_build>=0.12,<0.13"]
+build-backend = "uv_build"
