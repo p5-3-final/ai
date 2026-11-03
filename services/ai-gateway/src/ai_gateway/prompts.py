@@ -23,6 +23,11 @@ _INPUT_FILE = "input.schema.json"
 _OUTPUT_FILE = "output.schema.json"
 # 버전 ID에 쓰는 해시 앞자리 수. 호출 로그·결과에서 사람이 읽을 수 있는 길이로 자른다.
 _VERSION_DIGITS = 12
+# 계약 파일을 모델에 보낼 글로 엮는 방식(render)의 버전.
+# 바꾸면 같은 계약이라도 보내는 글이 달라지므로 프롬프트 버전 ID에 함께 넣는다.
+_RENDER_FORMAT = "render-v2"
+# 모델에 보낼 출력 스키마에서 뺄 키. 예시는 판정을 한쪽으로 끌 수 있고 나머지는 모델에 쓸모가 없다.
+_SCHEMA_KEYS_FOR_MACHINES = frozenset({"$schema", "$id", "examples"})
 
 
 class PromptRegistryError(VlmError):
@@ -47,6 +52,8 @@ class PromptTask:
     version: str
     fixed_prefix: str
     instruction: str
+    # 분류 체계 참조를 풀어 둔 출력 스키마. 모델이 필수 필드와 허용 값을 알게 함께 보낸다(#17).
+    output_schema_text: str
     input_validator: Draft202012Validator
     output_validator: Draft202012Validator
 
@@ -59,11 +66,17 @@ class PromptTask:
         return _errors(self.output_validator, output)
 
     def render(self, variables: JsonObject) -> PromptMessage:
-        """고정 접두부와, 작업 지시 + 입력 JSON으로 된 가변부를 만든다."""
+        """고정 접두부와, 작업 지시 + 출력 스키마 + 입력 JSON으로 된 가변부를 만든다.
+
+        입력만 호출마다 달라지므로 맨 뒤에 둔다. 앞부분이 같아야 공급자 프롬프트 캐시를 받는다.
+        """
         payload = json.dumps(variables, ensure_ascii=False, indent=2)
         return PromptMessage(
             fixed_prefix=self.fixed_prefix,
-            variable_part=f"{self.instruction}\n\n## 입력\n\n```json\n{payload}\n```\n",
+            variable_part=(
+                f"{self.instruction}\n\n## 출력 스키마\n\n```json\n{self.output_schema_text}\n```"
+                f"\n\n## 입력\n\n```json\n{payload}\n```\n"
+            ),
         )
 
 
@@ -118,6 +131,7 @@ def _load_task(
     )
     digest = hashlib.sha256()
     for part in (
+        _RENDER_FORMAT,
         prefix,
         instruction,
         _canonical(schemas[input_path]),
@@ -132,6 +146,9 @@ def _load_task(
         version=f"{task_dir.name}@{digest.hexdigest()[:_VERSION_DIGITS]}",
         fixed_prefix=prefix,
         instruction=instruction,
+        output_schema_text=json.dumps(
+            _inline_refs(schemas[output_path], output_path, schemas), ensure_ascii=False, indent=2
+        ),
         input_validator=Draft202012Validator(schemas[input_path], registry=registry),
         output_validator=Draft202012Validator(schemas[output_path], registry=registry),
     )
@@ -169,6 +186,32 @@ def _referenced_files(path: Path, schemas: dict[Path, JsonObject]) -> set[Path]:
                 found.add(resolved)
                 pending.append(resolved)
     return found
+
+
+def _inline_refs(node: object, path: Path, schemas: dict[Path, JsonObject]) -> object:
+    """`$ref`를 참조한 내용으로 바꾼 사본. 모델은 다른 파일을 따라가 읽을 수 없다."""
+    if isinstance(node, list):
+        return [_inline_refs(item, path, schemas) for item in node]
+    if not isinstance(node, dict):
+        return node
+    out: dict[str, object] = {}
+    ref = node.get("$ref")
+    if isinstance(ref, str):
+        target, _, pointer = ref.partition("#")
+        target_path = (path.parent / target).resolve() if target else path
+        resolved: object = schemas[target_path]
+        for key in (k for k in pointer.split("/") if k):
+            if not isinstance(resolved, dict):
+                raise PromptRegistryError(f"cannot resolve {ref} in {path}")
+            resolved = resolved[key]
+        inlined = _inline_refs(resolved, target_path, schemas)
+        if isinstance(inlined, dict):
+            out.update(inlined)
+    for key, value in node.items():
+        if key == "$ref" or key in _SCHEMA_KEYS_FOR_MACHINES:
+            continue
+        out[key] = _inline_refs(value, path, schemas)
+    return out
 
 
 def _refs(node: object) -> list[str]:
