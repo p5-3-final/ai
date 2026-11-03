@@ -124,3 +124,19 @@ def test_spec009_r14_missing_prompt_file_fails_to_load(copied: Path) -> None:
 
     with pytest.raises(PromptRegistryError):
         PromptRegistry.load(copied)
+
+
+def test_issue17_prompt_includes_output_schema_with_taxonomy(contracts_dir: Path) -> None:
+    """[#17] 모델이 필수 필드와 허용 값을 알 수 있게 출력 스키마를 함께 보낸다."""
+    task = PromptRegistry.load(contracts_dir).get("event_judge")
+    assert task is not None
+
+    part = task.render(CANDIDATE).variable_part
+
+    for field in ("eventType", "verificationStatus", "riskType", "riskReason", "evidenceEnd"):
+        assert f'"{field}"' in part
+    # 분류 체계 $ref를 풀어 이벤트 유형 값이 보인다.
+    assert "barrier_not_restored" in part
+    assert "$ref" not in part
+    # 호출마다 같은 지시·스키마가 입력보다 앞에 와야 공급자 프롬프트 캐시를 받는다.
+    assert part.index("riskReason") < part.index("61.2")
