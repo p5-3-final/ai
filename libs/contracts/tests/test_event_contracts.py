@@ -25,6 +25,18 @@ def _allowed_values(prop: JsonObject) -> set[object] | None:
         return {prop["const"]}
     if "enum" in prop:
         return set(cast(list[object], prop["enum"]))
+    if "anyOf" in prop:
+        # Pydantic은 `Literal[...] | None`을 anyOf로, 계약은 null을 넣은 enum으로 쓴다.
+        values: set[object] = set()
+        for option in cast(list[JsonObject], prop["anyOf"]):
+            if option.get("type") == "null":
+                values.add(None)
+                continue
+            allowed = _allowed_values(option)
+            if allowed is None:
+                return None
+            values |= allowed
+        return values
     return None
 
 
@@ -102,3 +114,39 @@ def test_events_are_registered_by_topic() -> None:
     assert {"video.uploaded", "video.deleted"} <= set(EVENT_MODELS)
     for topic, model in EVENT_MODELS.items():
         assert model.model_fields["event_type"].default == topic
+
+
+def test_normalized_events_are_registered() -> None:
+    assert {"video.normalizing", "video.normalized"} <= set(EVENT_MODELS)
+
+
+@pytest.mark.parametrize(
+    "override",
+    [
+        {"rejectReason": "TOO_LONG"},
+        {"normalizedKey": None},
+        {"durationSec": None},
+    ],
+)
+def test_ready_result_requires_media_fields_and_no_reason(
+    load_schema: SchemaLoader, override: JsonObject
+) -> None:
+    ready = cast(list[JsonObject], load_schema("video.normalized")["examples"])[0]
+    model = EVENT_MODELS["video.normalized"]
+
+    with pytest.raises(ValidationError, match="READY"):
+        model.model_validate({**ready, **override})
+
+
+@pytest.mark.parametrize(
+    "override",
+    [{"rejectReason": None}, {"normalizedKey": "sources/x/normalized/video.mp4"}, {"fps": 30}],
+)
+def test_rejected_result_requires_reason_and_no_media_fields(
+    load_schema: SchemaLoader, override: JsonObject
+) -> None:
+    rejected = cast(list[JsonObject], load_schema("video.normalized")["examples"])[1]
+    model = EVENT_MODELS["video.normalized"]
+
+    with pytest.raises(ValidationError, match="REJECTED"):
+        model.model_validate({**rejected, **override})
