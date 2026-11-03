@@ -22,4 +22,3 @@ class GatewaySettings(ServiceSettings):
     kafka_bootstrap: str = Field(validation_alias="KAFKA_BOOTSTRAP")
     group_id: str = "ai-gateway"
     openai_api_key: SecretStr | None = None
-    port: int = 8000

@@ -60,7 +60,7 @@ updated: 2026-11-03
 
 ## Phase 7: US-6 배포 상태 (P2)
 
-- [ ] T026 [R-22] [R-23] `/health`, `/ready`(기동 검증·DB·구독) — 테스트 `t/test_health.py`, 구현 `gw/main.py`
+- [x] T026 [R-22] [R-23] `/health`, `/ready`(기동 검증·DB·구독) — 테스트 `t/test_health.py`, 구현 `gw/main.py`
 
 ## Phase 8: 마무리
 

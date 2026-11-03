@@ -113,6 +113,7 @@ async def gateway(
     gateway_profile: GatewayProfile | None = None,
     adapter: FakeAdapter | None = None,
     prepare: Callable[[InMemoryStorage], None] | None = None,
+    ready: Callable[[], bool] = lambda: True,
 ) -> AsyncIterator[Gateway]:
     """가짜 Adapter·메모리 저장소·기록용 호출 로그로 앱을 띄운다."""
     storage = InMemoryStorage()
@@ -129,6 +130,7 @@ async def gateway(
         storage=storage,
         adapters=adapters,
         call_log=call_log,
+        is_ready=ready,
     )
 
     async def build() -> GatewayDeps:
