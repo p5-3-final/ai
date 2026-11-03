@@ -6,6 +6,7 @@ import pytest
 from confluent_kafka import Consumer, Message
 from confluent_kafka.admin import AdminClient
 from confluent_kafka.cimpl import NewTopic
+from pydantic_settings import BaseSettings
 from testcontainers.core.container import DockerContainer
 from testcontainers.core.wait_strategies import LogMessageWaitStrategy
 
@@ -13,6 +14,12 @@ from testcontainers.core.wait_strategies import LogMessageWaitStrategy
 KAFKA_IMAGE = (
     "apache/kafka:4.3.2@sha256:852a0d49fc4e656b022e7f23785411802c9a088c78a7c5e39f33969de9c227a7"
 )
+
+
+class _DockerHostSettings(BaseSettings):
+    # 테스트를 컨테이너 안에서 돌리면(scripts/test-in-docker.sh)
+    # 형제 컨테이너는 호스트를 거쳐 닿는다.
+    testcontainers_host_override: str = "127.0.0.1"
 
 
 def _free_port() -> int:
@@ -25,6 +32,7 @@ def _free_port() -> int:
 @pytest.fixture(scope="session")
 def bootstrap() -> Iterator[str]:
     # 광고 주소에 호스트 포트가 들어가야 해서 포트를 먼저 정하고 같은 번호로 연결한다.
+    host = _DockerHostSettings().testcontainers_host_override
     port = _free_port()
     container = (
         DockerContainer(KAFKA_IMAGE)
@@ -32,7 +40,7 @@ def bootstrap() -> Iterator[str]:
         .with_env("KAFKA_NODE_ID", "1")
         .with_env("KAFKA_PROCESS_ROLES", "broker,controller")
         .with_env("KAFKA_LISTENERS", "HOST://:9092,CONTROLLER://:9093")
-        .with_env("KAFKA_ADVERTISED_LISTENERS", f"HOST://127.0.0.1:{port}")
+        .with_env("KAFKA_ADVERTISED_LISTENERS", f"HOST://{host}:{port}")
         .with_env("KAFKA_LISTENER_SECURITY_PROTOCOL_MAP", "HOST:PLAINTEXT,CONTROLLER:PLAINTEXT")
         .with_env("KAFKA_INTER_BROKER_LISTENER_NAME", "HOST")
         .with_env("KAFKA_CONTROLLER_LISTENER_NAMES", "CONTROLLER")
@@ -44,7 +52,7 @@ def bootstrap() -> Iterator[str]:
         .waiting_for(LogMessageWaitStrategy("Kafka Server started").with_startup_timeout(60))
     )
     with container:
-        yield f"127.0.0.1:{port}"
+        yield f"{host}:{port}"
 
 
 @pytest.fixture

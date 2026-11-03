@@ -1,0 +1,12 @@
+# 이미지 빌드에 필요 없는 것과 비밀값을 빌드 컨텍스트에서 뺀다.
+.git
+.venv
+**/__pycache__
+.pytest_cache
+.mypy_cache
+.ruff_cache
+notebooks
+evals
+.env
+.env.*
+docs-repo
