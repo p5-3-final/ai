@@ -5,7 +5,12 @@ from dataclasses import dataclass, field
 from typing import Protocol
 from uuid import UUID
 
-from ai_gateway.adapters.base import Completion, VlmAdapter
+from ai_gateway.adapters.base import (
+    Completion,
+    ProviderFailedError,
+    ProviderUnavailableError,
+    VlmAdapter,
+)
 from ai_gateway.call_log import CallLogEntry, CallStatus, new_call_id
 from ai_gateway.errors import (
     CallerForbiddenError,
@@ -87,15 +92,23 @@ class AnalyzeService:
             await self._call_log.save(call.entry("unavailable", output=output))
             return call.result(output)
 
-        completion = await self._adapters[settings.adapter].complete(
-            model=settings.model,
-            message=task.render(command.variables),
-            images=images,
-            max_output_tokens=settings.max_output_tokens,
-            timeout_s=settings.timeout_s,
-            max_retries=settings.max_retries,
-            traceparent=command.traceparent,
-        )
+        try:
+            completion = await self._adapters[settings.adapter].complete(
+                model=settings.model,
+                message=task.render(command.variables),
+                images=images,
+                max_output_tokens=settings.max_output_tokens,
+                timeout_s=settings.timeout_s,
+                max_retries=settings.max_retries,
+                traceparent=command.traceparent,
+            )
+        except (ProviderUnavailableError, ProviderFailedError) as e:
+            # 실패한 호출도 호출자·모델별 장애를 볼 수 있게 남긴다(SPEC-009 R-17~R-19).
+            status: CallStatus = (
+                "unavailable" if isinstance(e, ProviderUnavailableError) else "failed"
+            )
+            await self._call_log.save(call.entry(status, output=None, error_code=e.code))
+            raise
         parsed = parse_output(task, completion.text, command.variables)
         await self._call_log.save(
             call.entry(

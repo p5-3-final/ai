@@ -3,8 +3,7 @@
 from dataclasses import dataclass
 from typing import Protocol
 
-from vlm_common.errors import VlmError
-
+from ai_gateway.errors import GatewayRequestError
 from ai_gateway.prompts import PromptMessage
 
 
@@ -25,16 +24,20 @@ class Completion:
     output_tokens: int | None
 
 
-class ProviderUnavailableError(VlmError):
+class ProviderUnavailableError(GatewayRequestError):
     """시간 초과, 연결 불가, 429·5xx. 호출자가 다시 시도할 수 있다(SPEC-009 R-18)."""
 
     code = "AI_PROVIDER_UNAVAILABLE"
+    status = 503
+    title = "Service Unavailable"
 
 
-class ProviderFailedError(VlmError):
+class ProviderFailedError(GatewayRequestError):
     """공급자가 요청 자체를 거부했다(429 외 4xx). 다시 보내도 같을 가능성이 높다(R-19)."""
 
     code = "AI_PROVIDER_FAILED"
+    status = 502
+    title = "Bad Gateway"
 
 
 class VlmAdapter(Protocol):

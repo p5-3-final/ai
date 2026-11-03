@@ -4,6 +4,7 @@ from unittest.mock import ANY
 
 import httpx
 import pytest
+from ai_gateway.adapters.base import ProviderFailedError, ProviderUnavailableError
 from ai_gateway.prompts import PromptRegistry
 from gateway_support import (
     CALLER,
@@ -205,3 +206,22 @@ async def test_spec009_r16_unknown_or_missing_caller_is_forbidden(
     _problem(response, 403, "AI_CALLER_FORBIDDEN")
     assert gw.adapter.calls == []
     assert gw.call_log.entries == []
+
+
+@pytest.mark.parametrize(
+    ("error", "status", "code", "log_status"),
+    [
+        (ProviderUnavailableError("timeout"), 503, "AI_PROVIDER_UNAVAILABLE", "unavailable"),
+        (ProviderFailedError("401"), 502, "AI_PROVIDER_FAILED", "failed"),
+    ],
+)
+async def test_spec009_r18_r19_provider_errors_are_reported_and_logged(
+    contracts_dir: Path, error: Exception, status: int, code: str, log_status: str
+) -> None:
+    async with gateway(contracts_dir, adapter=FakeAdapter(reply=error)) as gw:
+        response = await post_analyze(gw.client, analyze_body())
+
+    _problem(response, status, code)
+    [entry] = gw.call_log.entries
+    assert (entry.status, entry.error_code) == (log_status, code)
+    assert (entry.model_id, entry.output, entry.raw_output) == ("fake-vlm", None, None)
