@@ -46,11 +46,11 @@ def _service(request: Request) -> AnalyzeService:
 async def analyze(
     body: AnalyzeRequest,
     service: Annotated[AnalyzeService, Depends(_service)],
-    x_caller: Annotated[str, Header()],
+    x_caller: Annotated[str | None, Header()] = None,
 ) -> AnalyzeResponse:
     result = await service.analyze(
         AnalyzeCommand(
-            caller=x_caller,
+            caller=x_caller or "",
             task_type=body.task_type,
             source_id=body.source_id,
             image_keys=[i.storage_key for i in body.images],

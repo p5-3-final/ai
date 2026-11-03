@@ -193,3 +193,15 @@ async def test_spec009_r10_other_source_path_is_forbidden(contracts_dir: Path) -
         )
 
     _problem(response, 403, "AI_IMAGE_PATH_FORBIDDEN")
+
+
+@pytest.mark.parametrize("caller", [None, "search-service", ""])
+async def test_spec009_r16_unknown_or_missing_caller_is_forbidden(
+    contracts_dir: Path, caller: str | None
+) -> None:
+    async with gateway(contracts_dir) as gw:
+        response = await post_analyze(gw.client, analyze_body(), caller=caller)
+
+    _problem(response, 403, "AI_CALLER_FORBIDDEN")
+    assert gw.adapter.calls == []
+    assert gw.call_log.entries == []

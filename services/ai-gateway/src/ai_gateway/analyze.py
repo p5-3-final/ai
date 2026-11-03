@@ -7,7 +7,12 @@ from uuid import UUID
 
 from ai_gateway.adapters.base import Completion, VlmAdapter
 from ai_gateway.call_log import CallLogEntry, CallStatus, new_call_id
-from ai_gateway.errors import InvalidRequestError, TooManyImagesError, UnknownTaskTypeError
+from ai_gateway.errors import (
+    CallerForbiddenError,
+    InvalidRequestError,
+    TooManyImagesError,
+    UnknownTaskTypeError,
+)
 from ai_gateway.images import ImagePolicy, ImageReader
 from ai_gateway.output import fallback_output, parse_output
 from ai_gateway.profile import GatewayProfile, TaskProfile
@@ -57,6 +62,9 @@ class AnalyzeService:
 
     async def analyze(self, command: AnalyzeCommand) -> AnalyzeResult:
         started = time.perf_counter()
+        # 토큰 인증 대신 호출자 이름으로 사용량을 나누고 모르는 호출자를 막는다(SPEC-009 R-16).
+        if command.caller not in self._profile.callers.allowed:
+            raise CallerForbiddenError("caller is not allowed")
         task = self._prompts.get(command.task_type)
         if task is None:
             raise UnknownTaskTypeError(f"unknown taskType: {command.task_type}")
