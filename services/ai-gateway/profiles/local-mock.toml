@@ -16,3 +16,27 @@ max_output_tokens = 800
 max_images = 12
 timeout_s = 5
 max_retries = 0
+
+# 의미 없는 결정적 벡터로 /v1/embed 흐름만 본다(SPEC-011). 실제 인코더는 local.toml을 쓴다.
+[encoder]
+kind = "mock"
+model_id = "mock:MobileCLIP2-S0:dfndr2b:mean-4"
+dimension = 512
+
+[embed.embed_visual_text]
+max_inputs = 16
+max_text_chars = 300
+
+[embed.embed_image]
+max_inputs = 8
+# 검색용 이미지는 search-service가 질의 전용 폴더에 올린다.
+allowed_patterns = ['^queries/[^/]+/[^/]+\.(jpg|jpeg|png|webp)$']
+
+[embed.embed_text]
+adapter = "mock"
+model = "mock"
+dimension = 1024
+max_inputs = 64
+max_text_chars = 2000
+timeout_s = 5
+max_retries = 0

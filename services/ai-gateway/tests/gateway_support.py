@@ -1,5 +1,6 @@
 """API 테스트 공통 준비물: 가짜 Adapter·호출 로그와 앱 조립."""
 
+import functools
 import json
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
@@ -8,6 +9,8 @@ from pathlib import Path
 from uuid import UUID
 
 import httpx
+import open_clip  # type: ignore[import-untyped]  # 타입 정보를 배포하지 않는다 (#19)
+import torch
 from ai_gateway.adapters.base import (
     Completion,
     Embeddings,
@@ -20,6 +23,7 @@ from ai_gateway.call_log import CallLogEntry
 from ai_gateway.main import GatewayDeps, create_app
 from ai_gateway.profile import GatewayProfile
 from ai_gateway.prompts import PromptMessage, PromptRegistry
+from safetensors.torch import save
 from vlm_encoders.base import ImageTextEncoder
 from vlm_encoders.mock import MockEncoder
 from vlm_storage.memory import InMemoryStorage
@@ -243,3 +247,15 @@ async def post_embed(
 ) -> httpx.Response:
     headers = {"X-Caller": caller} if caller is not None else {}
     return await client.post("/v1/embed", json=body, headers=headers)
+
+
+@functools.cache
+def random_weights() -> bytes:
+    """무작위로 초기화한 MobileCLIP2-S0 가중치 파일(safetensors). 실제 가중치를 받지 않는다."""
+    torch.manual_seed(0)
+    model = open_clip.create_model("MobileCLIP2-S0", pretrained=None)
+    # 공유 텐서가 있으면 save가 거부하므로 state_dict를 복사해 넘긴다.
+    tensors: dict[str, torch.Tensor] = {
+        k: v.contiguous().clone() for k, v in model.state_dict().items()
+    }
+    return save(tensors)

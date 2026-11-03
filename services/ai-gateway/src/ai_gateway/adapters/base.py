@@ -90,3 +90,7 @@ class TextEmbeddingAdapter(Protocol):
             ProviderFailedError: 공급자가 요청을 거부했을 때.
         """
         ...
+
+
+class Adapter(VlmAdapter, TextEmbeddingAdapter, Protocol):
+    """VLM과 텍스트 임베딩을 함께 제공하는 공급자. 프로필의 `[adapters.<이름>]` 하나가 된다."""

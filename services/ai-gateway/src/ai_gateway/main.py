@@ -3,9 +3,11 @@
 기동할 때 의존성을 한 번 만들고(lifespan) 검증에 실패하면 앱이 뜨지 않는다(SPEC-009 R-14).
 """
 
+import asyncio
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from fastapi import FastAPI, Response
 from sqlalchemy import text
@@ -14,10 +16,13 @@ from vlm_common.health import HealthState
 from vlm_common.logging import configure_logging
 from vlm_common.profile import ProfileError, load_profile
 from vlm_encoders.base import ImageTextEncoder
+from vlm_encoders.mock import MockEncoder
+from vlm_encoders.open_clip import OpenClipEncoder
+from vlm_encoders.weights import fetch_weights
 from vlm_storage.s3 import S3Storage, StorageSettings
 from vlm_storage.storage import ObjectStorage
 
-from ai_gateway.adapters.base import TextEmbeddingAdapter, VlmAdapter
+from ai_gateway.adapters.base import Adapter, TextEmbeddingAdapter, VlmAdapter
 from ai_gateway.adapters.mock import MockAdapter
 from ai_gateway.adapters.openai import OpenAiAdapter
 from ai_gateway.analyze import AnalyzeService, CallLogWriter
@@ -103,12 +108,40 @@ def check_tasks(profile: GatewayProfile, prompts: PromptRegistry) -> None:
         raise ProfileError(f"prompts without task settings: {sorted(prompted - configured)}")
 
 
-def build_adapters(profile: GatewayProfile, api_key: str | None) -> dict[str, VlmAdapter]:
+def load_encoder(
+    profile: GatewayProfile, models: ObjectStorage | None, cache_dir: Path
+) -> ImageTextEncoder | None:
+    """프로필의 [encoder]로 인코더를 한 번 로드한다. 블로킹이라 기동 단계에서 스레드로 부른다.
+
+    Args:
+        profile: 검증한 프로필.
+        models: 모델 버킷. 설정이 없으면 None이다.
+        cache_dir: 가중치 로컬 캐시 폴더.
+
+    Raises:
+        ProfileError: open_clip 인코더인데 모델 버킷 설정이 없을 때.
+        EncoderLoadError: 가중치를 받지 못했거나 해시·차원이 프로필과 다를 때(SPEC-011 R-16, R-17).
+    """
+    encoder = profile.encoder
+    if encoder is None:
+        return None
+    if encoder.kind == "mock":
+        return MockEncoder(encoder.model_id, encoder.dimension)
+    # open_clip 프로필 검증에서 가중치 키·해시가 있음을 확인했다.
+    if models is None or encoder.weights_key is None or encoder.weights_sha256 is None:
+        raise ProfileError("open_clip encoder requires the models bucket setting")
+    weights = fetch_weights(models, encoder.weights_key, encoder.weights_sha256, cache_dir)
+    return OpenClipEncoder.load(encoder.model_id, weights, encoder.dimension)
+
+
+def build_adapters(profile: GatewayProfile, api_key: str | None) -> dict[str, Adapter]:
     """프로필의 Adapter마다 구현을 만든다. 종류는 프로필 검증에서 이미 확인했다."""
-    adapters: dict[str, VlmAdapter] = {}
+    text = profile.embed.embed_text
+    adapters: dict[str, Adapter] = {}
     for name, adapter in profile.adapters.items():
         if adapter.kind == "mock":
-            adapters[name] = MockAdapter()
+            dimension = text.dimension if text and text.adapter == name and text.dimension else 8
+            adapters[name] = MockAdapter(embedding_dimension=dimension)
         else:
             adapters[name] = OpenAiAdapter(
                 api_key=api_key,
@@ -125,6 +158,13 @@ async def build_production(settings: GatewaySettings) -> GatewayDeps:
     check_profile(profile, allow_mock=settings.allow_mock, has_openai_key=api_key is not None)
     prompts = PromptRegistry.load(settings.contracts_dir)
     check_tasks(profile, prompts)
+    models = (
+        S3Storage(StorageSettings(bucket=settings.models_bucket))
+        if settings.models_bucket
+        else None
+    )
+    # 가중치 받기·로드는 블로킹이다. 끝나야 lifespan이 끝나서 그 전에는 요청을 받지 않는다(R-25).
+    encoder = await asyncio.to_thread(load_encoder, profile, models, settings.model_cache_dir)
     database_url = settings.database_url.get_secret_value()
     engine = create_async_engine(database_url)
     async with engine.connect() as conn:
@@ -138,14 +178,17 @@ async def build_production(settings: GatewaySettings) -> GatewayDeps:
         worker.stop()
         await engine.dispose()
 
+    adapters = build_adapters(profile, api_key)
     return GatewayDeps(
         profile=profile,
         prompts=prompts,
         storage=S3Storage(StorageSettings()),
-        adapters=build_adapters(profile, api_key),
+        adapters=dict[str, VlmAdapter](adapters),
         call_log=CallLog(engine),
         is_ready=health.is_ready,
         close=close,
+        encoder=encoder,
+        embedders=dict[str, TextEmbeddingAdapter](adapters),
     )
 
 
