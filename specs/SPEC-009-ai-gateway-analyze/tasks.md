@@ -66,7 +66,7 @@ updated: 2026-11-03
 
 - [x] T027 [NFR-1] 자체 처리 시간 p95 측정 — 테스트 `t/test_overhead.py`(integration)
 - [x] T028 [NFR-2] [NFR-4] 공급자 SDK import 위치, API 키 `SecretStr` — 테스트 `t/test_architecture.py`, `t/test_profile.py`
-- [ ] T029 계약 일치: 요청·응답 모델과 `ai-gateway.yaml`, 프롬프트 예시 — 테스트 `t/test_contract.py`
+- [x] T029 계약 일치: 요청·응답 모델과 `ai-gateway.yaml`, 프롬프트 예시 — 테스트 `t/test_contract.py`
 - [ ] T030 Dockerfile(계약 빌드 컨텍스트), CI service-images, 로컬 프로필, `.env.example`, AGENTS.md(프롬프트 위치), README
 
 ## 완료 조건 (Definition of Done)

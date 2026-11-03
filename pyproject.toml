@@ -21,10 +21,12 @@ dev = [
     "pydantic-settings>=2.16.2",
     "pytest>=9.2.0",
     "pytest-asyncio>=1.4.1.post1",
+    "pyyaml>=6.0.3",
     "ruff>=0.17.3",
     "testcontainers[kafka]>=4.15.0",
     "types-boto3[s3]>=1.43.123",
     "types-jsonschema>=4.26.0.20261006",
+    "types-pyyaml>=6.0.12.20261030",
     "vlm-testing",
 ]
 
