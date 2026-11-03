@@ -7,7 +7,7 @@ from dataclasses import asdict, dataclass
 from typing import Literal
 from uuid import UUID, uuid4
 
-from sqlalchemy import insert
+from sqlalchemy import insert, update
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from ai_gateway.db.tables import call_log
@@ -53,3 +53,13 @@ class CallLog:
     async def save(self, entry: CallLogEntry) -> None:
         async with self._engine.begin() as conn:
             await conn.execute(insert(call_log).values(**asdict(entry)))
+
+    async def clear_raw_output(self, source_id: UUID) -> int:
+        """영상의 모델 원문을 지운다(R-20). 지운 행 수를 돌려준다."""
+        async with self._engine.begin() as conn:
+            result = await conn.execute(
+                update(call_log)
+                .where(call_log.c.source_id == source_id, call_log.c.raw_output.is_not(None))
+                .values(raw_output=None)
+            )
+        return result.rowcount

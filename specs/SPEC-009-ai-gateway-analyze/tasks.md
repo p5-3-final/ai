@@ -55,7 +55,7 @@ updated: 2026-11-03
 
 ## Phase 6: US-5 삭제 전파 (P2)
 
-- [ ] T024 [R-20] [R-21] `video.deleted` 핸들러: 원문 삭제, 반복 수신 — 테스트 `t/test_deletion.py`, 구현 `gw/deletion.py`
+- [x] T024 [R-20] [R-21] `video.deleted` 핸들러: 원문 삭제, 반복 수신 — 테스트 `t/test_deletion.py`, 구현 `gw/deletion.py`
 - [ ] T025 [R-20] Kafka 소비 연결(백그라운드 스레드, 별도 DB 엔진) — 테스트 `t/test_deletion_e2e.py`(integration), 구현 `gw/deletion.py`, `gw/main.py`
 
 ## Phase 7: US-6 배포 상태 (P2)
