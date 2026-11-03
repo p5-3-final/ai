@@ -1,5 +1,6 @@
 """실제 응답을 docs 계약 `openapi/ai-gateway.yaml`과 대조한다(SPEC-009 계약 우선)."""
 
+import io
 import json
 from collections.abc import Mapping
 from pathlib import Path
@@ -11,13 +12,18 @@ from ai_gateway.adapters.base import ProviderUnavailableError
 from gateway_support import (
     CALLER,
     FakeAdapter,
+    FakeEmbedder,
     analyze_body,
+    embed_settings,
     gateway,
+    mock_encoder,
     output_example,
     post_analyze,
+    post_embed,
     profile,
 )
 from jsonschema import Draft202012Validator
+from PIL import Image
 from referencing import Registry, Resource
 from referencing.jsonschema import DRAFT202012, Schema
 
@@ -135,3 +141,94 @@ async def test_contract_responses_match_contract(
 
     assert response.status_code == status
     _assert_matches_contract(registry, response)
+
+
+EMBED_RESPONSE = "ai-gateway.yaml#/components/schemas/EmbedResponse"
+EMBED_REQUEST = "ai-gateway.yaml#/components/schemas/EmbedRequest"
+# 계약의 요청 예시가 쓰는 검색용 이미지 경로
+QUERY_IMAGE_EXAMPLE = "queries/0192f0d2-9a8b-7c6d-8e4f-5a6b7c8d9e0f/query.jpg"
+
+
+def _embed_examples(contracts_dir: Path) -> dict[str, dict[str, object]]:
+    examples = _at(
+        _load(contracts_dir, "ai-gateway.yaml"),
+        "paths",
+        "/v1/embed",
+        "post",
+        "requestBody",
+        "content",
+        "application/json",
+        "examples",
+    )
+    assert isinstance(examples, dict)
+    return {name: example["value"] for name, example in examples.items()}
+
+
+@pytest.mark.parametrize("name", ["visualText", "image", "text"])
+async def test_spec011_contract_embed_request_examples_are_accepted(
+    contracts_dir: Path, registry: Registry[Schema], name: str
+) -> None:
+    """[SPEC-011] 계약의 요청 예시를 그대로 받아 계약 형식으로 응답한다."""
+    example = _embed_examples(contracts_dir)[name]
+    _assert_valid(registry, EMBED_REQUEST, example)
+
+    async with gateway(
+        contracts_dir,
+        profile(embed_settings()),
+        encoder=mock_encoder(),
+        embedders={"fake": FakeEmbedder()},
+        prepare=lambda s: s.put_bytes(QUERY_IMAGE_EXAMPLE, _query_jpeg(), "image/jpeg"),
+    ) as gw:
+        response = await post_embed(gw.client, example)
+
+    assert response.status_code == 200, response.text
+    _assert_valid(registry, EMBED_RESPONSE, response.json())
+
+
+def test_spec011_contract_embed_response_example_matches_schema(
+    contracts_dir: Path, registry: Registry[Schema]
+) -> None:
+    example = _at(
+        _load(contracts_dir, "ai-gateway.yaml"),
+        "paths",
+        "/v1/embed",
+        "post",
+        "responses",
+        "200",
+        "content",
+        "application/json",
+        "example",
+    )
+
+    _assert_valid(registry, EMBED_RESPONSE, example)
+
+
+@pytest.mark.parametrize(
+    ("body", "settings", "status"),
+    [
+        ({"taskType": "embed_visual_text", "texts": ["a"] * 9}, None, 400),
+        ({"taskType": "embed_image", "images": [{"storageKey": "sources/x/original"}]}, None, 403),
+        ({"taskType": "embed_text", "texts": ["a"]}, {"encoder": None, "embed": {}}, 503),
+    ],
+)
+async def test_spec011_contract_embed_errors_are_problem_details(
+    contracts_dir: Path,
+    registry: Registry[Schema],
+    body: dict[str, object],
+    settings: dict[str, object] | None,
+    status: int,
+) -> None:
+    """[SPEC-011] 오류는 계약의 ProblemDetail 형식이다."""
+    async with gateway(
+        contracts_dir, profile(settings or embed_settings()), encoder=mock_encoder()
+    ) as gw:
+        response = await post_embed(gw.client, body)
+
+    assert response.status_code == status
+    _assert_matches_contract(registry, response)
+
+
+def _query_jpeg() -> bytes:
+    buf = io.BytesIO()
+    Image.new("RGB", (16, 16)).save(buf, "JPEG")
+    return buf.getvalue()

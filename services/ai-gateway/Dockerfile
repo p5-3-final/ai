@@ -31,8 +31,11 @@ FROM vlm-contracts:docs AS docs-contracts
 
 FROM base AS runtime
 # Kubernetes runAsNonRoot가 확인할 수 있도록 숫자 UID로 실행한다.
+# 인코더 가중치 캐시(AI_GATEWAY_MODEL_CACHE_DIR 기본값). 가중치는 이미지에 넣지 않고 기동할 때 받는다
+# (SPEC-011 NFR-6). 운영은 이 경로에 emptyDir을 붙인다.
 RUN groupadd --system --gid 10001 app \
-    && useradd --system --uid 10001 --gid app --no-create-home app
+    && useradd --system --uid 10001 --gid app --no-create-home app \
+    && install -d -o 10001 -g 10001 /var/cache/vlm-models
 COPY --from=build /opt/venv /opt/venv
 # Prompt Registry 원본(SPEC-009). 이미지와 프롬프트 버전이 함께 묶이도록 빌드할 때 넣는다.
 COPY --from=docs-contracts prompts /app/contracts/prompts
