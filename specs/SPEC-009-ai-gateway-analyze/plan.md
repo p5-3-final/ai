@@ -44,7 +44,7 @@ updated: 2026-11-03
 | NFR-3 | `analyze.py`, 로그 | `test_analyze_api.py::test_nfr3_*`(caplog) |
 | NFR-4 | `settings.py` | `test_startup.py::test_nfr4_*`(키가 `SecretStr`, repr에 노출 없음) |
 | NFR-5 | `tracing.py`, `adapters/openai.py` | `test_openai_adapter.py::test_nfr5_*` |
-| NFR-6 | `analyze.py`(uuid7 호출 ID) | `test_call_log.py::test_nfr6_*` |
+| NFR-6 | `call_log.py`(uuid4 호출 ID) | `test_call_log.py::test_nfr6_*` |
 
 ## 3. 원칙 점검
 
@@ -96,7 +96,7 @@ updated: 2026-11-03
 
 | 컬럼 | 타입 | 비고 |
 | --- | --- | --- |
-| `call_id` | uuid PK | 요청마다 uuid7(NFR-6) |
+| `call_id` | uuid PK | 요청마다 uuid4(NFR-6). Python 3.12에는 uuid7이 없다 |
 | `caller` | text | `X-Caller` |
 | `source_id` | uuid | 인덱스(R-20 삭제) |
 | `task_type` | text | |

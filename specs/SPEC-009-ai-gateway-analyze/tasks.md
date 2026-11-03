@@ -31,7 +31,7 @@ updated: 2026-11-03
 
 - [x] T007 [R-5] 응답에서 JSON 추출과 출력 스키마 검증 — 테스트 `t/test_output.py`, 구현 `gw/output.py`
 - [x] T008 [R-6] [R-7] 추출·검증 실패 시 `unknown` 결과(위험 필드 규칙 포함) — 테스트 `t/test_output.py`, 구현 `gw/output.py`
-- [ ] T009 [R-17] [NFR-6] 호출 로그 저장(uuid7 호출 ID) — 테스트 `t/test_call_log.py`, 구현 `gw/call_log.py`
+- [x] T009 [R-17] [NFR-6] 호출 로그 저장(uuid4 호출 ID) — 테스트 `t/test_call_log.py`, 구현 `gw/call_log.py`
 - [ ] T010 [R-1] `/v1/analyze` 성공 흐름(가짜 Adapter, 메모리 저장소) — 테스트 `t/test_analyze_api.py`, 구현 `gw/api.py`, `gw/analyze.py`, `gw/main.py`
 - [ ] T011 [R-2] [R-3] 요청 형식·입력 변수·모르는 taskType 거절(ProblemDetail) — 테스트 `t/test_analyze_api.py`, 구현 `gw/api.py`
 - [ ] T012 [R-4] 이미지 상한 초과 거절 — 테스트 `t/test_analyze_api.py`, 구현 `gw/analyze.py`
