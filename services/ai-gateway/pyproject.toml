@@ -13,6 +13,7 @@ dependencies = [
     "uvicorn>=0.54.0",
     "vlm-common",
     "vlm-contracts",
+    "vlm-encoders",
     "vlm-messaging",
     "vlm-storage",
 ]
@@ -22,6 +23,7 @@ vlm-common = { workspace = true }
 vlm-contracts = { workspace = true }
 vlm-messaging = { workspace = true }
 vlm-storage = { workspace = true }
+vlm-encoders = { workspace = true }
 
 [build-system]
 requires = ["uv_build>=0.12,<0.13"]

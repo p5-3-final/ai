@@ -33,6 +33,7 @@ dependencies = [
     { name = "uvicorn" },
     { name = "vlm-common" },
     { name = "vlm-contracts" },
+    { name = "vlm-encoders" },
     { name = "vlm-messaging" },
     { name = "vlm-storage" },
 ]
@@ -48,6 +49,7 @@ requires-dist = [
     { name = "uvicorn", specifier = ">=0.54.0" },
     { name = "vlm-common", editable = "libs/common" },
     { name = "vlm-contracts", editable = "libs/contracts" },
+    { name = "vlm-encoders", editable = "libs/encoders" },
     { name = "vlm-messaging", editable = "libs/messaging" },
     { name = "vlm-storage", editable = "libs/storage" },
 ]
