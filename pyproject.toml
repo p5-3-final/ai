@@ -59,6 +59,8 @@ mypy_path = ["$MYPY_CONFIG_FILE_DIR/libs/common/src", "$MYPY_CONFIG_FILE_DIR/lib
 [tool.pytest.ini_options]
 # 멤버마다 tests/가 있어 같은 파일 이름이 겹치므로 importlib 모드로 모은다.
 addopts = "--import-mode=importlib"
+# importlib 모드는 테스트 폴더를 sys.path에 넣지 않는다. 여러 테스트 파일이 쓰는 도우미 모듈만 따로 연다.
+pythonpath = ["services/ai-gateway/tests"]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 testpaths = ["libs", "services"]
