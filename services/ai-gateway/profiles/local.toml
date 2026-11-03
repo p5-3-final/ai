@@ -12,7 +12,9 @@ allowed_patterns = ['^sources/{source_id}/.+/blurred/[^/]+\.(jpg|jpeg|png|webp)$
 
 [adapters.ollama]
 kind = "openai_compatible"
-base_url = "http://ollama:11434/v1"
+# 호스트에서 도는 Ollama(Mac은 Docker가 GPU를 못 쓴다). Ollama는 DNS rebinding을 막으려고 임의의
+# 호스트 이름 요청을 403으로 거절하므로, 허용되는 host.docker.internal로 붙는다.
+base_url = "http://host.docker.internal:11434/v1"
 
 [tasks.event_judge]
 adapter = "ollama"
