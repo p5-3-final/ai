@@ -17,8 +17,8 @@ updated: 2026-11-03
 
 ## Phase 1: 준비
 
-- [ ] T001 workspace 멤버 추가, 의존성 설치, 빈 패키지·설정(`settings.py`) — `services/ai-gateway/pyproject.toml`, 루트 `pyproject.toml`
-- [ ] T002 Alembic 환경과 `ai.ai_call_log` 마이그레이션 — `services/ai-gateway/migrations/`, 테스트 `t/test_migrations.py`(PostgreSQL)
+- [x] T001 workspace 멤버 추가, 의존성 설치, 빈 패키지·설정(`settings.py`) — `services/ai-gateway/pyproject.toml`, 루트 `pyproject.toml`
+- [x] T002 Alembic 환경과 `ai.ai_call_log` 마이그레이션 — `services/ai-gateway/migrations/`, 테스트 `t/test_migrations.py`(PostgreSQL)
 
 ## Phase 2: 기동 검증 (US-3, US-6)
 

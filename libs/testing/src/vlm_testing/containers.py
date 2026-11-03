@@ -1,4 +1,7 @@
-"""통합 테스트용 Kafka·SeaweedFS 컨테이너. 로컬 compose(docs `local/`)와 같은 이미지를 쓴다."""
+"""통합 테스트용 Kafka·SeaweedFS·PostgreSQL 컨테이너.
+
+로컬 compose(docs `local/`)와 같은 이미지를 쓴다.
+"""
 
 import socket
 import time
@@ -10,6 +13,7 @@ from botocore.exceptions import BotoCoreError, ClientError
 from confluent_kafka.admin import AdminClient
 from confluent_kafka.cimpl import NewTopic
 from pydantic_settings import BaseSettings
+from testcontainers.community.postgres import PostgresContainer
 from testcontainers.core.container import DockerContainer
 from testcontainers.core.wait_strategies import LogMessageWaitStrategy
 
@@ -19,6 +23,9 @@ KAFKA_IMAGE = (
 SEAWEEDFS_IMAGE = (
     "chrislusf/seaweedfs:4.48"
     "@sha256:4e61d15fd35994cb1e43e1e553dff106794841fd9a99ade2fc8c8bfce4d7872d"
+)
+POSTGRES_IMAGE = (
+    "postgres:17.11-alpine@sha256:266d3c257594e195b309ae9d1805e54c788f1d7b375f56bf6c367aac6c917e7b"
 )
 # 접근 키 설정 없이 띄운 SeaweedFS는 서명을 검사하지 않는다. 테스트 자격 증명은 아무 값이나 된다.
 TEST_ACCESS_KEY = "test"
@@ -100,3 +107,10 @@ def create_bucket(endpoint: str, bucket: str, timeout_s: float = 60.0) -> None:
             if time.monotonic() > deadline:
                 raise
             time.sleep(0.5)
+
+
+@contextmanager
+def postgres() -> Iterator[str]:
+    """PostgreSQL을 띄우고 SQLAlchemy asyncpg 접속 URL을 돌려준다."""
+    with PostgresContainer(POSTGRES_IMAGE, driver="asyncpg") as container:
+        yield container.get_connection_url()
