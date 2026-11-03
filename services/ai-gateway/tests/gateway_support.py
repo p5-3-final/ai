@@ -9,6 +9,7 @@ from uuid import UUID
 
 import httpx
 from ai_gateway.adapters.base import Completion, ImageInput, VlmAdapter
+from ai_gateway.analyze import CallLogWriter
 from ai_gateway.call_log import CallLogEntry
 from ai_gateway.main import GatewayDeps, create_app
 from ai_gateway.profile import GatewayProfile
@@ -114,6 +115,8 @@ async def gateway(
     adapter: FakeAdapter | None = None,
     prepare: Callable[[InMemoryStorage], None] | None = None,
     ready: Callable[[], bool] = lambda: True,
+    adapters: dict[str, VlmAdapter] | None = None,
+    call_log: CallLogWriter | None = None,
 ) -> AsyncIterator[Gateway]:
     """가짜 Adapter·메모리 저장소·기록용 호출 로그로 앱을 띄운다."""
     storage = InMemoryStorage()
@@ -122,14 +125,13 @@ async def gateway(
     if prepare is not None:
         prepare(storage)
     fake = adapter or FakeAdapter()
-    call_log = RecordingCallLog()
-    adapters: dict[str, VlmAdapter] = {"fake": fake}
+    recording = RecordingCallLog()
     deps = GatewayDeps(
         profile=gateway_profile or profile(),
         prompts=PromptRegistry.load(contracts_dir),
         storage=storage,
-        adapters=adapters,
-        call_log=call_log,
+        adapters=adapters if adapters is not None else {"fake": fake},
+        call_log=call_log if call_log is not None else recording,
         is_ready=ready,
     )
 
@@ -140,7 +142,7 @@ async def gateway(
     async with app.router.lifespan_context(app):
         transport = httpx.ASGITransport(app=app)
         async with httpx.AsyncClient(transport=transport, base_url="http://ai-gateway") as client:
-            yield Gateway(client, fake, call_log, storage)
+            yield Gateway(client, fake, recording, storage)
 
 
 def analyze_body(**changes: object) -> dict[str, object]:
