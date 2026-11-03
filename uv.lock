@@ -10,6 +10,7 @@ members = [
     "vlm-contracts",
     "vlm-messaging",
     "vlm-storage",
+    "vlm-testing",
 ]
 
 [[package]]
@@ -26,6 +27,7 @@ dev = [
     { name = "ruff" },
     { name = "testcontainers" },
     { name = "types-boto3", extra = ["s3"] },
+    { name = "vlm-testing" },
 ]
 
 [package.metadata]
@@ -39,6 +41,7 @@ dev = [
     { name = "ruff", specifier = ">=0.17.3" },
     { name = "testcontainers", extras = ["kafka"], specifier = ">=4.15.0" },
     { name = "types-boto3", extras = ["s3"], specifier = ">=1.43.123" },
+    { name = "vlm-testing", editable = "libs/testing" },
 ]
 
 [[package]]
@@ -675,6 +678,25 @@ requires-dist = [
     { name = "boto3", specifier = ">=1.43.123" },
     { name = "pydantic-settings", specifier = ">=2.16.2" },
     { name = "vlm-common", editable = "libs/common" },
+]
+
+[[package]]
+name = "vlm-testing"
+version = "0.1.0"
+source = { editable = "libs/testing" }
+dependencies = [
+    { name = "boto3" },
+    { name = "confluent-kafka" },
+    { name = "pydantic-settings" },
+    { name = "testcontainers" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "boto3", specifier = ">=1.43.123" },
+    { name = "confluent-kafka", specifier = ">=2.16.1" },
+    { name = "pydantic-settings", specifier = ">=2.16.2" },
+    { name = "testcontainers", extras = ["kafka"], specifier = ">=4.15.0" },
 ]
 
 [[package]]
