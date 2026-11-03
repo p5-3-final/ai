@@ -11,6 +11,7 @@ from ai_gateway.adapters.base import VlmAdapter
 from ai_gateway.analyze import AnalyzeService, CallLogWriter
 from ai_gateway.api import router
 from ai_gateway.images import ImageReader
+from ai_gateway.problems import install_problem_handlers
 from ai_gateway.profile import GatewayProfile
 from ai_gateway.prompts import PromptRegistry
 
@@ -39,4 +40,5 @@ def create_app(build: Callable[[], Awaitable[GatewayDeps]]) -> FastAPI:
 
     app = FastAPI(title="ai-gateway", lifespan=lifespan)
     app.include_router(router)
+    install_problem_handlers(app)
     return app

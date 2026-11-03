@@ -1,9 +1,13 @@
 import json
 from pathlib import Path
+from unittest.mock import ANY
 
+import httpx
+import pytest
 from ai_gateway.prompts import PromptRegistry
 from gateway_support import (
     CALLER,
+    CANDIDATE,
     IMAGE_KEYS,
     SOURCE,
     FakeAdapter,
@@ -53,3 +57,57 @@ async def test_spec009_r1_records_call(contracts_dir: Path) -> None:
     assert entry.raw_output == json.dumps(good)
     assert (entry.input_tokens, entry.output_tokens) == (100, 20)
     assert entry.latency_ms >= 0
+
+
+def _problem(response: httpx.Response, status: int, code: str) -> dict[str, object]:
+    assert response.status_code == status
+    assert response.headers["content-type"].startswith("application/problem+json")
+    body: dict[str, object] = response.json()
+    assert body["code"] == code
+    assert body["status"] == status
+    assert body["type"] == "about:blank"
+    assert isinstance(body["title"], str)
+    return body
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        analyze_body(images=None),
+        analyze_body(sourceId="not-a-uuid"),
+        analyze_body(images=[{"storageKey": ""}]),
+        analyze_body(extra=1),
+        {"taskType": "event_judge"},
+    ],
+)
+async def test_spec009_r2_malformed_request_is_rejected(
+    contracts_dir: Path, body: dict[str, object]
+) -> None:
+    async with gateway(contracts_dir) as gw:
+        response = await post_analyze(gw.client, body)
+
+    problem = _problem(response, 400, "AI_INVALID_REQUEST")
+    assert problem["errors"]
+    assert gw.adapter.calls == []
+    assert gw.call_log.entries == []
+
+
+async def test_spec009_r2_variables_must_match_input_schema(contracts_dir: Path) -> None:
+    async with gateway(contracts_dir) as gw:
+        response = await post_analyze(
+            gw.client, analyze_body(variables={**CANDIDATE, "eventType": "nope"})
+        )
+
+    problem = _problem(response, 400, "AI_INVALID_REQUEST")
+    assert problem["errors"] == [
+        {"field": "variables/eventType", "message": ANY},
+    ]
+    assert gw.adapter.calls == []
+
+
+async def test_spec009_r3_unknown_task_type_is_rejected(contracts_dir: Path) -> None:
+    async with gateway(contracts_dir) as gw:
+        response = await post_analyze(gw.client, analyze_body(taskType="track_attribute"))
+
+    _problem(response, 400, "AI_UNKNOWN_TASK_TYPE")
+    assert gw.adapter.calls == []
