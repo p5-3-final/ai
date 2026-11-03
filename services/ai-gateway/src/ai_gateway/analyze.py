@@ -159,7 +159,7 @@ class _Call:
             raw_output=completion.text if completion else None,
             input_tokens=completion.input_tokens if completion else None,
             output_tokens=completion.output_tokens if completion else None,
-            trace_id=None,
+            trace_id=self.command.traceparent.split("-")[1] if self.command.traceparent else None,
         )
 
     def result(self, output: JsonObject) -> AnalyzeResult:

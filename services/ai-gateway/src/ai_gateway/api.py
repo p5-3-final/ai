@@ -1,5 +1,6 @@
 """HTTP 계층: 요청·응답 모델(계약 `ai-gateway.yaml`)과 오류 응답."""
 
+import re
 from typing import Annotated
 from uuid import UUID
 
@@ -10,6 +11,8 @@ from pydantic.alias_generators import to_camel
 from ai_gateway.analyze import AnalyzeCommand, AnalyzeService
 
 router = APIRouter()
+
+_TRACEPARENT = re.compile(r"00-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}")
 
 
 class _Body(BaseModel):
@@ -47,6 +50,7 @@ async def analyze(
     body: AnalyzeRequest,
     service: Annotated[AnalyzeService, Depends(_service)],
     x_caller: Annotated[str | None, Header()] = None,
+    traceparent: Annotated[str | None, Header()] = None,
 ) -> AnalyzeResponse:
     result = await service.analyze(
         AnalyzeCommand(
@@ -55,6 +59,10 @@ async def analyze(
             source_id=body.source_id,
             image_keys=[i.storage_key for i in body.images],
             variables=body.variables,
+            # 형식이 틀린 추적 헤더 때문에 분석을 거절하지 않는다. 없는 것으로 본다.
+            traceparent=traceparent
+            if traceparent and _TRACEPARENT.fullmatch(traceparent)
+            else None,
         )
     )
     return AnalyzeResponse(
@@ -64,3 +72,8 @@ async def analyze(
         prompt_version=result.prompt_version,
         output=result.output,
     )
+
+
+def _valid_traceparent(value: str | None) -> str | None:
+    # 형식이 틀린 추적 헤더 때문에 분석을 거절하지 않는다. 없는 것으로 본다.
+    return value if value and _TRACEPARENT.fullmatch(value) else None

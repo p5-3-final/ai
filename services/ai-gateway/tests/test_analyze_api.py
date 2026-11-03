@@ -225,3 +225,29 @@ async def test_spec009_r18_r19_provider_errors_are_reported_and_logged(
     [entry] = gw.call_log.entries
     assert (entry.status, entry.error_code) == (log_status, code)
     assert (entry.model_id, entry.output, entry.raw_output) == ("fake-vlm", None, None)
+
+
+async def test_spec009_nfr5_traceparent_reaches_adapter_and_call_log(contracts_dir: Path) -> None:
+    trace = "00-0123456789abcdef0123456789abcdef-0123456789abcdef-01"
+    adapter = FakeAdapter(reply=json.dumps(output_example(contracts_dir)))
+
+    async with gateway(contracts_dir, adapter=adapter) as gw:
+        await gw.client.post(
+            "/v1/analyze", json=analyze_body(), headers={"X-Caller": CALLER, "traceparent": trace}
+        )
+
+    assert adapter.calls[0].traceparent == trace
+    assert gw.call_log.entries[0].trace_id == "0123456789abcdef0123456789abcdef"
+
+
+async def test_spec009_nfr5_malformed_traceparent_is_ignored(contracts_dir: Path) -> None:
+    adapter = FakeAdapter(reply=json.dumps(output_example(contracts_dir)))
+
+    async with gateway(contracts_dir, adapter=adapter) as gw:
+        response = await gw.client.post(
+            "/v1/analyze", json=analyze_body(), headers={"X-Caller": CALLER, "traceparent": "x"}
+        )
+
+    assert response.status_code == 200
+    assert adapter.calls[0].traceparent is None
+    assert gw.call_log.entries[0].trace_id is None

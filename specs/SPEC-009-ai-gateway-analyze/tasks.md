@@ -49,7 +49,7 @@ updated: 2026-11-03
 - [x] T018 [R-16] 호출자 헤더 없음·허용 목록 밖 거절 — 테스트 `t/test_analyze_api.py`, 구현 `gw/api.py`
 - [x] T019 [R-18] [R-19] openai Adapter: 메시지 구성, 일시 오류·거부 구분, 토큰 수 — 테스트 `t/test_openai_adapter.py`(httpx2 MockTransport), 구현 `gw/adapters/openai.py`
 - [x] T020 [R-18] [R-19] API에서 503·502와 로그 상태 — 테스트 `t/test_analyze_api.py`, 구현 `gw/analyze.py`, `gw/api.py`
-- [ ] T021 [NFR-5] `traceparent` 이어 받기와 공급자 호출 헤더 — 테스트 `t/test_openai_adapter.py`, 구현 `gw/tracing.py`
+- [x] T021 [NFR-5] `traceparent` 이어 받기와 공급자 호출 헤더 — 테스트 `t/test_openai_adapter.py`, 구현 `gw/tracing.py`
 - [ ] T022 [NFR-3] 로그에 이미지·원문·키 없음 — 테스트 `t/test_analyze_api.py`(caplog), 구현 확인
 - [ ] T023 [P] mock Adapter — 테스트 `t/test_mock_adapter.py`, 구현 `gw/adapters/mock.py`
 

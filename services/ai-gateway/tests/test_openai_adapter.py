@@ -15,6 +15,7 @@ from ai_gateway.prompts import PromptMessage
 
 MESSAGE = PromptMessage(fixed_prefix="# 공통 규칙\n", variable_part="# 작업\n입력 JSON")
 IMAGES = [ImageInput(b"jpeg-0", "image/jpeg"), ImageInput(b"png-1", "image/png")]
+TRACEPARENT = "00-0123456789abcdef0123456789abcdef-0123456789abcdef-01"
 Handler = Callable[[httpx2.Request], httpx2.Response]
 
 
@@ -147,3 +148,23 @@ async def test_spec009_r1_missing_content_is_empty_text() -> None:
     completion = await _complete(_adapter(lambda _r: httpx2.Response(200, json=reply)))
 
     assert completion.text == ""
+
+
+async def test_spec009_nfr5_traceparent_is_forwarded_to_provider() -> None:
+    seen: list[httpx2.Request] = []
+
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        seen.append(request)
+        return httpx2.Response(200, json=_completion("{}"))
+
+    await _adapter(handler).complete(
+        model="m",
+        message=MESSAGE,
+        images=[],
+        max_output_tokens=10,
+        timeout_s=5,
+        max_retries=0,
+        traceparent=TRACEPARENT,
+    )
+
+    assert seen[0].headers["traceparent"] == TRACEPARENT
