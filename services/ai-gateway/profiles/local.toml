@@ -19,7 +19,9 @@ base_url = "http://host.docker.internal:11434/v1"
 [tasks.event_judge]
 adapter = "ollama"
 # 16GB 개발 머신에서 Docker와 함께 돌릴 수 있는 크기. 메모리가 넉넉하면 8b로 올린다.
-model = "qwen3-vl:4b"
+# 기본 태그(4b)는 생각 단계가 켜져 있어 출력 상한을 생각에 다 쓰고 답이 빈다. OpenAI 호환 API로는
+# 끌 수 없어 생각 단계가 없는 instruct 변형을 쓴다.
+model = "qwen3-vl:4b-instruct"
 max_output_tokens = 800
 # 후보 전후 5초 근거 프레임(docs overview "분석 처리 흐름" 8단계)
 max_images = 12
