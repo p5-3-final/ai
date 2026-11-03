@@ -28,6 +28,7 @@ ai/
 │   ├── common/                   # config(Settings), logging, errors, health, 프로필 로딩·검증
 │   ├── messaging/                # Kafka 소비·발행, retry·DLQ 토픽, 처리 결과가 정해진 뒤 수동 커밋
 │   ├── contracts/                # 이벤트 Pydantic 모델 (docs/contracts/events의 JSON Schema가 원본)
+│   ├── storage/                  # 객체 저장소 인터페이스(ObjectStorage)와 S3 API 구현, 테스트용 메모리 구현
 │   └── ai-client/                # ai-gateway 호출 클라이언트 (/v1/analyze, /v1/embed, /v1/parse)
 ├── services/
 │   ├── ai-gateway/               # FastAPI. 외부 AI 호출 관문, 질의 해석·질의 벡터
