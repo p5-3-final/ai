@@ -15,6 +15,7 @@ from gateway_support import (
     gateway,
     output_example,
     post_analyze,
+    profile,
 )
 
 
@@ -111,3 +112,61 @@ async def test_spec009_r3_unknown_task_type_is_rejected(contracts_dir: Path) -> 
 
     _problem(response, 400, "AI_UNKNOWN_TASK_TYPE")
     assert gw.adapter.calls == []
+
+
+async def test_spec009_r4_too_many_images_is_rejected(contracts_dir: Path) -> None:
+    async with gateway(contracts_dir, profile(max_images=1)) as gw:
+        response = await post_analyze(gw.client, analyze_body())
+
+    _problem(response, 400, "AI_TOO_MANY_IMAGES")
+    assert gw.adapter.calls == []
+
+
+async def test_spec009_r11_missing_image_is_rejected(contracts_dir: Path) -> None:
+    missing = f"sources/{SOURCE}/chunks/0/candidates/c1/blurred/404.jpg"
+    async with gateway(contracts_dir) as gw:
+        response = await post_analyze(
+            gw.client, analyze_body(images=[{"storageKey": missing, "ptsSec": None}])
+        )
+
+    _problem(response, 400, "AI_IMAGE_NOT_FOUND")
+    assert gw.adapter.calls == []
+
+
+async def test_spec009_r6_invalid_output_returns_unknown_and_keeps_raw(
+    contracts_dir: Path,
+) -> None:
+    adapter = FakeAdapter(reply="이미지가 너무 어두워 판단할 수 없습니다.")
+
+    async with gateway(contracts_dir, adapter=adapter) as gw:
+        response = await post_analyze(gw.client, analyze_body())
+
+    assert response.status_code == 200
+    output = response.json()["output"]
+    assert output["verificationStatus"] == "unknown"
+    assert output["eventType"] == "fall"
+    [entry] = gw.call_log.entries
+    assert entry.status == "invalid_output"
+    assert entry.raw_output == "이미지가 너무 어두워 판단할 수 없습니다."
+    assert entry.output == output
+
+
+async def test_spec009_r8_unconfigured_model_returns_unverified_without_call(
+    contracts_dir: Path,
+) -> None:
+    async with gateway(contracts_dir, profile(adapter=None, model=None)) as gw:
+        response = await post_analyze(gw.client, analyze_body())
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["modelId"] is None
+    assert body["output"]["verificationStatus"] == "unverified"
+    assert body["output"]["eventType"] == "fall"
+    assert gw.adapter.calls == []
+    [entry] = gw.call_log.entries
+    assert (entry.status, entry.adapter, entry.model_id, entry.raw_output) == (
+        "unavailable",
+        None,
+        None,
+        None,
+    )

@@ -34,10 +34,10 @@ updated: 2026-11-03
 - [x] T009 [R-17] [NFR-6] 호출 로그 저장(uuid4 호출 ID) — 테스트 `t/test_call_log.py`, 구현 `gw/call_log.py`
 - [x] T010 [R-1] `/v1/analyze` 성공 흐름(가짜 Adapter, 메모리 저장소) — 테스트 `t/test_analyze_api.py`, 구현 `gw/api.py`, `gw/analyze.py`, `gw/main.py`
 - [x] T011 [R-2] [R-3] 요청 형식·입력 변수·모르는 taskType 거절(ProblemDetail) — 테스트 `t/test_analyze_api.py`, 구현 `gw/api.py`
-- [ ] T012 [R-4] 이미지 상한 초과 거절 — 테스트 `t/test_analyze_api.py`, 구현 `gw/analyze.py`
-- [ ] T013 [R-11] 저장소에 없는 이미지 거절 — 테스트 `t/test_analyze_api.py`, 구현 `gw/images.py`
-- [ ] T014 [R-6] 출력 검증 실패 시 200 `unknown`과 `invalid_output`·원문 기록 — 테스트 `t/test_analyze_api.py`, 구현 `gw/analyze.py`
-- [ ] T015 [R-8] 모델 미설정이면 호출 없이 `unverified` — 테스트 `t/test_analyze_api.py`, 구현 `gw/analyze.py`
+- [x] T012 [R-4] 이미지 상한 초과 거절 — 테스트 `t/test_analyze_api.py`, 구현 `gw/analyze.py`
+- [x] T013 [R-11] 저장소에 없는 이미지 거절 — 테스트 `t/test_analyze_api.py`, 구현 `gw/images.py`
+- [x] T014 [R-6] 출력 검증 실패 시 200 `unknown`과 `invalid_output`·원문 기록 — 테스트 `t/test_analyze_api.py`, 구현 `gw/analyze.py`
+- [x] T015 [R-8] 모델 미설정이면 호출 없이 `unverified` — 테스트 `t/test_analyze_api.py`, 구현 `gw/analyze.py`
 
 ## Phase 4: US-2 원본 영상 보호 (P1)
 
