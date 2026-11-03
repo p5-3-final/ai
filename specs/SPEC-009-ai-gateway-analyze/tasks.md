@@ -41,8 +41,8 @@ updated: 2026-11-03
 
 ## Phase 4: US-2 원본 영상 보호 (P1)
 
-- [ ] T016 [R-9] 허용 패턴 밖 경로 거절(원본·정규화 사본·HLS 포함) — 테스트 `t/test_images.py`, `t/test_analyze_api.py`, 구현 `gw/images.py`
-- [ ] T017 [R-10] 다른 영상 폴더·`..` 경로 거절 — 테스트 `t/test_images.py`, 구현 `gw/images.py`
+- [x] T016 [R-9] 허용 패턴 밖 경로 거절(원본·정규화 사본·HLS 포함) — 테스트 `t/test_images.py`, `t/test_analyze_api.py`, 구현 `gw/images.py`
+- [x] T017 [R-10] 다른 영상 폴더·`..` 경로 거절 — 테스트 `t/test_images.py`, 구현 `gw/images.py`
 
 ## Phase 5: US-4 호출 추적·장애 구분 (P2)
 

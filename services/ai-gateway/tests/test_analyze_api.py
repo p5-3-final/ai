@@ -170,3 +170,26 @@ async def test_spec009_r8_unconfigured_model_returns_unverified_without_call(
         None,
         None,
     )
+
+
+async def test_spec009_r9_original_path_is_forbidden(contracts_dir: Path) -> None:
+    original = f"sources/{SOURCE}/original"
+
+    async with gateway(contracts_dir) as gw:
+        response = await post_analyze(
+            gw.client, analyze_body(images=[{"storageKey": original, "ptsSec": None}])
+        )
+
+    _problem(response, 403, "AI_IMAGE_PATH_FORBIDDEN")
+    assert gw.adapter.calls == []
+
+
+async def test_spec009_r10_other_source_path_is_forbidden(contracts_dir: Path) -> None:
+    other = "sources/0192f0d2-0000-7000-8000-000000000000/chunks/0/blurred/000.jpg"
+
+    async with gateway(contracts_dir) as gw:
+        response = await post_analyze(
+            gw.client, analyze_body(images=[{"storageKey": other, "ptsSec": None}])
+        )
+
+    _problem(response, 403, "AI_IMAGE_PATH_FORBIDDEN")

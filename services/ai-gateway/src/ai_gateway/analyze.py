@@ -8,7 +8,7 @@ from uuid import UUID
 from ai_gateway.adapters.base import Completion, VlmAdapter
 from ai_gateway.call_log import CallLogEntry, CallStatus, new_call_id
 from ai_gateway.errors import InvalidRequestError, TooManyImagesError, UnknownTaskTypeError
-from ai_gateway.images import ImageReader
+from ai_gateway.images import ImagePolicy, ImageReader
 from ai_gateway.output import fallback_output, parse_output
 from ai_gateway.profile import GatewayProfile, TaskProfile
 from ai_gateway.prompts import PromptRegistry
@@ -51,6 +51,7 @@ class AnalyzeService:
         self._profile = profile
         self._prompts = prompts
         self._images = images
+        self._image_policy = ImagePolicy(profile.images.allowed_patterns)
         self._adapters = adapters
         self._call_log = call_log
 
@@ -68,6 +69,7 @@ class AnalyzeService:
         settings = self._profile.tasks[command.task_type]
         if len(command.image_keys) > settings.max_images:
             raise TooManyImagesError(f"at most {settings.max_images} images are allowed")
+        self._image_policy.check(command.source_id, command.image_keys)
         images = await self._images.read(command.image_keys)
 
         call = _Call(command, task.version, settings, started)
