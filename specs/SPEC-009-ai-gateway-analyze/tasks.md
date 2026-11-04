@@ -1,7 +1,7 @@
 ---
 spec: SPEC-009
 repo: ai
-updated: 2026-11-03
+updated: 2026-11-04
 ---
 
 # Tasks: SPEC-009 ai-gateway 분석 호출 — ai
@@ -68,6 +68,13 @@ updated: 2026-11-03
 - [x] T028 [NFR-2] [NFR-4] 공급자 SDK import 위치, API 키 `SecretStr` — 테스트 `t/test_architecture.py`, `t/test_profile.py`
 - [x] T029 계약 일치: 요청·응답 모델과 `ai-gateway.yaml`, 프롬프트 예시 — 테스트 `t/test_contract.py`
 - [x] T030 Dockerfile(계약 빌드 컨텍스트), CI service-images, 로컬 프로필, `.env.example`, AGENTS.md(프롬프트 위치), README
+
+## v4 전환 A-2: Registry 등록만으로 taskType 추가, 묶음 받기 (ADR-0010 ⑦)
+
+- [x] T031 [R-25] [R-14] [R-13] `fallback.json` 대체 결과 정의, 입력·출력 예시와 대체 결과 검증, 해시에 포함 — 테스트 `t/test_prompts.py`, `t/test_output.py`, 구현 `prompts.py`, `output.py`, `analyze.py`, `registry/prompts/event_judge/fallback.json`
+- [x] T032 [R-24] mock Adapter가 출력 예시로 응답(taskType별 코드 없음) — 테스트 `t/test_mock_adapter.py`, `t/test_analyze_api.py`(`sample_check`), 구현 `adapters/mock.py`, `main.py`(`build_adapters`)
+- [x] T033 [R-26] [R-27] [R-28] 해시로 고정한 파일 받기 — 테스트 `libs/storage/tests/test_artifacts.py`, 구현 `libs/storage` `artifacts.fetch_file`
+- [x] T034 [R-26] [R-27] [R-28] [R-14] Registry 묶음 만들기·받기·풀기, 설정 검증, 기동 조립 — 테스트 `t/test_registry_bundle.py`, `t/test_startup_e2e.py`(SeaweedFS), 구현 `registry_bundle.py`, `settings.py`, `main.py`, `.env.example`
 
 ## 완료 조건 (Definition of Done)
 

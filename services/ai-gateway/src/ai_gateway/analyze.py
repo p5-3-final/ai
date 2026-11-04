@@ -20,7 +20,7 @@ from ai_gateway.errors import (
     UnknownTaskTypeError,
 )
 from ai_gateway.images import ImagePolicy, ImageReader
-from ai_gateway.output import fallback_output, parse_output
+from ai_gateway.output import parse_output
 from ai_gateway.profile import GatewayProfile, TaskProfile
 from ai_gateway.prompts import PromptRegistry
 
@@ -91,7 +91,7 @@ class AnalyzeService:
         call = _Call(command, task.version, settings, started)
         if settings.adapter is None or settings.model is None:
             # SPEC-009 R-8: 모델이 없으면 결과를 지어내지 않고 unverified로 돌려준다.
-            output = fallback_output(command.task_type, command.variables, "unverified")
+            output = task.fallback(command.variables, "unverified")
             await self._record(call.entry("unavailable", output=output))
             return call.result(output)
 

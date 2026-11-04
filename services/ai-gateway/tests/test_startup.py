@@ -37,7 +37,7 @@ def test_spec009_r14_matching_profile_passes(registry_dir: Path) -> None:
     check_tasks(profile(), PromptRegistry.load(registry_dir))
 
 
-def test_spec009_r1_builds_adapter_per_profile_entry() -> None:
+def test_spec009_r1_builds_adapter_per_profile_entry(registry_dir: Path) -> None:
     gateway_profile = profile().model_copy(
         update={
             "adapters": {
@@ -51,7 +51,7 @@ def test_spec009_r1_builds_adapter_per_profile_entry() -> None:
         }
     )
 
-    adapters = build_adapters(gateway_profile, api_key=None)
+    adapters = build_adapters(gateway_profile, PromptRegistry.load(registry_dir), api_key=None)
 
     assert isinstance(adapters["fake"], MockAdapter)
     assert isinstance(adapters["ollama"], OpenAiAdapter)

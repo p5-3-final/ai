@@ -2,8 +2,8 @@ import json
 from pathlib import Path
 
 import pytest
-from ai_gateway.output import FallbackStatus, fallback_output, parse_output
-from ai_gateway.prompts import PromptRegistry, PromptTask
+from ai_gateway.output import parse_output
+from ai_gateway.prompts import FallbackStatus, PromptRegistry, PromptTask
 
 CANDIDATE: dict[str, object] = {"eventType": "fall", "startSec": 61.2, "endSec": 66.2}
 
@@ -89,7 +89,7 @@ def test_spec009_r7_risk_without_type_or_reason_is_invalid(
 def test_spec009_r6_r8_fallback_matches_output_schema(
     task: PromptTask, status: FallbackStatus
 ) -> None:
-    output = fallback_output("event_judge", CANDIDATE, status)
+    output = task.fallback(CANDIDATE, status)
 
     assert task.output_errors(output) == []
     assert output["verificationStatus"] == status

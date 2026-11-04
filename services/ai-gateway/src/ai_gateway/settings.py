@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from pydantic import Field, SecretStr
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import SettingsConfigDict
 from vlm_common.settings import ServiceSettings
 
@@ -18,6 +18,10 @@ class GatewaySettings(ServiceSettings):
     # Prompt Registry 폴더(prompts/ + taxonomy/). 이미지는 빌드할 때 레포의 프롬프트와
     # 잠금 파일 버전의 분류 체계를 합쳐 둔다(docs ADR-0012·0013).
     registry_dir: Path = Path("/app/registry")
+    # 모델 저장소의 Registry 묶음(프롬프트·분류 체계·프로필) 키와 파일 해시(SPEC-009 R-26).
+    # 둘 다 있으면 이미지의 registry_dir 대신 묶음을 쓰고, profile_path는 묶음 안의 상대 경로다.
+    registry_bundle: str | None = None
+    registry_bundle_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     # mock Adapter는 CI·로컬 전용이다. 운영에서 실수로 고르지 않도록 따로 켜야 한다(SPEC-009 R-15).
     allow_mock: bool = False
     kafka_bootstrap: str = Field(validation_alias="KAFKA_BOOTSTRAP")
@@ -27,3 +31,9 @@ class GatewaySettings(ServiceSettings):
     models_bucket: str | None = None
     # 가중치 로컬 캐시. 운영은 Pod의 emptyDir을 여기에 붙여 재시작 때 다시 받지 않는다.
     model_cache_dir: Path = Path("/var/cache/vlm-models")
+
+    @field_validator("registry_bundle", "registry_bundle_sha256", mode="before")
+    @classmethod
+    def _empty_is_unset(cls, value: object) -> object:
+        # compose는 값이 없는 변수를 빈 문자열(${VAR:-})로 넘긴다. 묶음을 쓰지 않는다는 뜻이다.
+        return None if value == "" else value

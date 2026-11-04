@@ -14,7 +14,9 @@ from ai_gateway.adapters.base import (
 from ai_gateway.adapters.openai import OpenAiAdapter
 from ai_gateway.prompts import PromptMessage
 
-MESSAGE = PromptMessage(fixed_prefix="# 공통 규칙\n", variable_part="# 작업\n입력 JSON")
+MESSAGE = PromptMessage(
+    task_type="event_judge", fixed_prefix="# 공통 규칙\n", variable_part="# 작업\n입력 JSON"
+)
 IMAGES = [ImageInput(b"jpeg-0", "image/jpeg"), ImageInput(b"png-1", "image/png")]
 TRACEPARENT = "00-0123456789abcdef0123456789abcdef-0123456789abcdef-01"
 Handler = Callable[[httpx2.Request], httpx2.Response]
