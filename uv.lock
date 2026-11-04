@@ -1541,6 +1541,7 @@ dependencies = [
     { name = "boto3" },
     { name = "pydantic-settings" },
     { name = "vlm-common" },
+    { name = "vlm-contracts" },
 ]
 
 [package.metadata]
@@ -1548,6 +1549,7 @@ requires-dist = [
     { name = "boto3", specifier = ">=1.43.123" },
     { name = "pydantic-settings", specifier = ">=2.16.2" },
     { name = "vlm-common", editable = "libs/common" },
+    { name = "vlm-contracts", editable = "libs/contracts" },
 ]
 
 [[package]]

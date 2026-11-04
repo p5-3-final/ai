@@ -1,6 +1,7 @@
 """API 테스트 공통 준비물: 가짜 Adapter·호출 로그와 앱 조립."""
 
 import functools
+import hashlib
 import json
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
@@ -27,6 +28,7 @@ from safetensors.torch import save
 from vlm_encoders.base import ImageTextEncoder
 from vlm_encoders.mock import MockEncoder
 from vlm_storage.memory import InMemoryStorage
+from vlm_storage.storage import ObjectStorage
 
 SOURCE = UUID("0192f0d2-1a2b-7c3d-8e4f-5a6b7c8d9e0f")
 CALLER = "event-analyzer"
@@ -259,3 +261,27 @@ def random_weights() -> bytes:
         k: v.contiguous().clone() for k, v in model.state_dict().items()
     }
     return save(tensors)
+
+
+ENCODER_MANIFEST_KEY = "models/mobileclip2-s0/dfndr2b/manifest.json"
+
+
+def put_encoder_model(models: ObjectStorage, weights: bytes, dimension: int = 512) -> str:
+    """가중치와 manifest를 모델 버킷에 올리고 프로필에 적을 manifest sha256을 돌려준다."""
+    name = "open_clip_model.safetensors"
+    manifest = {
+        "kind": "image_text_encoder",
+        "modelId": "open_clip:MobileCLIP2-S0:dfndr2b",
+        "version": "dfndr2b",
+        "files": [
+            {"name": name, "sha256": hashlib.sha256(weights).hexdigest(), "size": len(weights)}
+        ],
+        "dimension": dimension,
+        "source": {"type": "public", "origin": "huggingface:timm/MobileCLIP2-S0-OpenCLIP"},
+        "license": "Apple AMLR",
+    }
+    raw = json.dumps(manifest).encode()
+    prefix = ENCODER_MANIFEST_KEY.rsplit("/", 1)[0]
+    models.put_bytes(f"{prefix}/{name}", weights, "application/octet-stream")
+    models.put_bytes(ENCODER_MANIFEST_KEY, raw, "application/json")
+    return hashlib.sha256(raw).hexdigest()

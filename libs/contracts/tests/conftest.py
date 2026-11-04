@@ -24,11 +24,17 @@ type SchemaLoader = Callable[[str], JsonObject]
 
 
 @pytest.fixture(scope="session")
-def load_schema() -> SchemaLoader:
-    """이름(`video.uploaded`, `_envelope`)으로 이벤트 JSON Schema 원본을 읽는다."""
-    events_dir = _ContractSettings().contracts_dir / "events"
+def contracts_dir() -> Path:
+    path = _ContractSettings().contracts_dir
     # 원본이 없으면 계약 검증이 빠진 채 통과하므로 건너뛰지 않고 실패시킨다.
-    assert events_dir.is_dir(), f"계약 원본을 찾을 수 없다: {events_dir} (CONTRACTS_DIR 확인)"
+    assert path.is_dir(), f"계약 원본을 찾을 수 없다: {path} (CONTRACTS_DIR 확인)"
+    return path
+
+
+@pytest.fixture(scope="session")
+def load_schema(contracts_dir: Path) -> SchemaLoader:
+    """이름(`video.uploaded`, `_envelope`)으로 이벤트 JSON Schema 원본을 읽는다."""
+    events_dir = contracts_dir / "events"
 
     def load(name: str) -> JsonObject:
         loaded: JsonObject = json.loads(

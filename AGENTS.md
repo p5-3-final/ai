@@ -27,8 +27,8 @@ ai/
 ├── libs/
 │   ├── common/                   # config(Settings), logging, errors, health, 프로필 로딩·검증
 │   ├── messaging/                # Kafka 소비·발행, retry·DLQ 토픽, 처리 결과가 정해진 뒤 수동 커밋
-│   ├── contracts/                # 이벤트 Pydantic 모델 (docs 레포 service-contracts/events의 JSON Schema가 원본)
-│   ├── storage/                  # 객체 저장소 인터페이스(ObjectStorage)와 S3 API 구현, 테스트용 메모리 구현
+│   ├── contracts/                # 이벤트·모델 manifest Pydantic 모델 (docs 레포 service-contracts/events·models의 JSON Schema가 원본)
+│   ├── storage/                  # 객체 저장소 인터페이스(ObjectStorage)와 S3 API 구현, 테스트용 메모리 구현, manifest로 모델 산출물 받기
 │   ├── encoders/                 # 이미지·질의 인코더(ImageTextEncoder)와 open_clip 구현, 가중치 받기 (ai-gateway·frame-encoder 공유)
 │   ├── testing/                  # 테스트 전용: testcontainers로 Kafka·SeaweedFS 띄우기 (운영 이미지에 넣지 않음)
 │   └── ai-client/                # ai-gateway 호출 클라이언트 (/v1/analyze, /v1/embed, /v1/parse)
@@ -90,7 +90,7 @@ uv run python -m evals.run --suite <name>       # 평가
   - 모델 ID·차원·가중치 경로·클래스·`supported_events`·프롬프트 버전·기준값은 Git으로 관리하는 프로필 값이다. 코드에 상수로 박지 않는다.
   - 결과(이벤트, 벡터 파일, 호출 로그)마다 쓴 모델과 버전(`embedding_model`, `model_id`, `prompt_version`, `detector_profile`, `taxonomy_version`)을 싣는다.
   - `mock` Adapter는 CI·단위 테스트 전용이다. 운영 프로필에서 고르면 기동에 실패해야 한다. 모델이 없으면 결과를 지어내지 않고 `unverified`·`unknown`으로 표시한다.
-- **모델 로딩**: 모델은 요청마다 로드하지 않고 기동할 때(`lifespan`, 워커는 시작 단계) 한 번 로드한다. 프로필을 검증하고, 로드에 실패하거나 출력 차원이 프로필과 다르면 기동에 실패한다. `/ready`는 로드가 끝난 뒤에만 200이다. 모델 가중치와 데이터셋은 git에 커밋하지 않고 S3 모델 저장소 경로에서 내려받는다.
+- **모델 로딩**: 모델은 요청마다 로드하지 않고 기동할 때(`lifespan`, 워커는 시작 단계) 한 번 로드한다. 프로필을 검증하고, 로드에 실패하거나 출력 차원이 프로필과 다르면 기동에 실패한다. `/ready`는 로드가 끝난 뒤에만 200이다. 모델 가중치와 데이터셋은 git에 커밋하지 않는다. 가중치는 모델 저장소 `models/<종류>/<버전>/`에 `manifest.json`과 함께 두고, 프로필은 manifest 경로와 manifest sha256을 가리킨다. 받기는 `vlm_storage.artifacts.fetch_model`로 한다(docs ADR-0010 ②).
 - **설정**: `pydantic-settings`의 `Settings` 클래스로 환경변수를 읽는다. `os.environ`을 직접 읽지 않는다. 비밀값은 `SecretStr`로 감싼다.
 - **외부 LLM·API 호출**: 타임아웃, 재시도(지수 백오프), 토큰·비용 로깅을 반드시 둔다. API 키는 로그에 남기지 않는다.
 - **프롬프트**: 프롬프트는 코드에 긴 문자열로 하드코딩하지 않는다. 원본은 `services/ai-gateway/registry/prompts/<taskType>/`(프롬프트·입력·출력 스키마)이고 분류 체계는 서비스 간 계약에서 가져온다(docs ADR-0012). 버전 ID는 ai-gateway가 내용 해시로 계산한다(SPEC-009). 이미지에는 빌드할 때 넣는다(`--build-context vlm-contracts:docs=...`).

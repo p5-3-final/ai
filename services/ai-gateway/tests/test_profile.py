@@ -112,8 +112,8 @@ EMBED = f"""
 kind = "open_clip"
 model_id = "open_clip:MobileCLIP2-S0:dfndr2b:mean-4"
 dimension = 512
-weights_key = "open_clip/MobileCLIP2-S0/dfndr2b/open_clip_model.safetensors"
-weights_sha256 = "{SHA}"
+manifest = "models/mobileclip2-s0/dfndr2b/manifest.json"
+manifest_sha256 = "{SHA}"
 
 [embed.embed_visual_text]
 max_inputs = 16
@@ -183,9 +183,14 @@ def test_spec011_r14_embed_text_without_model_is_not_configured(tmp_path: Path) 
         ('adapter = "ollama"\nmodel = "bge-m3"', 'adapter = "nope"\nmodel = "bge-m3"'),
         # Adapter·모델·차원은 함께 있어야 한다
         ('model = "bge-m3"\ndimension = 1024\n', 'model = "bge-m3"\n'),
-        # open_clip 인코더는 가중치 키와 해시가 있어야 한다
-        (f'weights_sha256 = "{SHA}"\n', ""),
-        (f'weights_sha256 = "{SHA}"', 'weights_sha256 = "abc"'),
+        # open_clip 인코더는 manifest 경로와 해시가 있어야 한다
+        (f'manifest_sha256 = "{SHA}"\n', ""),
+        (f'manifest_sha256 = "{SHA}"', 'manifest_sha256 = "abc"'),
+        # manifest는 모델 저장소 규약 경로(models/<종류>/<버전>/manifest.json)여야 한다
+        (
+            '"models/mobileclip2-s0/dfndr2b/manifest.json"',
+            '"open_clip/MobileCLIP2-S0/x.safetensors"',
+        ),
         ('model_id = "open_clip:MobileCLIP2-S0:dfndr2b:mean-4"', 'model_id = "MobileCLIP2-S0"'),
         # 경로 패턴이 정규식이 아님
         ("allowed_patterns = ['^queries/[^/]+/[^/]+\\.(jpg|png)$']", "allowed_patterns = ['(']"),

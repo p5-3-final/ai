@@ -1,55 +1,53 @@
-"""모델 가중치를 모델 저장소에서 로컬 캐시로 받는다(docs overview "모델과 플랫폼 교체").
+"""인코더 가중치를 모델 저장소의 manifest로 받는다(docs overview "모델과 플랫폼 교체", ADR-0010 ②).
 
-가중치는 이미지에 넣지 않고 기동할 때 받는다(SPEC-011 NFR-6). 받은 파일은 프로필의 sha256과
-맞을 때만 쓴다.
+가중치는 이미지에 넣지 않고 기동할 때 받는다(SPEC-011 NFR-6). 체크섬은 manifest가 고정하고, 프로필의
+모델 ID·차원은 기대값이라 manifest와 다르면 로드하지 않는다.
 """
 
-import hashlib
 from pathlib import Path
 
-from vlm_storage.storage import ObjectNotFoundError, ObjectStorage
+from vlm_storage.artifacts import ArtifactError, fetch_model
+from vlm_storage.storage import ObjectStorage
 
 from vlm_encoders.base import EncoderLoadError
+from vlm_encoders.model_id import ModelId
 
-_CHUNK = 1 << 20
 
-
-def fetch_weights(storage: ObjectStorage, key: str, sha256: str, cache_dir: Path) -> Path:
-    """가중치 파일을 받아 해시를 확인한 로컬 경로를 돌려준다.
-
-    캐시 경로에 해시를 넣어, 프로필이 다른 가중치를 가리키면 다른 파일이 되게 한다.
+def fetch_encoder_weights(
+    storage: ObjectStorage,
+    manifest_key: str,
+    manifest_sha256: str,
+    model_id: str,
+    dimension: int,
+    cache_dir: Path,
+) -> Path:
+    """manifest와 가중치를 받아 프로필과 맞는지 확인한 가중치 파일 경로를 돌려준다.
 
     Args:
         storage: 모델 버킷.
-        key: 가중치 객체 키(프로필 값).
-        sha256: 기대하는 파일 해시(소문자 16진수, 프로필 값).
+        manifest_key: manifest 객체 키(프로필 값).
+        manifest_sha256: 기대하는 manifest 파일 해시(프로필 값).
+        model_id: 프로필의 인코더 모델 ID. 집계를 뺀 앞부분이 manifest의 모델 ID여야 한다.
+        dimension: 프로필의 출력 차원.
         cache_dir: 로컬 캐시 폴더(Pod의 emptyDir 등).
 
     Raises:
-        EncoderLoadError: 객체가 없거나 해시가 다를 때.
+        EncoderLoadError: 받지 못했거나 해시가 다르거나, manifest가 프로필과 맞지 않을 때
+            (SPEC-011 R-16).
     """
-    target = cache_dir / sha256 / Path(key).name
-    # Pod 재시작처럼 캐시 폴더가 남아 있으면 다시 받지 않는다(SPEC-011 R-18).
-    if target.is_file() and _sha256(target) == sha256:
-        return target
-    target.parent.mkdir(parents=True, exist_ok=True)
-    # 받다가 멈춘 파일이 캐시로 쓰이지 않도록 임시 이름으로 받아 확인한 뒤 옮긴다.
-    partial = target.with_name(target.name + ".partial")
     try:
-        storage.get_file(key, partial)
-    except ObjectNotFoundError as e:
-        raise EncoderLoadError(f"weights not found: {key}") from e
-    actual = _sha256(partial)
-    if actual != sha256:
-        partial.unlink()
-        raise EncoderLoadError(f"weights sha256 mismatch for {key}: {actual}")
-    partial.replace(target)
-    return target
-
-
-def _sha256(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as f:
-        while chunk := f.read(_CHUNK):
-            digest.update(chunk)
-    return digest.hexdigest()
+        fetched = fetch_model(storage, manifest_key, manifest_sha256, cache_dir)
+    except ArtifactError as e:
+        raise EncoderLoadError(str(e)) from e
+    manifest = fetched.manifest
+    if manifest.kind != "image_text_encoder":
+        raise EncoderLoadError(f"manifest kind {manifest.kind} is not image_text_encoder")
+    expected = ModelId.parse(model_id)
+    weights_id = f"{expected.library}:{expected.architecture}:{expected.weights}"
+    if manifest.model_id != weights_id:
+        raise EncoderLoadError(f"manifest model id {manifest.model_id} != profile {weights_id}")
+    if manifest.dimension != dimension:
+        raise EncoderLoadError(f"manifest dimension {manifest.dimension} != profile {dimension}")
+    if len(fetched.files) != 1:
+        raise EncoderLoadError("encoder manifest must list exactly one weights file")
+    return next(iter(fetched.files.values()))
