@@ -10,16 +10,16 @@ CANDIDATE = {"eventType": "fall", "startSec": 61.2, "endSec": 66.2, "zoneName": 
 
 
 @pytest.fixture
-def copied(contracts_dir: Path, tmp_path: Path) -> Path:
+def copied(registry_dir: Path, tmp_path: Path) -> Path:
     """내용을 바꿔 보기 위한 계약 사본."""
     target = tmp_path / "contracts"
-    shutil.copytree(contracts_dir / "prompts", target / "prompts")
-    shutil.copytree(contracts_dir / "taxonomy", target / "taxonomy")
+    shutil.copytree(registry_dir / "prompts", target / "prompts")
+    shutil.copytree(registry_dir / "taxonomy", target / "taxonomy")
     return target
 
 
-def test_spec009_r13_loads_event_judge_with_content_version(contracts_dir: Path) -> None:
-    registry = PromptRegistry.load(contracts_dir)
+def test_spec009_r13_loads_event_judge_with_content_version(registry_dir: Path) -> None:
+    registry = PromptRegistry.load(registry_dir)
 
     task = registry.get("event_judge")
 
@@ -27,7 +27,7 @@ def test_spec009_r13_loads_event_judge_with_content_version(contracts_dir: Path)
     assert task.version.startswith("event_judge@")
     assert len(task.version.split("@")[1]) == 12
     # 같은 내용을 다시 읽으면 같은 버전이다.
-    again = PromptRegistry.load(contracts_dir).get("event_judge")
+    again = PromptRegistry.load(registry_dir).get("event_judge")
     assert again is not None
     assert again.version == task.version
 
@@ -74,12 +74,12 @@ def test_spec009_r13_formatting_only_json_change_keeps_version(copied: Path) -> 
     assert before.version == after.version
 
 
-def test_spec009_r3_unknown_task_is_none(contracts_dir: Path) -> None:
-    assert PromptRegistry.load(contracts_dir).get("track_attribute") is None
+def test_spec009_r3_unknown_task_is_none(registry_dir: Path) -> None:
+    assert PromptRegistry.load(registry_dir).get("track_attribute") is None
 
 
-def test_spec009_r2_validates_variables_with_input_schema(contracts_dir: Path) -> None:
-    task = PromptRegistry.load(contracts_dir).get("event_judge")
+def test_spec009_r2_validates_variables_with_input_schema(registry_dir: Path) -> None:
+    task = PromptRegistry.load(registry_dir).get("event_judge")
     assert task is not None
 
     assert task.input_errors(CANDIDATE) == []
@@ -87,19 +87,19 @@ def test_spec009_r2_validates_variables_with_input_schema(contracts_dir: Path) -
     assert task.input_errors({"eventType": "fall"}) != []
 
 
-def test_spec009_r5_output_schema_resolves_taxonomy(contracts_dir: Path) -> None:
-    task = PromptRegistry.load(contracts_dir).get("event_judge")
+def test_spec009_r5_output_schema_resolves_taxonomy(registry_dir: Path) -> None:
+    task = PromptRegistry.load(registry_dir).get("event_judge")
     assert task is not None
     schema = json.loads(
-        (contracts_dir / "prompts/event_judge/output.schema.json").read_text(encoding="utf-8")
+        (registry_dir / "prompts/event_judge/output.schema.json").read_text(encoding="utf-8")
     )
 
     assert task.output_errors(schema["examples"][0]) == []
     assert task.output_errors({**schema["examples"][0], "eventType": "nope"}) != []
 
 
-def test_spec009_r12_fixed_prefix_is_separate_from_variable_part(contracts_dir: Path) -> None:
-    task = PromptRegistry.load(contracts_dir).get("event_judge")
+def test_spec009_r12_fixed_prefix_is_separate_from_variable_part(registry_dir: Path) -> None:
+    task = PromptRegistry.load(registry_dir).get("event_judge")
     assert task is not None
 
     message = task.render(CANDIDATE)
@@ -127,9 +127,9 @@ def test_spec009_r14_missing_prompt_file_fails_to_load(copied: Path) -> None:
         PromptRegistry.load(copied)
 
 
-def test_issue17_prompt_includes_output_schema_with_taxonomy(contracts_dir: Path) -> None:
+def test_issue17_prompt_includes_output_schema_with_taxonomy(registry_dir: Path) -> None:
     """[#17] 모델이 필수 필드와 허용 값을 알 수 있게 출력 스키마를 함께 보낸다."""
-    task = PromptRegistry.load(contracts_dir).get("event_judge")
+    task = PromptRegistry.load(registry_dir).get("event_judge")
     assert task is not None
 
     part = task.render(CANDIDATE).variable_part

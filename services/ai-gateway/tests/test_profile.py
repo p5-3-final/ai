@@ -97,13 +97,13 @@ def test_spec009_r15_mock_requires_explicit_allow(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize("name", ["local.toml", "local-mock.toml"])
-def test_spec009_r14_committed_profiles_are_valid(contracts_dir: Path, name: str) -> None:
+def test_spec009_r14_committed_profiles_are_valid(registry_dir: Path, name: str) -> None:
     path = Path(__file__).resolve().parents[1] / "profiles" / name
 
     profile = load_profile(path, GatewayProfile)
 
     check_profile(profile, allow_mock=True, has_openai_key=False)
-    check_tasks(profile, PromptRegistry.load(contracts_dir))
+    check_tasks(profile, PromptRegistry.load(registry_dir))
 
 
 SHA = "ab91a1a0c4330d6b1913e24d5035dfdea15423316aaec649610c6b1c6ddd0e95"

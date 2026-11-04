@@ -25,7 +25,7 @@ PROFILE = Path(__file__).resolve().parents[1] / "profiles" / "local-mock.toml"
 
 @pytest.fixture
 def environment(
-    monkeypatch: pytest.MonkeyPatch, database_url: str, contracts_dir: Path
+    monkeypatch: pytest.MonkeyPatch, database_url: str, registry_dir: Path
 ) -> Iterator[None]:
     with containers.kafka() as bootstrap, containers.seaweedfs() as endpoint:
         containers.create_topics(
@@ -35,7 +35,7 @@ def environment(
         for name, value in {
             "AI_GATEWAY_DATABASE_URL": database_url,
             "AI_GATEWAY_PROFILE_PATH": str(PROFILE),
-            "AI_GATEWAY_CONTRACTS_DIR": str(contracts_dir),
+            "AI_GATEWAY_REGISTRY_DIR": str(registry_dir),
             "AI_GATEWAY_ALLOW_MOCK": "true",
             "KAFKA_BOOTSTRAP": bootstrap,
             "S3_BUCKET": BUCKET,

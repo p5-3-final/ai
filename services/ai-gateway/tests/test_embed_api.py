@@ -35,11 +35,11 @@ def _put_query_image(storage: InMemoryStorage) -> None:
     storage.put_bytes(QUERY_IMAGE, _jpeg(), "image/jpeg")
 
 
-async def test_spec011_r1_visual_text_returns_encoder_vectors(contracts_dir: Path) -> None:
+async def test_spec011_r1_visual_text_returns_encoder_vectors(registry_dir: Path) -> None:
     """[SPEC-011 R-1] 문장마다 인코더 텍스트 벡터를 입력 순서대로 돌려준다."""
     encoder = mock_encoder()
 
-    async with gateway(contracts_dir, profile(embed_settings()), encoder=encoder) as gw:
+    async with gateway(registry_dir, profile(embed_settings()), encoder=encoder) as gw:
         response = await post_embed(
             gw.client, {"taskType": "embed_visual_text", "texts": ["a forklift", "a person"]}
         )
@@ -53,20 +53,20 @@ async def test_spec011_r1_visual_text_returns_encoder_vectors(contracts_dir: Pat
     assert body["callId"]
 
 
-async def test_spec011_r6_encoder_model_id_is_profile_model_id(contracts_dir: Path) -> None:
+async def test_spec011_r6_encoder_model_id_is_profile_model_id(registry_dir: Path) -> None:
     """[SPEC-011 R-6] 모델 ID는 frame-encoder와 같은 프로필의 인코더 모델 ID다."""
-    async with gateway(contracts_dir, profile(embed_settings()), encoder=mock_encoder()) as gw:
+    async with gateway(registry_dir, profile(embed_settings()), encoder=mock_encoder()) as gw:
         response = await post_embed(gw.client, {"taskType": "embed_visual_text", "texts": ["x"]})
 
     assert response.json()["modelId"] == ENCODER_ID
 
 
-async def test_spec011_r2_image_returns_encoder_image_vectors(contracts_dir: Path) -> None:
+async def test_spec011_r2_image_returns_encoder_image_vectors(registry_dir: Path) -> None:
     """[SPEC-011 R-2] 저장소에서 읽은 이미지마다 인코더 이미지 벡터를 돌려준다."""
     encoder = mock_encoder()
 
     async with gateway(
-        contracts_dir, profile(embed_settings()), encoder=encoder, prepare=_put_query_image
+        registry_dir, profile(embed_settings()), encoder=encoder, prepare=_put_query_image
     ) as gw:
         response = await post_embed(
             gw.client, {"taskType": "embed_image", "images": [{"storageKey": QUERY_IMAGE}]}
@@ -80,14 +80,14 @@ async def test_spec011_r2_image_returns_encoder_image_vectors(contracts_dir: Pat
 
 
 async def _embed(
-    contracts_dir: Path,
+    registry_dir: Path,
     body: dict[str, object],
     *,
     settings: dict[str, object] | None = None,
     caller: str | None = "event-analyzer",
 ) -> tuple[int, dict[str, object], list[CallLogEntry]]:
     async with gateway(
-        contracts_dir,
+        registry_dir,
         profile(settings if settings is not None else embed_settings()),
         encoder=mock_encoder(),
         embedders={"fake": FakeEmbedder()},
@@ -116,30 +116,30 @@ def _prepare(storage: InMemoryStorage) -> None:
     ],
 )
 async def test_spec011_r10_rejects_image_outside_query_pattern(
-    contracts_dir: Path, path: str
+    registry_dir: Path, path: str
 ) -> None:
     """[SPEC-011 R-10] embed_image 경로가 taskType 허용 패턴 밖이면 403이다."""
     status, body, _ = await _embed(
-        contracts_dir, {"taskType": "embed_image", "images": [{"storageKey": path}]}
+        registry_dir, {"taskType": "embed_image", "images": [{"storageKey": path}]}
     )
 
     assert (status, body["code"]) == (403, "AI_IMAGE_PATH_FORBIDDEN")
 
 
-async def test_spec011_r11_rejects_missing_image(contracts_dir: Path) -> None:
+async def test_spec011_r11_rejects_missing_image(registry_dir: Path) -> None:
     """[SPEC-011 R-11] 저장소에 없는 이미지면 400이다."""
     status, body, _ = await _embed(
-        contracts_dir,
+        registry_dir,
         {"taskType": "embed_image", "images": [{"storageKey": "queries/q1/none.jpg"}]},
     )
 
     assert (status, body["code"]) == (400, "AI_IMAGE_NOT_FOUND")
 
 
-async def test_spec011_r12_rejects_undecodable_image(contracts_dir: Path) -> None:
+async def test_spec011_r12_rejects_undecodable_image(registry_dir: Path) -> None:
     """[SPEC-011 R-12] 디코딩할 수 없는 이미지면 400이다."""
     async with gateway(
-        contracts_dir,
+        registry_dir,
         profile(embed_settings()),
         encoder=_DecodingEncoder(),
         prepare=_prepare,
@@ -180,10 +180,10 @@ class _DecodingEncoder:
     ],
 )
 async def test_spec011_r7_rejects_malformed_request(
-    contracts_dir: Path, body: dict[str, object]
+    registry_dir: Path, body: dict[str, object]
 ) -> None:
     """[SPEC-011 R-7] 입력 종류가 taskType과 다르거나 빈 목록·빈 문장이면 400이다."""
-    status, problem, entries = await _embed(contracts_dir, body)
+    status, problem, entries = await _embed(registry_dir, body)
 
     assert (status, problem["code"]) == (400, "AI_INVALID_REQUEST")
     assert entries == []
@@ -198,35 +198,35 @@ async def test_spec011_r7_rejects_malformed_request(
     ],
 )
 async def test_spec011_r8_rejects_too_many_inputs(
-    contracts_dir: Path, body: dict[str, object]
+    registry_dir: Path, body: dict[str, object]
 ) -> None:
     """[SPEC-011 R-8] 입력 개수가 taskType 상한을 넘으면 400이다."""
-    status, problem, _ = await _embed(contracts_dir, body)
+    status, problem, _ = await _embed(registry_dir, body)
 
     assert (status, problem["code"]) == (400, "AI_TOO_MANY_INPUTS")
 
 
 @pytest.mark.parametrize("task_type", ["embed_visual_text", "embed_text"])
-async def test_spec011_r26_rejects_too_long_text(contracts_dir: Path, task_type: str) -> None:
+async def test_spec011_r26_rejects_too_long_text(registry_dir: Path, task_type: str) -> None:
     """[SPEC-011 R-26] 문장 길이가 taskType 상한을 넘으면 400이다. 상한 길이는 받는다."""
-    too_long, _, _ = await _embed(contracts_dir, {"taskType": task_type, "texts": ["x" * 41]})
-    at_limit, _, _ = await _embed(contracts_dir, {"taskType": task_type, "texts": ["x" * 40]})
+    too_long, _, _ = await _embed(registry_dir, {"taskType": task_type, "texts": ["x" * 41]})
+    at_limit, _, _ = await _embed(registry_dir, {"taskType": task_type, "texts": ["x" * 40]})
 
     assert (too_long, at_limit) == (400, 200)
 
 
-async def test_spec011_r9_rejects_unknown_task_type(contracts_dir: Path) -> None:
+async def test_spec011_r9_rejects_unknown_task_type(registry_dir: Path) -> None:
     """[SPEC-011 R-9] 모르는 taskType이면 400이다."""
-    status, problem, _ = await _embed(contracts_dir, {"taskType": "embed_audio", "texts": ["a"]})
+    status, problem, _ = await _embed(registry_dir, {"taskType": "embed_audio", "texts": ["a"]})
 
     assert (status, problem["code"]) == (400, "AI_UNKNOWN_TASK_TYPE")
 
 
 @pytest.mark.parametrize("caller", [None, "someone"])
-async def test_spec011_r13_rejects_unknown_caller(contracts_dir: Path, caller: str | None) -> None:
+async def test_spec011_r13_rejects_unknown_caller(registry_dir: Path, caller: str | None) -> None:
     """[SPEC-011 R-13] 호출자 헤더가 없거나 허용 목록에 없으면 403이다."""
     status, problem, entries = await _embed(
-        contracts_dir, {"taskType": "embed_visual_text", "texts": ["a"]}, caller=caller
+        registry_dir, {"taskType": "embed_visual_text", "texts": ["a"]}, caller=caller
     )
 
     assert (status, problem["code"]) == (403, "AI_CALLER_FORBIDDEN")
@@ -244,7 +244,7 @@ async def test_spec011_r13_rejects_unknown_caller(contracts_dir: Path, caller: s
     ],
 )
 async def test_spec011_r14_model_not_configured(
-    contracts_dir: Path, task_type: str, remove: str
+    registry_dir: Path, task_type: str, remove: str
 ) -> None:
     """[SPEC-011 R-14] taskType 모델이 프로필에 없으면 503이고 호출 로그는 unavailable이다."""
     settings = embed_settings()
@@ -263,27 +263,25 @@ async def test_spec011_r14_model_not_configured(
         else {"taskType": task_type, "texts": ["a"]}
     )
 
-    status, problem, entries = await _embed(contracts_dir, body, settings=settings)
+    status, problem, entries = await _embed(registry_dir, body, settings=settings)
 
     assert (status, problem["code"]) == (503, "AI_MODEL_NOT_CONFIGURED")
     assert [(e.task_type, e.status) for e in entries] == [(task_type, "unavailable")]
 
 
 async def _embed_text(
-    contracts_dir: Path, embedder: FakeEmbedder, texts: list[str]
+    registry_dir: Path, embedder: FakeEmbedder, texts: list[str]
 ) -> tuple[int, dict[str, object], list[CallLogEntry]]:
-    async with gateway(
-        contracts_dir, profile(embed_settings()), embedders={"fake": embedder}
-    ) as gw:
+    async with gateway(registry_dir, profile(embed_settings()), embedders={"fake": embedder}) as gw:
         response = await post_embed(gw.client, {"taskType": "embed_text", "texts": texts})
     return response.status_code, response.json(), gw.call_log.entries
 
 
-async def test_spec011_r3_r4_text_returns_normalized_adapter_vectors(contracts_dir: Path) -> None:
+async def test_spec011_r3_r4_text_returns_normalized_adapter_vectors(registry_dir: Path) -> None:
     """[SPEC-011 R-3, R-4] 프로필의 Adapter·모델로 만든 벡터를 길이 1로 정규화해 돌려준다."""
     embedder = FakeEmbedder(reply=[[3.0, 4.0, 0.0, 0.0], [0.0, 0.0, 0.0, 2.0]])
 
-    status, body, _ = await _embed_text(contracts_dir, embedder, ["첫째 문장", "둘째"])
+    status, body, _ = await _embed_text(registry_dir, embedder, ["첫째 문장", "둘째"])
 
     assert status == 200
     assert (body["taskType"], body["modelId"], body["dimension"]) == (
@@ -305,10 +303,10 @@ async def test_spec011_r3_r4_text_returns_normalized_adapter_vectors(contracts_d
     ],
 )
 async def test_spec011_r19_rejects_provider_vectors_that_do_not_match(
-    contracts_dir: Path, reply: list[list[float]]
+    registry_dir: Path, reply: list[list[float]]
 ) -> None:
     """[SPEC-011 R-19] 벡터 차원·개수가 맞지 않으면 502이고 호출 로그는 invalid_output이다."""
-    status, problem, entries = await _embed_text(contracts_dir, FakeEmbedder(reply=reply), ["a"])
+    status, problem, entries = await _embed_text(registry_dir, FakeEmbedder(reply=reply), ["a"])
 
     assert (status, problem["code"]) == (502, "AI_PROVIDER_FAILED")
     assert [e.status for e in entries] == ["invalid_output"]
@@ -322,23 +320,21 @@ async def test_spec011_r19_rejects_provider_vectors_that_do_not_match(
     ],
 )
 async def test_spec011_r20_r21_provider_errors_are_logged(
-    contracts_dir: Path, error: Exception, status: int, code: str, log_status: str
+    registry_dir: Path, error: Exception, status: int, code: str, log_status: str
 ) -> None:
     """[SPEC-011 R-20, R-21] 공급자 오류를 그대로 알리고 상태를 호출 로그에 남긴다."""
-    result, problem, entries = await _embed_text(contracts_dir, FakeEmbedder(reply=error), ["a"])
+    result, problem, entries = await _embed_text(registry_dir, FakeEmbedder(reply=error), ["a"])
 
     assert (result, problem["code"]) == (status, code)
     assert [(e.status, e.error_code) for e in entries] == [(log_status, code)]
 
 
-async def test_spec011_r23_logs_embed_call_without_vectors_or_texts(contracts_dir: Path) -> None:
+async def test_spec011_r23_logs_embed_call_without_vectors_or_texts(registry_dir: Path) -> None:
     """[SPEC-011 R-23] 호출자·모델·입력 수·토큰·상태를 남기고 벡터와 문장 원문은 남기지 않는다."""
     embedder = FakeEmbedder()
     traceparent = "00-0123456789abcdef0123456789abcdef-0123456789abcdef-01"
 
-    async with gateway(
-        contracts_dir, profile(embed_settings()), embedders={"fake": embedder}
-    ) as gw:
+    async with gateway(registry_dir, profile(embed_settings()), embedders={"fake": embedder}) as gw:
         response = await gw.client.post(
             "/v1/embed",
             json={"taskType": "embed_text", "texts": ["비밀 검색어", "둘째"]},
@@ -360,10 +356,10 @@ async def test_spec011_r23_logs_embed_call_without_vectors_or_texts(contracts_di
     assert entry.output == {"dimension": 4}
 
 
-async def test_spec011_r23_logs_query_image_paths(contracts_dir: Path) -> None:
+async def test_spec011_r23_logs_query_image_paths(registry_dir: Path) -> None:
     """[SPEC-011 R-23] embed_image는 보낸 이미지 경로를 남긴다."""
     async with gateway(
-        contracts_dir, profile(embed_settings()), encoder=mock_encoder(), prepare=_put_query_image
+        registry_dir, profile(embed_settings()), encoder=mock_encoder(), prepare=_put_query_image
     ) as gw:
         await post_embed(
             gw.client, {"taskType": "embed_image", "images": [{"storageKey": QUERY_IMAGE}]}
@@ -373,12 +369,12 @@ async def test_spec011_r23_logs_query_image_paths(contracts_dir: Path) -> None:
     assert (entry.image_keys, entry.model_id, entry.input_count) == ([QUERY_IMAGE], ENCODER_ID, 1)
 
 
-async def test_spec011_r22_visual_text_works_while_providers_are_down(contracts_dir: Path) -> None:
+async def test_spec011_r22_visual_text_works_while_providers_are_down(registry_dir: Path) -> None:
     """[SPEC-011 R-22] VLM·텍스트 임베딩 공급자가 내려가도 시각 질의 벡터는 만든다."""
     down = ProviderUnavailableError("down")
 
     async with gateway(
-        contracts_dir,
+        registry_dir,
         profile(embed_settings()),
         adapter=FakeAdapter(reply=down),
         encoder=mock_encoder(),
@@ -403,9 +399,9 @@ class _SlowEncoder:
         return mock_encoder().encode_images(images)
 
 
-async def test_spec011_nfr3_health_responds_while_encoding(contracts_dir: Path) -> None:
+async def test_spec011_nfr3_health_responds_while_encoding(registry_dir: Path) -> None:
     """[SPEC-011 NFR-3] 인코딩 중에도 /health가 1초 안에 응답한다."""
-    async with gateway(contracts_dir, profile(embed_settings()), encoder=_SlowEncoder()) as gw:
+    async with gateway(registry_dir, profile(embed_settings()), encoder=_SlowEncoder()) as gw:
         started = time.perf_counter()
         encoding = asyncio.create_task(
             post_embed(gw.client, {"taskType": "embed_visual_text", "texts": ["a"]})
@@ -421,14 +417,14 @@ async def test_spec011_nfr3_health_responds_while_encoding(contracts_dir: Path) 
 
 
 async def test_spec011_nfr5_logs_have_no_texts_or_vectors(
-    contracts_dir: Path, caplog: pytest.LogCaptureFixture
+    registry_dir: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
     """[SPEC-011 NFR-5] 완료 로그는 남기되 문장 원문과 벡터는 남기지 않는다."""
     embedder = FakeEmbedder(reply=[[0.123456789, 0.0, 0.0, 0.0]])
 
     with caplog.at_level(logging.DEBUG):
         async with gateway(
-            contracts_dir, profile(embed_settings()), embedders={"fake": embedder}
+            registry_dir, profile(embed_settings()), embedders={"fake": embedder}
         ) as gw:
             await post_embed(gw.client, {"taskType": "embed_text", "texts": ["비밀 검색어"]})
 

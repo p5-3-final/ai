@@ -34,7 +34,8 @@ ai/
 │   └── ai-client/                # ai-gateway 호출 클라이언트 (/v1/analyze, /v1/embed, /v1/parse)
 ├── services/
 │   ├── ai-gateway/               # FastAPI. 외부 AI 호출 관문, 질의 해석·질의 벡터
-│   │   └── profiles/             # Adapter·모델·한도 프로필(TOML). 프롬프트는 docs 계약에 있다
+│   │   ├── profiles/             # Adapter·모델·한도 프로필(TOML)
+│   │   └── registry/prompts/     # Prompt Registry 원본(프롬프트·입력·출력 스키마, docs ADR-0012)
 │   ├── normalize/                # 영상 검증, 정규화 사본
 │   ├── chunk-processor/          # 청크 디코딩, 구간 프레임 추출, 탐지·추적, 이벤트 후보
 │   ├── track-stitcher/           # 청크 경계 트랙 연결, Re-ID
@@ -92,7 +93,7 @@ uv run python -m evals.run --suite <name>       # 평가
 - **모델 로딩**: 모델은 요청마다 로드하지 않고 기동할 때(`lifespan`, 워커는 시작 단계) 한 번 로드한다. 프로필을 검증하고, 로드에 실패하거나 출력 차원이 프로필과 다르면 기동에 실패한다. `/ready`는 로드가 끝난 뒤에만 200이다. 모델 가중치와 데이터셋은 git에 커밋하지 않고 S3 모델 저장소 경로에서 내려받는다.
 - **설정**: `pydantic-settings`의 `Settings` 클래스로 환경변수를 읽는다. `os.environ`을 직접 읽지 않는다. 비밀값은 `SecretStr`로 감싼다.
 - **외부 LLM·API 호출**: 타임아웃, 재시도(지수 백오프), 토큰·비용 로깅을 반드시 둔다. API 키는 로그에 남기지 않는다.
-- **프롬프트**: 프롬프트는 코드에 긴 문자열로 하드코딩하지 않는다. 원본은 docs 레포 `docs/contracts/prompts/<taskType>/`(프롬프트·입력·출력 스키마)이고, 버전 ID는 ai-gateway가 내용 해시로 계산한다(SPEC-009). 이미지에는 빌드할 때 넣는다(`--build-context vlm-contracts:docs=...`).
+- **프롬프트**: 프롬프트는 코드에 긴 문자열로 하드코딩하지 않는다. 원본은 `services/ai-gateway/registry/prompts/<taskType>/`(프롬프트·입력·출력 스키마)이고 분류 체계는 서비스 간 계약에서 가져온다(docs ADR-0012). 버전 ID는 ai-gateway가 내용 해시로 계산한다(SPEC-009). 이미지에는 빌드할 때 넣는다(`--build-context vlm-contracts:docs=...`).
 - **평가**: 모델이나 프롬프트를 바꾸면 `evals`를 실행하고, 변경 전후 지표를 PR 본문에 첨부한다.
 - **로그**: `logging` 모듈로 JSON 구조화 로그를 남긴다. `print`는 금지한다. 사용자 입력 원문과 개인정보는 로그에 남기지 않는다.
 - **health**: ai-gateway는 `/health`(liveness)와 `/ready`를 제공한다. 워커는 `libs/common`의 health 엔드포인트로 같은 경로를 연다.
