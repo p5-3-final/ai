@@ -3,7 +3,7 @@
 #   scripts/fetch-service-contracts.sh               # 잠금 버전을 받아 폴더 경로를 출력한다
 #   scripts/fetch-service-contracts.sh --update 1.2.0 # 잠금 파일을 새 버전으로 바꾼다
 # 받은 계약은 .service-contracts/service-contracts/에 풀린다. CI는 이 경로를 CONTRACTS_DIR로 넘긴다.
-# 로컬은 작업 공간의 docs 계약을 바로 읽으므로 보통은 실행하지 않는다.
+# 로컬은 작업 공간의 계약(docs 레포 service-contracts/)을 바로 읽으므로 보통은 실행하지 않는다.
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"

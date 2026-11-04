@@ -1,6 +1,7 @@
-"""Prompt Registry: docs 계약의 프롬프트·입력·출력 스키마를 읽어 taskType별로 묶는다.
+"""Prompt Registry: 프롬프트·입력·출력 스키마를 읽어 taskType별로 묶는다.
 
-원본은 docs 레포 `docs/contracts/prompts/`다(SPEC-009). 버전 ID는 사람이 붙이지 않고 내용
+원본은 `services/ai-gateway/registry/prompts/`이고 분류 체계는 서비스 간 계약에서 가져온다
+(docs ADR-0012). 버전 ID는 사람이 붙이지 않고 내용
 해시로 계산해, 내용을 바꾸고 버전을 올리지 않는 실수를 없앤다(R-13).
 """
 

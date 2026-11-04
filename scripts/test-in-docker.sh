@@ -8,7 +8,7 @@ set -euo pipefail
 service="${1:?서비스 이름을 넘긴다. 예: normalize}"
 shift
 root="$(cd "$(dirname "$0")/.." && pwd)"
-contracts="${CONTRACTS_DIR:-${root}/../../docs/contracts}"
+contracts="${CONTRACTS_DIR:-${root}/../../service-contracts}"
 image="vlm/${service}-test"
 
 docker build --quiet -f "${root}/services/${service}/Dockerfile" --target test -t "${image}" "${root}" >/dev/null
