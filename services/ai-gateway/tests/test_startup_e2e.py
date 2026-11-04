@@ -1,7 +1,6 @@
 """운영 조립(build_production)을 실제 PostgreSQL·Kafka·SeaweedFS로 검증한다."""
 
 import asyncio
-import hashlib
 from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
 
@@ -10,7 +9,14 @@ import pytest
 from ai_gateway.db.migrate import upgrade
 from ai_gateway.main import production_app
 from fastapi import FastAPI
-from gateway_support import CALLER, IMAGE_KEYS, analyze_body, random_weights
+from gateway_support import (
+    CALLER,
+    ENCODER_MANIFEST_KEY,
+    IMAGE_KEYS,
+    analyze_body,
+    put_encoder_model,
+    random_weights,
+)
 from vlm_common.profile import ProfileError
 from vlm_encoders.base import EncoderLoadError
 from vlm_storage.s3 import S3Storage, StorageSettings
@@ -88,26 +94,22 @@ async def test_spec009_r15_production_app_refuses_mock_without_allow(
 
 
 MODELS_BUCKET = "vlm-models"
-WEIGHTS_KEY = "open_clip/MobileCLIP2-S0/dfndr2b/open_clip_model.safetensors"
 
 
 @pytest.fixture
 def open_clip_profile(environment: None, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """local-mock 프로필의 인코더만 open_clip으로 바꾸고, 무작위 가중치를 모델 버킷에 올린다."""
-    data = random_weights()
+    """local-mock 프로필의 인코더만 open_clip으로 바꾸고 무작위 가중치·manifest를 올린다."""
     endpoint = StorageSettings(bucket=MODELS_BUCKET).endpoint_url
     assert endpoint is not None
     containers.create_bucket(endpoint, MODELS_BUCKET)
-    S3Storage(StorageSettings(bucket=MODELS_BUCKET)).put_bytes(
-        WEIGHTS_KEY, data, "application/octet-stream"
-    )
+    sha256 = put_encoder_model(S3Storage(StorageSettings(bucket=MODELS_BUCKET)), random_weights())
     text = PROFILE.read_text(encoding="utf-8")
     start = text.index("[encoder]")
     end = text.index("\n[", start + 1)
     encoder = (
         '[encoder]\nkind = "open_clip"\n'
         'model_id = "open_clip:MobileCLIP2-S0:dfndr2b:mean-4"\ndimension = 512\n'
-        f'weights_key = "{WEIGHTS_KEY}"\nweights_sha256 = "{hashlib.sha256(data).hexdigest()}"\n'
+        f'manifest = "{ENCODER_MANIFEST_KEY}"\nmanifest_sha256 = "{sha256}"\n'
     )
     path = tmp_path / "open-clip.toml"
     path.write_text(text[:start] + encoder + text[end:], encoding="utf-8")
@@ -175,9 +177,11 @@ async def test_spec011_r15_r25_downloads_weights_then_becomes_ready(database_url
 async def test_spec011_r16_tampered_weights_fail_startup(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """[SPEC-011 R-16] 모델 버킷의 가중치가 프로필 해시와 다르면 앱이 뜨지 않는다."""
+    """[SPEC-011 R-16] 모델 버킷의 가중치가 manifest 해시와 다르면 앱이 뜨지 않는다."""
     S3Storage(StorageSettings(bucket=MODELS_BUCKET)).put_bytes(
-        WEIGHTS_KEY, b"tampered", "application/octet-stream"
+        ENCODER_MANIFEST_KEY.replace("manifest.json", "open_clip_model.safetensors"),
+        b"tampered",
+        "application/octet-stream",
     )
     app = production_app()
 

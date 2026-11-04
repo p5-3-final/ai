@@ -1,7 +1,7 @@
 [project]
 name = "vlm-contracts"
 version = "0.1.0"
-description = "이벤트 Pydantic 모델. 원본은 docs 레포 service-contracts/events의 JSON Schema다"
+description = "이벤트·모델 manifest Pydantic 모델. 원본은 docs 레포 service-contracts/events·models의 JSON Schema다"
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "pydantic>=2.14.2",

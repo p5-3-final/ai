@@ -4,7 +4,7 @@ repo: ai
 status: Approved
 owner: <이름>
 created: 2026-11-03
-updated: 2026-11-03
+updated: 2026-11-04
 ---
 
 # Plan: SPEC-011 ai-gateway 벡터 생성 — ai
@@ -35,9 +35,9 @@ ai-gateway에 `/v1/embed`를 더한다. `embed_visual_text`·`embed_image`는 �
 | R-12 | `enc/open_clip.py`(디코딩), `gw/embed.py` | `test_embed_api.py::test_spec011_r12_*`, `test_open_clip.py::test_spec011_r12_*` |
 | R-13 | `gw/embed.py`(SPEC-009 호출자 검사 재사용) | `test_embed_api.py::test_spec011_r13_*` |
 | R-14 | `gw/embed.py`, `gw/profile.py` | `test_embed_api.py::test_spec011_r14_*` |
-| R-15, R-16 | `enc/weights.py`, `gw/main.py` | `libs/encoders/tests/test_weights.py`, `test_startup.py::test_spec011_r16_*` |
+| R-15, R-16 | `libs/storage` `artifacts.py`, `enc/weights.py`, `gw/main.py` | `libs/storage/tests/test_artifacts.py`, `libs/encoders/tests/test_weights.py`, `test_startup.py::test_spec011_r16_*` |
 | R-17 | `enc/open_clip.py` | `test_open_clip.py::test_spec011_r17_*` |
-| R-18 | `enc/weights.py` | `test_weights.py::test_spec011_r18_*` |
+| R-18 | `libs/storage` `artifacts.py` | `test_artifacts.py::test_spec011_r18_*` |
 | R-19 | `gw/embed.py` | `test_embed_api.py::test_spec011_r19_*` |
 | R-20, R-21 | `gw/adapters/openai.py` | `test_openai_adapter.py::test_spec011_r20_*`, `test_spec011_r21_*`, `test_embed_api.py` |
 | R-22 | `gw/embed.py`, `gw/main.py` | `test_embed_api.py::test_spec011_r22_*` |
@@ -74,10 +74,12 @@ ai-gateway에 `/v1/embed`를 더한다. `embed_visual_text`·`embed_image`는 �
 | `libs/encoders/` | 새 멤버 `vlm-encoders`. 의존성 open_clip_torch, torch, torchvision, safetensors, vlm-storage |
 | `enc/base.py` | `ImageTextEncoder` Protocol(`model_id`, `dimension`, `encode_texts(list[str])`, `encode_images(list[bytes])` → 길이 1 벡터 목록), `EncoderLoadError`, `ImageDecodeError` |
 | `enc/model_id.py` | 모델 ID `<라이브러리>:<아키텍처>:<가중치>:<집계>` 해석(`open_clip:MobileCLIP2-S0:dfndr2b:mean-4`). 집계(`mean-4`)는 frame-encoder가 쓰는 부분이고 질의 벡터에는 쓰지 않지만, 같은 인덱스를 찾도록 ID는 그대로 돌려준다(R-6) |
-| `enc/weights.py` | `fetch_weights(storage, key, sha256, cache_dir) -> Path`: 캐시 파일의 sha256이 맞으면 그대로(R-18), 아니면 임시 파일로 받아 해시를 확인한 뒤 이름을 바꾼다. 다르면 `EncoderLoadError`(R-16) |
+| `libs/contracts` `models.py` | `ModelManifest`: docs `service-contracts/models/manifest.schema.json`의 Pydantic 모델(ADR-0010 ②). 계약 테스트 `test_model_manifest.py` |
+| `libs/storage` `artifacts.py` | `fetch_model(storage, manifest_key, manifest_sha256, cache_dir) -> FetchedModel`: manifest 해시를 확인하고 같은 폴더의 파일을 받아 manifest의 해시와 맞춘다. 캐시는 `<cache_dir>/<manifest sha256>/`, 해시가 맞는 파일은 다시 받지 않는다(R-18). 받다 멈춘 파일은 임시 이름이라 캐시로 쓰이지 않고, manifest는 파일을 모두 확인한 뒤 남긴다. 실패는 `ArtifactError`(R-16). 탐지기·Registry 묶음도 같은 로더를 쓴다 |
+| `enc/weights.py` | `fetch_encoder_weights(storage, manifest_key, manifest_sha256, model_id, dimension, cache_dir) -> Path`: `fetch_model` 뒤 manifest 종류(`image_text_encoder`)·모델 ID(프로필 ID에서 집계를 뺀 앞부분)·차원이 프로필과 같고 가중치 파일이 하나인지 확인한다. 실패는 `EncoderLoadError`(R-16) |
 | `enc/open_clip.py` | `OpenClipEncoder.load(model_id, weights_path, dimension)`: `open_clip.create_model_and_transforms(arch, pretrained=<로컬 경로>, image_mean=…, image_std=…, image_interpolation=…, image_resize_mode=…)`. 로컬 경로로 읽으면 전처리 값이 비므로 `open_clip.get_pretrained_cfg(arch, tag)`에서 가져와 넘긴다. 로드 뒤 텍스트·이미지 쪽 출력 차원을 한 번 계산해 프로필 차원과 비교한다(R-17). `torch.inference_mode`, eval 모드. 이미지 디코딩은 Pillow, 실패하면 `ImageDecodeError`(R-12) |
 | `enc/mock.py` | `MockEncoder`: 입력의 sha256으로 결정적 벡터를 만들어 정규화한다. CI·로컬 mock 프로필 전용 |
-| `gw/profile.py` | `[encoder]`(종류 `open_clip`·`mock`, 모델 ID, 차원, 가중치 키, sha256) 선택 항목. `[embed.<taskType>]`: 공통 `max_inputs`, 문장 taskType은 `max_text_chars`, `embed_image`는 `allowed_patterns`, `embed_text`는 `adapter`·`model`·`dimension`·`timeout_s`·`max_retries`. 인코더 taskType인데 `[encoder]`가 없으면 모델 미설정(R-14). `check_profile`에 mock 인코더 규칙(R-24) |
+| `gw/profile.py` | `[encoder]`(종류 `open_clip`·`mock`, 모델 ID, 차원, manifest 경로 `models/<종류>/<버전>/manifest.json`, manifest sha256) 선택 항목. `[embed.<taskType>]`: 공통 `max_inputs`, 문장 taskType은 `max_text_chars`, `embed_image`는 `allowed_patterns`, `embed_text`는 `adapter`·`model`·`dimension`·`timeout_s`·`max_retries`. 인코더 taskType인데 `[encoder]`가 없으면 모델 미설정(R-14). `check_profile`에 mock 인코더 규칙(R-24) |
 | `gw/settings.py` | `models_bucket`(모델 버킷, 기본 없음), `model_cache_dir`(기본 `/var/cache/vlm-models`, 이미지에서 실행 사용자 소유로 만든다. 공유 `/tmp`는 ruff S108에 걸린다) |
 | `gw/adapters/base.py` | `TextEmbeddingAdapter` Protocol(`embed(model, texts, timeout_s, max_retries, traceparent) -> Embeddings`), `Embeddings`(벡터 목록, 입력 토큰 수), 둘을 합친 `Adapter` Protocol(`build_adapters`의 반환 타입) |
 | `gw/adapters/openai.py` | `embed`: `client.embeddings.create`, 응답은 `index`로 입력 순서를 맞춘다. 오류 분류는 `complete`와 함께 쓰는 `_provider_error`(R-20, R-21) |

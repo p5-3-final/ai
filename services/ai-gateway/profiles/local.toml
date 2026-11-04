@@ -31,13 +31,14 @@ max_retries = 1
 
 # 이미지·질의 인코더(SPEC-011). frame-encoder와 같은 모델 ID여야 같은 인덱스를 찾는다.
 # 가중치: Hugging Face timm/MobileCLIP2-S0-OpenCLIP의 open_clip_model.safetensors(Apple AMLR, 비상용)를
-# 모델 버킷(AI_GATEWAY_MODELS_BUCKET)의 아래 키에 올려 둔다. 절차는 docs local/README.md
+# manifest와 함께 모델 버킷(AI_GATEWAY_MODELS_BUCKET)의 아래 경로에 올려 둔다. 절차는 docs local/README.md,
+# manifest 해시는 docs local/scripts/upload-models.sh가 만드는 manifest의 값이다.
 [encoder]
 kind = "open_clip"
 model_id = "open_clip:MobileCLIP2-S0:dfndr2b:mean-4"
 dimension = 512
-weights_key = "open_clip/MobileCLIP2-S0/dfndr2b/open_clip_model.safetensors"
-weights_sha256 = "ab91a1a0c4330d6b1913e24d5035dfdea15423316aaec649610c6b1c6ddd0e95"
+manifest = "models/mobileclip2-s0/dfndr2b/manifest.json"
+manifest_sha256 = "569e79292c638ca67fbe5318adb212c3e26c73fbacfc6453268abf95c9266131"
 
 [embed.embed_visual_text]
 max_inputs = 16

@@ -1,7 +1,7 @@
 ---
 spec: SPEC-011
 repo: ai
-updated: 2026-11-03
+updated: 2026-11-04
 ---
 
 # Tasks: SPEC-011 ai-gateway 벡터 생성 — ai
@@ -78,3 +78,10 @@ updated: 2026-11-03
 - [x] T035 프로필(`local.toml`: MobileCLIP2-S0·Ollama `bge-m3`, `local-mock.toml`: mock), `AGENTS.md`, `.env.example` 갱신 — `services/ai-gateway/profiles/`, `AGENTS.md`, `.env.example` (9a5b824)
 - [x] T036 [NFR-1] [NFR-2] 실제 가중치로 지연과 성공 지표 확인(마커 `model`) — 테스트 `t/test_embed_latency.py` (9a5b824)
 - [x] T037 docs 레포: 로컬 compose 모델 버킷·가중치 올리기 절차, Ollama `bge-m3` 안내(별도 PR) 후 로컬 스택에서 확인 (docs 로컬 compose PR)
+
+## Phase 10: 모델 manifest 규약 (v4 전환 A-1, ADR-0010 ②)
+
+- [x] T038 manifest 계약 모델과 계약 테스트 — 테스트 `libs/contracts/tests/test_model_manifest.py`, 구현 `libs/contracts/src/vlm_contracts/models.py`
+- [x] T039 [R-15] [R-16] [R-18] manifest·파일 받기와 해시 확인, manifest 해시 폴더 캐시 — 테스트 `libs/storage/tests/test_artifacts.py`, 구현 `libs/storage/src/vlm_storage/artifacts.py`
+- [x] T040 [R-15] [R-16] 인코더 manifest의 종류·모델 ID·차원·파일 수 확인 — 테스트 `et/test_weights.py`, 구현 `enc/weights.py`
+- [x] T041 [R-15] [R-16] 프로필 `manifest`·`manifest_sha256`, 기동 조립, `local.toml` — 테스트 `t/test_startup.py`, `t/test_profile.py`, `t/test_startup_e2e.py`, `t/test_embed_latency.py`(마커 `model`), 구현 `gw/profile.py`, `gw/main.py`, `profiles/local.toml`

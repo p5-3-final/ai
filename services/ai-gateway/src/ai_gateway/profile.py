@@ -85,15 +85,19 @@ class EncoderProfile(Profile):
     # frame-encoder와 같은 문자열이어야 같은 인덱스를 찾는다(SPEC-011 R-6).
     model_id: str
     dimension: int = Field(gt=0)
-    # 모델 버킷 안의 가중치 키와 파일 해시. mock은 가중치가 없다.
-    weights_key: str | None = None
-    weights_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    # 모델 버킷의 manifest 키와 manifest 파일 해시(docs ADR-0010 ②). 가중치 해시는 manifest가
+    # 고정한다. mock은 가중치가 없다.
+    manifest: str | None = Field(
+        default=None,
+        pattern=r"^models/[a-z0-9][a-z0-9_-]*/[A-Za-z0-9][A-Za-z0-9._-]*/manifest\.json$",
+    )
+    manifest_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
 
     @model_validator(mode="after")
     def _weights(self) -> Self:
         ModelId.parse(self.model_id)
-        if self.kind == "open_clip" and (self.weights_key is None or self.weights_sha256 is None):
-            raise ValueError("open_clip encoder requires weights_key and weights_sha256")
+        if self.kind == "open_clip" and (self.manifest is None or self.manifest_sha256 is None):
+            raise ValueError("open_clip encoder requires manifest and manifest_sha256")
         return self
 
 

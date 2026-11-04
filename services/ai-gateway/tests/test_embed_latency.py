@@ -2,9 +2,12 @@
 
 실행: `uv run pytest -m model`.
 
-가중치는 Hugging Face에서 받아(이후 그 캐시를 쓴다) 로컬 프로필의 sha256과 맞는지부터 본다.
+가중치는 Hugging Face에서 받아(이후 그 캐시를 쓴다) docs `local/scripts/upload-models.sh`와 같은
+manifest를 만들어, 로컬 프로필의 manifest sha256부터 가중치 sha256까지 맞는지 본다.
 """
 
+import hashlib
+import json
 import logging
 import statistics
 import time
@@ -41,11 +44,29 @@ FIRE = (
 def encoder(tmp_path_factory: pytest.TempPathFactory) -> ImageTextEncoder:
     local = load_profile(PROFILE, GatewayProfile)
     assert local.encoder is not None
-    assert local.encoder.weights_key is not None
-    weights = Path(hf_hub_download("timm/MobileCLIP2-S0-OpenCLIP", "open_clip_model.safetensors"))
+    assert local.encoder.manifest is not None
+    name = "open_clip_model.safetensors"
+    data = Path(hf_hub_download("timm/MobileCLIP2-S0-OpenCLIP", name)).read_bytes()
+    # upload-models.sh의 MANIFEST와 직렬화 형식이 같아야 프로필의 manifest sha256과 맞는다.
+    manifest = {
+        "kind": "image_text_encoder",
+        "modelId": "open_clip:MobileCLIP2-S0:dfndr2b",
+        "version": "dfndr2b",
+        "files": [{"name": name, "sha256": hashlib.sha256(data).hexdigest(), "size": len(data)}],
+        "dimension": 512,
+        "source": {"type": "public", "origin": "huggingface:timm/MobileCLIP2-S0-OpenCLIP"},
+        "license": "Apple AMLR (non-commercial research)",
+    }
     models = InMemoryStorage()
-    models.put_bytes(local.encoder.weights_key, weights.read_bytes(), "application/octet-stream")
-    # 프로필의 sha256이 공개 가중치와 다르면 여기서 EncoderLoadError로 실패한다.
+    models.put_bytes(
+        local.encoder.manifest.replace("manifest.json", name), data, "application/octet-stream"
+    )
+    models.put_bytes(
+        local.encoder.manifest,
+        (json.dumps(manifest, indent=2, ensure_ascii=False) + "\n").encode(),
+        "application/json",
+    )
+    # 프로필의 manifest sha256이 공개 가중치로 만든 manifest와 다르면 여기서 EncoderLoadError다.
     loaded = load_encoder(local, models, tmp_path_factory.mktemp("cache"))
     assert loaded is not None
     return loaded
