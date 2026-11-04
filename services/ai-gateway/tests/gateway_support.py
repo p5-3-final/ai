@@ -91,9 +91,9 @@ def profile(extra: dict[str, object] | None = None, **task: object) -> GatewayPr
     )
 
 
-def output_example(contracts_dir: Path, index: int = 0) -> dict[str, object]:
+def output_example(registry_dir: Path, index: int = 0) -> dict[str, object]:
     schema = json.loads(
-        (contracts_dir / "prompts/event_judge/output.schema.json").read_text(encoding="utf-8")
+        (registry_dir / "prompts/event_judge/output.schema.json").read_text(encoding="utf-8")
     )
     example: dict[str, object] = schema["examples"][index]
     return example
@@ -181,7 +181,7 @@ class Gateway:
 
 @asynccontextmanager
 async def gateway(
-    contracts_dir: Path,
+    registry_dir: Path,
     gateway_profile: GatewayProfile | None = None,
     adapter: FakeAdapter | None = None,
     prepare: Callable[[InMemoryStorage], None] | None = None,
@@ -201,7 +201,7 @@ async def gateway(
     recording = RecordingCallLog()
     deps = GatewayDeps(
         profile=gateway_profile or profile(),
-        prompts=PromptRegistry.load(contracts_dir),
+        prompts=PromptRegistry.load(registry_dir),
         storage=storage,
         adapters=adapters if adapters is not None else {"fake": fake},
         call_log=call_log if call_log is not None else recording,

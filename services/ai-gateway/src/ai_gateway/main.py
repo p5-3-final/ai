@@ -156,7 +156,7 @@ async def build_production(settings: GatewaySettings) -> GatewayDeps:
     api_key = settings.openai_api_key.get_secret_value() if settings.openai_api_key else None
     profile = load_profile(settings.profile_path, GatewayProfile)
     check_profile(profile, allow_mock=settings.allow_mock, has_openai_key=api_key is not None)
-    prompts = PromptRegistry.load(settings.contracts_dir)
+    prompts = PromptRegistry.load(settings.registry_dir)
     check_tasks(profile, prompts)
     models = (
         S3Storage(StorageSettings(bucket=settings.models_bucket))

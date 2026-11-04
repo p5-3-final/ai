@@ -81,21 +81,21 @@ class PromptTask:
 
 
 class PromptRegistry:
-    """계약 폴더에서 읽은 taskType별 프롬프트."""
+    """Registry 폴더에서 읽은 taskType별 프롬프트."""
 
     def __init__(self, tasks: dict[str, PromptTask]) -> None:
         self._tasks = tasks
 
     @classmethod
-    def load(cls, contracts_dir: Path) -> "PromptRegistry":
-        """`<contracts_dir>/prompts/`의 taskType 폴더를 모두 읽는다.
+    def load(cls, registry_dir: Path) -> "PromptRegistry":
+        """`<registry_dir>/prompts/`의 taskType 폴더를 모두 읽는다.
 
         Raises:
             PromptRegistryError: 파일이 없거나, JSON이나 스키마가 잘못됐거나, 참조를 풀 수 없을 때.
         """
-        prompts_dir = contracts_dir / "prompts"
+        prompts_dir = registry_dir / "prompts"
         prefix = _read_text(prompts_dir / _PREFIX_FILE)
-        schemas = _load_schemas(contracts_dir)
+        schemas = _load_schemas(registry_dir)
         registry: Registry[Schema] = Registry().with_resources(
             (str(schema["$id"]), Resource.from_contents(schema, default_specification=DRAFT202012))
             for schema in schemas.values()
@@ -154,10 +154,10 @@ def _load_task(
     )
 
 
-def _load_schemas(contracts_dir: Path) -> dict[Path, JsonObject]:
+def _load_schemas(registry_dir: Path) -> dict[Path, JsonObject]:
     schemas: dict[Path, JsonObject] = {}
     for folder in ("prompts", "taxonomy"):
-        for path in sorted((contracts_dir / folder).rglob("*.schema.json")):
+        for path in sorted((registry_dir / folder).rglob("*.schema.json")):
             try:
                 schema = json.loads(path.read_text(encoding="utf-8"))
                 Draft202012Validator.check_schema(schema)

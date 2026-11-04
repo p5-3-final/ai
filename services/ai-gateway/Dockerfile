@@ -1,5 +1,6 @@
 # syntax=docker/dockerfile:1
-# ai-gateway 이미지. 빌드 컨텍스트는 레포 루트이고, 프롬프트·분류 체계는 docs 계약을 따로 넘긴다.
+# ai-gateway 이미지. 빌드 컨텍스트는 레포 루트이고, 분류 체계가 든 서비스 간 계약 폴더를 따로 넘긴다.
+# CI는 service-contracts.lock 버전(scripts/fetch-service-contracts.sh), 로컬은 작업 공간의 docs 계약이다.
 #   docker build -f services/ai-gateway/Dockerfile \
 #     --build-context vlm-contracts:docs=../../docs/contracts -t vlm/ai-gateway .
 # 마이그레이션은 앱보다 먼저 같은 이미지로 한 번 실행한다(Kubernetes Job·로컬 compose 단계):
@@ -30,7 +31,7 @@ RUN torch_dir=/opt/venv/lib/python3.12/site-packages/torch \
     && rm -rf "$torch_dir/test" "$torch_dir/include" \
     && find "$torch_dir/bin" -maxdepth 1 -type f \( -name 'test_*' -o -name '*Test' \) -delete
 
-# --build-context vlm-contracts:docs=<docs>/docs/contracts로 받은 계약 폴더.
+# --build-context vlm-contracts:docs=<계약 폴더>로 받은 서비스 간 계약.
 # 이미지처럼 태그를 붙여 받아야 hadolint가 출처를 알 수 있다.
 FROM vlm-contracts:docs AS docs-contracts
 
@@ -42,11 +43,11 @@ RUN groupadd --system --gid 10001 app \
     && useradd --system --uid 10001 --gid app --no-create-home app \
     && install -d -o 10001 -g 10001 /var/cache/vlm-models
 COPY --from=build /opt/venv /opt/venv
-# Prompt Registry 원본(SPEC-009). 이미지와 프롬프트 버전이 함께 묶이도록 빌드할 때 넣는다.
-COPY --from=docs-contracts prompts /app/contracts/prompts
-COPY --from=docs-contracts taxonomy /app/contracts/taxonomy
+# Prompt Registry(SPEC-009). 프롬프트는 이 레포가 원본이고 분류 체계는 계약에서 가져와 합친다(docs ADR-0012).
+COPY services/ai-gateway/registry/prompts /app/registry/prompts
+COPY --from=docs-contracts taxonomy /app/registry/taxonomy
 COPY services/ai-gateway/profiles /app/profiles
-ENV AI_GATEWAY_CONTRACTS_DIR=/app/contracts \
+ENV AI_GATEWAY_REGISTRY_DIR=/app/registry \
     AI_GATEWAY_PROFILE_PATH=/app/profiles/local.toml
 USER 10001:10001
 EXPOSE 8000

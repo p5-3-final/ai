@@ -16,8 +16,8 @@ from vlm_encoders.open_clip import OpenClipEncoder
 from vlm_storage.memory import InMemoryStorage
 
 
-def test_spec009_r14_profile_task_must_have_prompt(contracts_dir: Path) -> None:
-    registry = PromptRegistry.load(contracts_dir)
+def test_spec009_r14_profile_task_must_have_prompt(registry_dir: Path) -> None:
+    registry = PromptRegistry.load(registry_dir)
     with_extra = profile().model_copy(
         update={"tasks": {**profile().tasks, "track_attribute": profile().tasks["event_judge"]}}
     )
@@ -26,16 +26,16 @@ def test_spec009_r14_profile_task_must_have_prompt(contracts_dir: Path) -> None:
         check_tasks(with_extra, registry)
 
 
-def test_spec009_r14_every_prompt_needs_profile_task(contracts_dir: Path) -> None:
-    registry = PromptRegistry.load(contracts_dir)
+def test_spec009_r14_every_prompt_needs_profile_task(registry_dir: Path) -> None:
+    registry = PromptRegistry.load(registry_dir)
     without = profile().model_copy(update={"tasks": {}})
 
     with pytest.raises(ProfileError, match="event_judge"):
         check_tasks(without, registry)
 
 
-def test_spec009_r14_matching_profile_passes(contracts_dir: Path) -> None:
-    check_tasks(profile(), PromptRegistry.load(contracts_dir))
+def test_spec009_r14_matching_profile_passes(registry_dir: Path) -> None:
+    check_tasks(profile(), PromptRegistry.load(registry_dir))
 
 
 def test_spec009_r1_builds_adapter_per_profile_entry() -> None:

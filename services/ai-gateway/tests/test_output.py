@@ -9,16 +9,16 @@ CANDIDATE: dict[str, object] = {"eventType": "fall", "startSec": 61.2, "endSec":
 
 
 @pytest.fixture(scope="module")
-def task(contracts_dir: Path) -> PromptTask:
-    loaded = PromptRegistry.load(contracts_dir).get("event_judge")
+def task(registry_dir: Path) -> PromptTask:
+    loaded = PromptRegistry.load(registry_dir).get("event_judge")
     assert loaded is not None
     return loaded
 
 
 @pytest.fixture(scope="module")
-def good(contracts_dir: Path) -> dict[str, object]:
+def good(registry_dir: Path) -> dict[str, object]:
     schema = json.loads(
-        (contracts_dir / "prompts/event_judge/output.schema.json").read_text(encoding="utf-8")
+        (registry_dir / "prompts/event_judge/output.schema.json").read_text(encoding="utf-8")
     )
     example: dict[str, object] = schema["examples"][0]
     return example

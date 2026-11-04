@@ -89,13 +89,13 @@ def _p95(samples: list[float]) -> float:
 
 
 async def test_spec011_nfr1_nfr2_latency(
-    contracts_dir: Path, encoder: ImageTextEncoder, photos: dict[str, bytes]
+    registry_dir: Path, encoder: ImageTextEncoder, photos: dict[str, bytes]
 ) -> None:
     """[SPEC-011 NFR-1, NFR-2] 문장 1개 p95 150ms, 이미지 1장 p95 300ms 이하(CPU)."""
     image = photos["forklift"]
 
     async with gateway(
-        contracts_dir,
+        registry_dir,
         profile(embed_settings() | {"encoder": _local_encoder_settings()}),
         encoder=encoder,
         prepare=lambda s: s.put_bytes(QUERY_IMAGE, image, "image/jpeg"),

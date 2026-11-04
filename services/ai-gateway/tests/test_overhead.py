@@ -25,16 +25,14 @@ def _put_images(storage: InMemoryStorage) -> None:
         storage.put_bytes(key, b"\xff" * IMAGE_BYTES, "image/jpeg")
 
 
-async def test_spec009_nfr1_overhead_p95_under_300ms(
-    contracts_dir: Path, database_url: str
-) -> None:
+async def test_spec009_nfr1_overhead_p95_under_300ms(registry_dir: Path, database_url: str) -> None:
     await upgrade(database_url)
     engine = create_async_engine(database_url)
     body = analyze_body(images=[{"storageKey": k, "ptsSec": None} for k in IMAGES])
     timings: list[float] = []
 
     async with gateway(
-        contracts_dir,
+        registry_dir,
         profile(max_images=10),
         prepare=_put_images,
         adapters={"fake": MockAdapter()},
