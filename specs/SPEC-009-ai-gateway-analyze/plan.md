@@ -42,6 +42,7 @@ updated: 2026-11-04
 | R-24 | Registry 폴더 규약, `adapters/mock.py`(출력 예시) | `test_mock_adapter.py::test_spec009_r24_*`, `test_analyze_api.py::test_spec009_r24_*`(`extended_registry_dir`의 `sample_check`) |
 | R-25 | `prompts.py`(`fallback.json`), `output.py`, `analyze.py` | `test_prompts.py::test_spec009_r25_*`, `test_analyze_api.py::test_spec009_r25_*` |
 | R-26, R-27, R-28 | `registry_bundle.py`, `settings.py`, `main.py`, `libs/storage` `artifacts.fetch_file` | `test_registry_bundle.py`, `libs/storage/tests/test_artifacts.py::test_spec009_r2[678]_*`, `test_startup_e2e.py::test_spec009_r2[67]_*`(SeaweedFS) |
+| R-29, R-30 | `prompts.py`(`taxonomy_version`), `analyze.py`, `api.py`, `call_log.py`, `db/migrations/versions/0003_*` | `test_prompts.py::test_spec009_r29_*`·`test_spec009_r30_*`, `test_analyze_api.py::test_spec009_r29_*`, `test_call_log.py::test_spec009_r17_saves_every_field`(PostgreSQL), `test_contract.py` |
 | NFR-1 | 전체 | `test_overhead.py`(integration, mock Adapter, 이미지 10장) |
 | NFR-2 | `adapters/` | `test_architecture.py`(openai import 위치 검사) |
 | NFR-3 | `analyze.py`, 로그 | `test_analyze_api.py::test_nfr3_*`(caplog) |
@@ -81,6 +82,7 @@ updated: 2026-11-04
 | `.../output.py` | 응답에서 JSON 객체 추출(코드 블록·앞뒤 글 허용) → 출력 스키마 검증 → 실패 시 `PromptTask.fallback(..., "unknown")` |
 | `registry/prompts/<taskType>/fallback.json` | 대체 결과 정의(R-25). 값 전체가 `"$status"`면 상태, `"$input.<변수>"`면 입력 변수로 바꾼다. 기동할 때 입력 스키마에 없는 변수를 쓰면 실패하고, 입력 예시로 채운 결과가 출력 스키마와 맞는지 두 상태 모두 확인한다(R-14) |
 | `.../registry_bundle.py` | `build_bundle`: `prompts/`·`taxonomy/`·`profiles/*.toml`을 순서·시각·소유자를 고정한 tar.gz로 묶고 sha256을 돌려준다(같은 내용이면 같은 바이트). `open_bundle`: `fetch_file`로 받아 해시 확인 후 `data` 필터로 풀고, 다 푼 뒤 표시 파일을 남겨 다음 기동은 그 폴더를 쓴다(R-28). `resolve_sources`: 묶음 설정이 있으면 받아 푼 폴더와 그 안의 프로필, 없으면 이미지 경로(R-26). 키·해시 한쪽만, 절대 프로필 경로, 모델 버킷 없음은 `ProfileError`. CLI `python -m ai_gateway.registry_bundle`은 로컬 업로드 스크립트와 이후 CI가 쓴다 |
+| `.../prompts.py`(분류 체계 버전) | taskType 스키마가 `$ref`로 참조한 파일 중 `taxonomy/<버전>/` 아래 파일의 버전 폴더 이름을 `taxonomy_version`으로 둔다(R-29). 참조가 없으면 None, 버전이 둘 이상이면 기동 실패(R-30) |
 | `.../analyze.py` | 유스케이스: 경로 검사 → 이미지 읽기 → (모델 미설정이면 `unverified`) → Adapter → 출력 검증 → 호출 로그 |
 | `.../call_log.py` | `ai.ai_call_log` 저장, 영상별 원문 삭제 |
 | `.../api.py` | FastAPI 라우터, 요청·응답 Pydantic 모델(계약 일치), ProblemDetail 예외 핸들러 |
@@ -97,7 +99,7 @@ updated: 2026-11-04
 
 ### 데이터 모델
 
-`ai_db`의 스키마 `ai`(overview의 `ai.ai_call_log`). 마이그레이션 `migrations/versions/0001_create_ai_call_log.py`.
+`ai_db`의 스키마 `ai`(overview의 `ai.ai_call_log`). 마이그레이션 `migrations/versions/0001_create_ai_call_log.py`, 임베딩 호출용 `0002_call_log_embed.py`, 분류 체계 버전 `0003_call_log_taxonomy_version.py`.
 
 | 컬럼 | 타입 | 비고 |
 | --- | --- | --- |
@@ -107,6 +109,7 @@ updated: 2026-11-04
 | `task_type` | text | |
 | `adapter` · `model_id` | text null | 모델 미설정이면 null |
 | `prompt_version` | text | |
+| `taxonomy_version` | text null | 결과 enum의 분류 체계 버전(R-29). 임베딩 호출·분류 체계를 참조하지 않는 taskType은 null |
 | `status` | text | `success`·`unavailable`·`failed`·`invalid_output` (CHECK) |
 | `error_code` | text null | `AI_PROVIDER_*` |
 | `latency_ms` | integer | 요청 전체 |

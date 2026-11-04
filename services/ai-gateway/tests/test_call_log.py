@@ -29,6 +29,7 @@ def _entry() -> CallLogEntry:
         adapter="ollama",
         model_id="qwen3-vl:8b",
         prompt_version="event_judge@0123456789ab",
+        taxonomy_version="v2",
         status="success",
         error_code=None,
         latency_ms=1234,
@@ -43,6 +44,7 @@ def _entry() -> CallLogEntry:
 
 
 async def test_spec009_r17_saves_every_field(engine: AsyncEngine) -> None:
+    """[SPEC-009 R-17, R-29] 분류 체계 버전도 함께 남는다."""
     entry = _entry()
 
     await CallLog(engine).save(entry)
@@ -64,6 +66,7 @@ async def test_spec009_r17_saves_every_field(engine: AsyncEngine) -> None:
         "adapter",
         "model_id",
         "prompt_version",
+        "taxonomy_version",
         "status",
         "latency_ms",
         "image_keys",

@@ -49,6 +49,7 @@ class AnalyzeResult:
     task_type: str
     model_id: str | None
     prompt_version: str
+    taxonomy_version: str | None
     output: JsonObject
 
 
@@ -88,7 +89,7 @@ class AnalyzeService:
         self._image_policy.check(command.source_id, command.image_keys)
         images = await self._images.read(command.image_keys)
 
-        call = _Call(command, task.version, settings, started)
+        call = _Call(command, task.version, task.taxonomy_version, settings, started)
         if settings.adapter is None or settings.model is None:
             # SPEC-009 R-8: 모델이 없으면 결과를 지어내지 않고 unverified로 돌려준다.
             output = task.fallback(command.variables, "unverified")
@@ -135,6 +136,7 @@ class AnalyzeService:
                 "task_type": entry.task_type,
                 "model_id": entry.model_id,
                 "prompt_version": entry.prompt_version,
+                "taxonomy_version": entry.taxonomy_version,
                 "status": entry.status,
                 "error_code": entry.error_code,
                 "latency_ms": entry.latency_ms,
@@ -151,6 +153,8 @@ class _Call:
 
     command: AnalyzeCommand
     prompt_version: str
+    # 결과의 enum이 어느 분류 체계 버전인지 남긴다(SPEC-009 R-29).
+    taxonomy_version: str | None
     settings: TaskProfile
     started: float
     call_id: UUID = field(default_factory=new_call_id)
@@ -171,6 +175,7 @@ class _Call:
             adapter=self.settings.adapter,
             model_id=self.settings.model,
             prompt_version=self.prompt_version,
+            taxonomy_version=self.taxonomy_version,
             status=status,
             error_code=error_code,
             latency_ms=int((time.perf_counter() - self.started) * 1000),
@@ -193,6 +198,7 @@ class _Call:
             task_type=self.command.task_type,
             model_id=self.settings.model,
             prompt_version=self.prompt_version,
+            taxonomy_version=self.taxonomy_version,
             output=output,
         )
 

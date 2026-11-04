@@ -330,3 +330,44 @@ async def test_spec009_r25_task_added_only_to_registry_gets_its_fallback(
         "present": None,
         "verificationStatus": "unverified",
     }
+
+
+async def test_spec009_r29_result_and_call_log_carry_taxonomy_version(registry_dir: Path) -> None:
+    task = PromptRegistry.load(registry_dir).get("event_judge")
+    assert task is not None
+    adapter = FakeAdapter(reply=json.dumps(output_example(registry_dir)))
+
+    async with gateway(registry_dir, adapter=adapter) as gw:
+        response = await post_analyze(gw.client, analyze_body())
+
+    assert response.json()["taxonomyVersion"] == task.taxonomy_version
+    [entry] = gw.call_log.entries
+    assert entry.taxonomy_version == task.taxonomy_version
+
+
+async def test_spec009_r29_fallback_carries_taxonomy_version(registry_dir: Path) -> None:
+    task = PromptRegistry.load(registry_dir).get("event_judge")
+    assert task is not None
+
+    async with gateway(registry_dir, profile(adapter=None, model=None)) as gw:
+        response = await post_analyze(gw.client, analyze_body())
+
+    assert response.json()["taxonomyVersion"] == task.taxonomy_version
+    [entry] = gw.call_log.entries
+    assert entry.taxonomy_version == task.taxonomy_version
+
+
+async def test_spec009_r29_task_without_taxonomy_returns_null_version(
+    extended_registry_dir: Path,
+) -> None:
+    body = analyze_body(taskType="sample_check", variables={"zoneName": "C"})
+
+    async with gateway(
+        extended_registry_dir, _sample_check_profile(adapter=None, model=None)
+    ) as gw:
+        response = await post_analyze(gw.client, body)
+
+    assert response.status_code == 200, response.text
+    assert response.json()["taxonomyVersion"] is None
+    [entry] = gw.call_log.entries
+    assert entry.taxonomy_version is None
