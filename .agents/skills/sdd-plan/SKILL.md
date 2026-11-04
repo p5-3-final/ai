@@ -15,7 +15,7 @@ docs 레포의 위치는 이 레포의 상위 두 단계(`../../`)다. 루트 �
    - `repos`에 이 레포가 없으면 멈추고 확인한다.
 2. **맥락 수집**: 다음을 읽는다.
    - `../../docs/principles.md`
-   - spec이 참조하는 계약(`../../docs/contracts/...`)과 ADR
+   - spec이 참조하는 계약(`../../service-contracts/...`)과 ADR
    - 이 레포의 AGENTS.md와 관련 코드
 3. **plan 작성**: `../../docs/templates/plan.md`를 기반으로 `specs/<spec 폴더 이름>/plan.md`를 만든다.
    - 이 레포가 담당하는 요구사항만 다루고, 모든 요구사항을 테스트에 매핑한다.

@@ -27,7 +27,7 @@ ai/
 ├── libs/
 │   ├── common/                   # config(Settings), logging, errors, health, 프로필 로딩·검증
 │   ├── messaging/                # Kafka 소비·발행, retry·DLQ 토픽, 처리 결과가 정해진 뒤 수동 커밋
-│   ├── contracts/                # 이벤트 Pydantic 모델 (docs/contracts/events의 JSON Schema가 원본)
+│   ├── contracts/                # 이벤트 Pydantic 모델 (docs 레포 service-contracts/events의 JSON Schema가 원본)
 │   ├── storage/                  # 객체 저장소 인터페이스(ObjectStorage)와 S3 API 구현, 테스트용 메모리 구현
 │   ├── encoders/                 # 이미지·질의 인코더(ImageTextEncoder)와 open_clip 구현, 가중치 받기 (ai-gateway·frame-encoder 공유)
 │   ├── testing/                  # 테스트 전용: testcontainers로 Kafka·SeaweedFS 띄우기 (운영 이미지에 넣지 않음)
@@ -82,7 +82,7 @@ uv run python -m evals.run --suite <name>       # 평가
 ## 핵심 규칙
 - **의존성**: `uv add <pkg>`로만 추가하고 `uv.lock`을 커밋한다. `pip install`과 `requirements.txt`는 쓰지 않는다. 새 패키지는 사용자에게 확인받는다.
 - **타입**: 모든 함수에 타입 힌트를 단다. `mypy --strict`를 통과해야 한다. `Any`는 쓰지 않는다. 불가피하면 같은 줄에 사유와 이슈 번호를 주석으로 남긴다(`# 사유 (#87)`). `# type: ignore`는 루트 AGENTS.md의 "검사 예외 (무시 주석)" 형식을 따른다.
-- **계약**: ai-gateway의 요청·응답은 Pydantic 모델로 정의하고 `../../docs/contracts/openapi/ai-gateway.yaml`과 일치시킨다. 이벤트는 `libs/contracts`의 모델을 쓰고 `../../docs/contracts/events/`의 JSON Schema와 계약 테스트로 맞춘다. 출력 스키마의 enum은 `../../docs/contracts/taxonomy/`를 따른다.
+- **계약**: ai-gateway의 요청·응답은 Pydantic 모델로 정의하고 `../../service-contracts/openapi/ai-gateway.yaml`과 일치시킨다. 이벤트는 `libs/contracts`의 모델을 쓰고 `../../service-contracts/events/`의 JSON Schema와 계약 테스트로 맞춘다. 출력 스키마의 enum은 `../../service-contracts/taxonomy/`를 따른다.
 - **오류 응답**: 오류는 RFC 9457 ProblemDetail 형식(`code` 필드 포함)으로 반환한다. 공통 예외 핸들러는 `libs/common`에 둔다.
 - **비동기**: I/O는 `async`로 처리한다. CPU를 많이 쓰는 추론은 이벤트 루프를 막지 않도록 `run_in_threadpool` 또는 별도 워커로 분리한다.
 - **모델·플랫폼 교체**: 모델과 플랫폼은 코드 변경 없이 프로필로 바꿀 수 있게 만든다(docs ADR-0008).

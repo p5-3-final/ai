@@ -11,12 +11,12 @@ from vlm_testing.containers import postgres
 _PROMPTS_DIR = Path(__file__).resolve().parents[1] / "registry" / "prompts"
 
 
-# 로컬은 작업 공간(project/repos/ai) 두 단계 위 docs 레포의 계약을 읽는다.
+# 로컬은 작업 공간(project/repos/ai) 두 단계 위 docs 레포의 service-contracts/를 읽는다.
 # CI는 service-contracts.lock 버전을 받아 CONTRACTS_DIR로 준다(docs ADR-0013).
 def _default_contracts_dir() -> Path:
     parents = Path(__file__).resolve().parents
     # 컨테이너처럼 루트 구조가 아니면 기본값이 없다. 그때는 CONTRACTS_DIR이 꼭 있어야 한다.
-    return parents[5] / "docs" / "contracts" if len(parents) > 5 else Path("/contracts")
+    return parents[5] / "service-contracts" if len(parents) > 5 else Path("/contracts")
 
 
 class _ContractSettings(BaseSettings):

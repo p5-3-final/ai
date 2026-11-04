@@ -1,8 +1,8 @@
 # syntax=docker/dockerfile:1
 # ai-gateway 이미지. 빌드 컨텍스트는 레포 루트이고, 분류 체계가 든 서비스 간 계약 폴더를 따로 넘긴다.
-# CI는 service-contracts.lock 버전(scripts/fetch-service-contracts.sh), 로컬은 작업 공간의 docs 계약이다.
+# CI는 service-contracts.lock 버전(scripts/fetch-service-contracts.sh), 로컬은 작업 공간의 계약(docs 레포 service-contracts/)이다.
 #   docker build -f services/ai-gateway/Dockerfile \
-#     --build-context vlm-contracts:docs=../../docs/contracts -t vlm/ai-gateway .
+#     --build-context vlm-contracts:docs=../../service-contracts -t vlm/ai-gateway .
 # 마이그레이션은 앱보다 먼저 같은 이미지로 한 번 실행한다(Kubernetes Job·로컬 compose 단계):
 #   docker run --rm vlm/ai-gateway python -m ai_gateway.db.migrate
 

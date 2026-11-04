@@ -67,7 +67,7 @@ def _assert_matches_contract(registry: Registry[Schema], response: httpx.Respons
 
 
 async def test_contract_request_example_is_accepted(
-    contracts_dir: Path, registry: Registry[Schema]
+    contracts_dir: Path, registry_dir: Path, registry: Registry[Schema]
 ) -> None:
     example = _at(
         _load(contracts_dir, "ai-gateway.yaml"),
@@ -80,9 +80,9 @@ async def test_contract_request_example_is_accepted(
         "example",
     )
     assert isinstance(example, dict)
-    adapter = FakeAdapter(reply=json.dumps(output_example(contracts_dir)))
+    adapter = FakeAdapter(reply=json.dumps(output_example(registry_dir)))
 
-    async with gateway(contracts_dir, adapter=adapter) as gw:
+    async with gateway(registry_dir, adapter=adapter) as gw:
         response = await post_analyze(gw.client, example)
 
     assert response.status_code == 200
@@ -119,9 +119,9 @@ async def test_contract_response_example_matches_schemas(
     ],
 )
 async def test_contract_responses_match_contract(
-    contracts_dir: Path, registry: Registry[Schema], case: str, status: int
+    registry_dir: Path, registry: Registry[Schema], case: str, status: int
 ) -> None:
-    reply: str | Exception = json.dumps(output_example(contracts_dir))
+    reply: str | Exception = json.dumps(output_example(registry_dir))
     gateway_profile = profile()
     body = analyze_body()
     caller: str | None = CALLER
@@ -136,7 +136,7 @@ async def test_contract_responses_match_contract(
     elif case == "unavailable":
         reply = ProviderUnavailableError("timeout")
 
-    async with gateway(contracts_dir, gateway_profile, adapter=FakeAdapter(reply=reply)) as gw:
+    async with gateway(registry_dir, gateway_profile, adapter=FakeAdapter(reply=reply)) as gw:
         response = await post_analyze(gw.client, body, caller=caller)
 
     assert response.status_code == status
@@ -166,14 +166,14 @@ def _embed_examples(contracts_dir: Path) -> dict[str, dict[str, object]]:
 
 @pytest.mark.parametrize("name", ["visualText", "image", "text"])
 async def test_spec011_contract_embed_request_examples_are_accepted(
-    contracts_dir: Path, registry: Registry[Schema], name: str
+    contracts_dir: Path, registry_dir: Path, registry: Registry[Schema], name: str
 ) -> None:
     """[SPEC-011] 계약의 요청 예시를 그대로 받아 계약 형식으로 응답한다."""
     example = _embed_examples(contracts_dir)[name]
     _assert_valid(registry, EMBED_REQUEST, example)
 
     async with gateway(
-        contracts_dir,
+        registry_dir,
         profile(embed_settings()),
         encoder=mock_encoder(),
         embedders={"fake": FakeEmbedder()},
@@ -212,7 +212,7 @@ def test_spec011_contract_embed_response_example_matches_schema(
     ],
 )
 async def test_spec011_contract_embed_errors_are_problem_details(
-    contracts_dir: Path,
+    registry_dir: Path,
     registry: Registry[Schema],
     body: dict[str, object],
     settings: dict[str, object] | None,
@@ -220,7 +220,7 @@ async def test_spec011_contract_embed_errors_are_problem_details(
 ) -> None:
     """[SPEC-011] 오류는 계약의 ProblemDetail 형식이다."""
     async with gateway(
-        contracts_dir, profile(settings or embed_settings()), encoder=mock_encoder()
+        registry_dir, profile(settings or embed_settings()), encoder=mock_encoder()
     ) as gw:
         response = await post_embed(gw.client, body)
 

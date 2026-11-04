@@ -1,6 +1,6 @@
 """이벤트 Pydantic 모델.
 
-원본은 docs 레포 `docs/contracts/events/*.schema.json`이고, 계약 테스트가 둘이 같은지 확인한다.
+원본은 docs 레포 `service-contracts/events/*.schema.json`이고, 계약 테스트가 둘이 같은지 확인한다.
 JSON 필드 이름은 camelCase, 파이썬 속성은 snake_case다.
 """
 
