@@ -30,6 +30,7 @@ async def test_creates_call_log_table(database_url: str) -> None:
         "adapter",
         "model_id",
         "prompt_version",
+        "taxonomy_version",
         "status",
         "error_code",
         "latency_ms",

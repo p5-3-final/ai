@@ -36,6 +36,7 @@ def _entry(source_id: UUID) -> CallLogEntry:
         adapter="fake",
         model_id="m",
         prompt_version="event_judge@0123456789ab",
+        taxonomy_version="v2",
         status="success",
         error_code=None,
         latency_ms=1,

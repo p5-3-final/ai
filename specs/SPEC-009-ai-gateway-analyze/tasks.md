@@ -76,6 +76,11 @@ updated: 2026-11-04
 - [x] T033 [R-26] [R-27] [R-28] 해시로 고정한 파일 받기 — 테스트 `libs/storage/tests/test_artifacts.py`, 구현 `libs/storage` `artifacts.fetch_file`
 - [x] T034 [R-26] [R-27] [R-28] [R-14] Registry 묶음 만들기·받기·풀기, 설정 검증, 기동 조립 — 테스트 `t/test_registry_bundle.py`, `t/test_startup_e2e.py`(SeaweedFS), 구현 `registry_bundle.py`, `settings.py`, `main.py`, `.env.example`
 
+## v4 전환 A-3: 결과에 분류 체계 버전 기록 (ADR-0010 ①)
+
+- [x] T035 [R-29] [R-30] taskType 스키마가 참조하는 분류 체계 버전, 버전이 섞이면 기동 실패 — 테스트 `t/test_prompts.py`, 구현 `prompts.py`
+- [x] T036 [R-29] 분석 응답 `taxonomyVersion`·호출 로그 `taxonomy_version`(마이그레이션 0003), 계약 잠금 2.2.0 — 테스트 `t/test_analyze_api.py`, `t/test_call_log.py`, `t/test_migrations.py`, `t/test_contract.py`, 구현 `analyze.py`, `api.py`, `call_log.py`, `embed.py`, `db/tables.py`, `db/migrations/versions/0003_call_log_taxonomy_version.py`
+
 ## 완료 조건 (Definition of Done)
 
 - [x] 이 레포가 담당하는 모든 R-*의 테스트 통과

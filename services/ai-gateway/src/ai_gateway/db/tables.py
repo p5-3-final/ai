@@ -20,6 +20,7 @@ metadata = MetaData(schema=SCHEMA)
 # docs overview "AI Gateway"의 호출 로그.
 # 모델 원문(raw_output)은 영상이 지워지면 비운다(SPEC-009 R-20).
 # 임베딩 호출은 영상 ID·프롬프트 버전이 없고 입력 수를 남긴다(SPEC-011 R-23).
+# 분석 결과의 enum이 어느 분류 체계 버전인지 남긴다(SPEC-009 R-29).
 call_log = Table(
     "ai_call_log",
     metadata,
@@ -30,6 +31,7 @@ call_log = Table(
     Column("adapter", Text),
     Column("model_id", Text),
     Column("prompt_version", Text),
+    Column("taxonomy_version", Text),
     Column("status", Text, nullable=False),
     Column("error_code", Text),
     Column("latency_ms", Integer, nullable=False),

@@ -35,6 +35,8 @@ class CallLogEntry:
     adapter: str | None
     model_id: str | None
     prompt_version: str | None
+    # 임베딩 호출과 분류 체계를 참조하지 않는 taskType은 없다(SPEC-009 R-29).
+    taxonomy_version: str | None
     status: CallStatus
     error_code: str | None
     latency_ms: int

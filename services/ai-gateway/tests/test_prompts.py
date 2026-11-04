@@ -224,3 +224,35 @@ def test_spec009_r14_missing_examples_fails_to_load(copied: Path, schema: str) -
 
     with pytest.raises(PromptRegistryError, match="example"):
         PromptRegistry.load(copied)
+
+
+def test_spec009_r29_task_records_referenced_taxonomy_version(registry_dir: Path) -> None:
+    task = PromptRegistry.load(registry_dir).get("event_judge")
+
+    assert task is not None
+    # 경로 `taxonomy/<버전>/…`의 버전 폴더 이름이다.
+    assert task.taxonomy_version == _referenced_taxonomy(registry_dir).split("/")[1]
+
+
+def test_spec009_r29_task_without_taxonomy_has_no_version(extended_registry_dir: Path) -> None:
+    task = PromptRegistry.load(extended_registry_dir).get("sample_check")
+
+    assert task is not None
+    assert task.taxonomy_version is None
+
+
+def test_spec009_r30_mixed_taxonomy_versions_fail_to_load(copied: Path) -> None:
+    current = _referenced_taxonomy(copied)
+    version = current.split("/")[1]
+    shutil.copytree(copied / "taxonomy" / version, copied / "taxonomy" / "v99")
+    # 같은 `$id`가 두 번 등록되지 않도록 사본의 `$id`도 바꾼다.
+    for path in (copied / "taxonomy" / "v99").glob("*.schema.json"):
+        _edit_json(path, lambda d: d.update({"$id": str(d["$id"]).replace(version, "v99")}))
+    input_path = copied / "prompts/event_judge/input.schema.json"
+    input_path.write_text(
+        input_path.read_text(encoding="utf-8").replace(f"taxonomy/{version}/", "taxonomy/v99/"),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(PromptRegistryError, match="taxonomy versions"):
+        PromptRegistry.load(copied)

@@ -273,6 +273,7 @@ class _Call:
             adapter=plan.adapter if plan else None,
             model_id=plan.model_id if plan else None,
             prompt_version=None,
+            taxonomy_version=None,
             status=status,
             error_code=error_code,
             latency_ms=int((time.perf_counter() - self.started) * 1000),

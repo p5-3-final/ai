@@ -38,6 +38,7 @@ class AnalyzeResponse(_Body):
     task_type: str
     model_id: str | None
     prompt_version: str
+    taxonomy_version: str | None
     output: dict[str, object]
 
 
@@ -68,6 +69,7 @@ async def analyze(
         task_type=result.task_type,
         model_id=result.model_id,
         prompt_version=result.prompt_version,
+        taxonomy_version=result.taxonomy_version,
         output=result.output,
     )
 

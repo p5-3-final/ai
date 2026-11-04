@@ -71,6 +71,8 @@ class PromptTask:
     fallback_template: JsonObject
     # 출력 스키마의 첫 예시. mock Adapter가 이 taskType의 응답으로 쓴다.
     output_example: JsonObject
+    # 스키마가 참조하는 분류 체계 버전(`taxonomy/<버전>/`). 참조가 없으면 None이다(R-29).
+    taxonomy_version: str | None
 
     def input_errors(self, variables: object) -> list[str]:
         """입력 변수가 입력 스키마와 맞지 않는 이유 목록. 맞으면 빈 목록(R-2)."""
@@ -152,6 +154,9 @@ def _load_task(
     referenced = sorted(
         _referenced_files(input_path, schemas) | _referenced_files(output_path, schemas)
     )
+    taxonomy_version = _taxonomy_version(
+        task_dir.name, task_dir.parent.parent / "taxonomy", referenced
+    )
     fallback = _read_fallback(task_dir / _FALLBACK_FILE)
     digest = hashlib.sha256()
     for part in (
@@ -185,7 +190,22 @@ def _load_task(
         output_validator=output_validator,
         fallback_template=fallback,
         output_example=output_example,
+        taxonomy_version=taxonomy_version,
     )
+
+
+def _taxonomy_version(task_type: str, taxonomy_dir: Path, referenced: list[Path]) -> str | None:
+    """참조한 분류 체계 파일의 버전 폴더 이름.
+
+    결과가 어느 버전의 enum인지 하나로 정해져야 해서 버전이 섞이면 실패한다(R-30).
+    """
+    root = taxonomy_dir.resolve()
+    versions = {p.relative_to(root).parts[0] for p in referenced if p.is_relative_to(root)}
+    if len(versions) > 1:
+        raise PromptRegistryError(
+            f"{task_type}: schemas refer to taxonomy versions {sorted(versions)}"
+        )
+    return versions.pop() if versions else None
 
 
 def _read_fallback(path: Path) -> JsonObject:
