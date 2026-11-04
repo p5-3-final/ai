@@ -1,3 +1,4 @@
+import json
 import shutil
 from collections.abc import Iterator
 from pathlib import Path
@@ -48,3 +49,44 @@ def database_url() -> Iterator[str]:
     """테스트 세션에서 함께 쓰는 PostgreSQL. 테스트는 각자 고유한 sourceId로 데이터를 나눈다."""
     with postgres() as url:
         yield url
+
+
+@pytest.fixture
+def extended_registry_dir(registry_dir: Path, tmp_path: Path) -> Path:
+    """event_judge에 코드 없는 새 taskType `sample_check` 폴더를 더한 Registry(SPEC-009 R-24)."""
+    target = tmp_path / "registry"
+    shutil.copytree(registry_dir, target)
+    task = target / "prompts" / "sample_check"
+    task.mkdir()
+    (task / "prompt.md").write_text("구역에 사람이 있는지 답한다.\n", encoding="utf-8")
+    schema = "https://json-schema.org/draft/2020-12/schema"
+    files: dict[str, object] = {
+        "input.schema.json": {
+            "$schema": schema,
+            "type": "object",
+            "required": ["zoneName"],
+            "additionalProperties": False,
+            "properties": {"zoneName": {"type": "string"}},
+            "examples": [{"zoneName": "A"}],
+        },
+        "output.schema.json": {
+            "$schema": schema,
+            "type": "object",
+            "required": ["zoneName", "present", "verificationStatus"],
+            "additionalProperties": False,
+            "properties": {
+                "zoneName": {"type": "string"},
+                "present": {"type": ["boolean", "null"]},
+                "verificationStatus": {"enum": ["confirmed", "unknown", "unverified"]},
+            },
+            "examples": [{"zoneName": "B", "present": True, "verificationStatus": "confirmed"}],
+        },
+        "fallback.json": {
+            "zoneName": "$input.zoneName",
+            "present": None,
+            "verificationStatus": "$status",
+        },
+    }
+    for name, content in files.items():
+        (task / name).write_text(json.dumps(content, ensure_ascii=False), encoding="utf-8")
+    return target

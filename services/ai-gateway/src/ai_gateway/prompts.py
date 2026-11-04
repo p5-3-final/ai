@@ -1,14 +1,18 @@
-"""Prompt Registry: 프롬프트·입력·출력 스키마를 읽어 taskType별로 묶는다.
+"""Prompt Registry: 프롬프트·입력·출력 스키마·대체 결과를 읽어 taskType별로 묶는다.
 
 원본은 `services/ai-gateway/registry/prompts/`이고 분류 체계는 서비스 간 계약에서 가져온다
 (docs ADR-0012). 버전 ID는 사람이 붙이지 않고 내용
 해시로 계산해, 내용을 바꾸고 버전을 올리지 않는 실수를 없앤다(R-13).
+
+taskType은 폴더만 더하면 추가된다(R-24). 대체 결과도 폴더의 `fallback.json`으로 정의하므로
+taskType별 코드가 없다(R-25).
 """
 
 import hashlib
 import json
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
 from jsonschema import Draft202012Validator
 from jsonschema.exceptions import SchemaError
@@ -17,11 +21,17 @@ from referencing.jsonschema import DRAFT202012, Schema
 from vlm_common.errors import VlmError
 
 type JsonObject = dict[str, object]
+type FallbackStatus = Literal["unknown", "unverified"]
 
 _PREFIX_FILE = "_prefix.md"
 _PROMPT_FILE = "prompt.md"
 _INPUT_FILE = "input.schema.json"
 _OUTPUT_FILE = "output.schema.json"
+_FALLBACK_FILE = "fallback.json"
+# 대체 결과 정의에서 값 전체가 이 문자열이면 상태나 입력 변수로 바꾼다.
+_STATUS_PLACEHOLDER = "$status"
+_INPUT_PLACEHOLDER = "$input."
+_FALLBACK_STATUSES: tuple[FallbackStatus, ...] = ("unknown", "unverified")
 # 버전 ID에 쓰는 해시 앞자리 수. 호출 로그·결과에서 사람이 읽을 수 있는 길이로 자른다.
 _VERSION_DIGITS = 12
 # 계약 파일을 모델에 보낼 글로 엮는 방식(render)의 버전.
@@ -41,6 +51,7 @@ class PromptRegistryError(VlmError):
 class PromptMessage:
     """모델에 보낼 글. 고정 접두부는 입력과 무관해 공급자 프롬프트 캐시를 받는다(R-12)."""
 
+    task_type: str
     fixed_prefix: str
     variable_part: str
 
@@ -57,6 +68,9 @@ class PromptTask:
     output_schema_text: str
     input_validator: Draft202012Validator
     output_validator: Draft202012Validator
+    fallback_template: JsonObject
+    # 출력 스키마의 첫 예시. mock Adapter가 이 taskType의 응답으로 쓴다.
+    output_example: JsonObject
 
     def input_errors(self, variables: object) -> list[str]:
         """입력 변수가 입력 스키마와 맞지 않는 이유 목록. 맞으면 빈 목록(R-2)."""
@@ -66,6 +80,13 @@ class PromptTask:
         """모델 출력이 출력 스키마와 맞지 않는 이유 목록. 맞으면 빈 목록(R-5)."""
         return _errors(self.output_validator, output)
 
+    def fallback(self, variables: JsonObject, status: FallbackStatus) -> JsonObject:
+        """모델 판단 없이 만드는 결과(R-6 `unknown`, R-8 `unverified`). 확정값은 넣지 않는다.
+
+        정의는 Registry의 `fallback.json`이다(R-25).
+        """
+        return _fill_object(self.fallback_template, variables, status)
+
     def render(self, variables: JsonObject) -> PromptMessage:
         """고정 접두부와, 작업 지시 + 출력 스키마 + 입력 JSON으로 된 가변부를 만든다.
 
@@ -73,6 +94,7 @@ class PromptTask:
         """
         payload = json.dumps(variables, ensure_ascii=False, indent=2)
         return PromptMessage(
+            task_type=self.task_type,
             fixed_prefix=self.fixed_prefix,
             variable_part=(
                 f"{self.instruction}\n\n## 출력 스키마\n\n```json\n{self.output_schema_text}\n```"
@@ -130,6 +152,7 @@ def _load_task(
     referenced = sorted(
         _referenced_files(input_path, schemas) | _referenced_files(output_path, schemas)
     )
+    fallback = _read_fallback(task_dir / _FALLBACK_FILE)
     digest = hashlib.sha256()
     for part in (
         _RENDER_FORMAT,
@@ -138,10 +161,18 @@ def _load_task(
         _canonical(schemas[input_path]),
         _canonical(schemas[output_path]),
         *(_canonical(schemas[p]) for p in referenced),
+        _canonical(fallback),
     ):
         # 구분자를 넣어 경계가 다른 두 내용이 같은 해시가 되지 않게 한다.
         digest.update(part.encode("utf-8"))
         digest.update(b"\x00")
+    input_validator = Draft202012Validator(schemas[input_path], registry=registry)
+    output_validator = Draft202012Validator(schemas[output_path], registry=registry)
+    input_example = _checked_examples(task_dir.name, "input", schemas[input_path], input_validator)
+    output_example = _checked_examples(
+        task_dir.name, "output", schemas[output_path], output_validator
+    )
+    _check_fallback(task_dir.name, fallback, schemas[input_path], input_example, output_validator)
     return PromptTask(
         task_type=task_dir.name,
         version=f"{task_dir.name}@{digest.hexdigest()[:_VERSION_DIGITS]}",
@@ -150,9 +181,85 @@ def _load_task(
         output_schema_text=json.dumps(
             _inline_refs(schemas[output_path], output_path, schemas), ensure_ascii=False, indent=2
         ),
-        input_validator=Draft202012Validator(schemas[input_path], registry=registry),
-        output_validator=Draft202012Validator(schemas[output_path], registry=registry),
+        input_validator=input_validator,
+        output_validator=output_validator,
+        fallback_template=fallback,
+        output_example=output_example,
     )
+
+
+def _read_fallback(path: Path) -> JsonObject:
+    try:
+        loaded = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError as e:
+        raise PromptRegistryError(f"missing fallback: {path}") from e
+    except json.JSONDecodeError as e:
+        raise PromptRegistryError(f"invalid JSON in fallback {path}: {e}") from e
+    if not isinstance(loaded, dict):
+        raise PromptRegistryError(f"fallback must be a JSON object: {path}")
+    return loaded
+
+
+def _checked_examples(
+    task_type: str, kind: str, schema: JsonObject, validator: Draft202012Validator
+) -> JsonObject:
+    """스키마의 예시가 1개 이상이고 모두 스키마와 맞는지 보고 첫 예시를 돌려준다(R-14)."""
+    examples = schema.get("examples")
+    if not isinstance(examples, list) or not examples:
+        raise PromptRegistryError(f"{task_type}: {kind} schema needs at least one example")
+    for index, example in enumerate(examples):
+        if errors := _errors(validator, example):
+            raise PromptRegistryError(f"{task_type}: {kind} example {index} is invalid: {errors}")
+    first = examples[0]
+    if not isinstance(first, dict):
+        raise PromptRegistryError(f"{task_type}: {kind} example 0 must be an object")
+    return first
+
+
+def _check_fallback(
+    task_type: str,
+    fallback: JsonObject,
+    input_schema: JsonObject,
+    input_example: JsonObject,
+    output_validator: Draft202012Validator,
+) -> None:
+    """대체 결과가 입력 스키마의 변수만 쓰고, 입력 예시로 채우면 출력 스키마와 맞는지 본다(R-14)."""
+    properties = input_schema.get("properties")
+    known = set(properties) if isinstance(properties, dict) else set()
+    unknown = sorted(_input_names(fallback) - known)
+    if unknown:
+        raise PromptRegistryError(f"{task_type}: fallback uses unknown input variables {unknown}")
+    for status in _FALLBACK_STATUSES:
+        if errors := _errors(output_validator, _fill_object(fallback, input_example, status)):
+            raise PromptRegistryError(
+                f"{task_type}: fallback does not match the output schema: {errors}"
+            )
+
+
+def _fill_object(template: JsonObject, variables: JsonObject, status: FallbackStatus) -> JsonObject:
+    return {key: _fill(value, variables, status) for key, value in template.items()}
+
+
+def _fill(node: object, variables: JsonObject, status: FallbackStatus) -> object:
+    if isinstance(node, dict):
+        return {key: _fill(value, variables, status) for key, value in node.items()}
+    if isinstance(node, list):
+        return [_fill(value, variables, status) for value in node]
+    if node == _STATUS_PLACEHOLDER:
+        return status
+    if isinstance(node, str) and node.startswith(_INPUT_PLACEHOLDER):
+        return variables.get(node.removeprefix(_INPUT_PLACEHOLDER))
+    return node
+
+
+def _input_names(node: object) -> set[str]:
+    if isinstance(node, dict):
+        return {name for value in node.values() for name in _input_names(value)}
+    if isinstance(node, list):
+        return {name for value in node for name in _input_names(value)}
+    if isinstance(node, str) and node.startswith(_INPUT_PLACEHOLDER):
+        return {node.removeprefix(_INPUT_PLACEHOLDER)}
+    return set()
 
 
 def _load_schemas(registry_dir: Path) -> dict[Path, JsonObject]:

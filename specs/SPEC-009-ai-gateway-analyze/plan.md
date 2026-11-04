@@ -4,7 +4,7 @@ repo: ai
 status: Draft
 owner: <이름>
 created: 2026-11-03
-updated: 2026-11-03
+updated: 2026-11-04
 ---
 
 # Plan: SPEC-009 ai-gateway 분석 호출 — ai
@@ -25,20 +25,23 @@ updated: 2026-11-03
 | R-3 | `api.py`, `prompts.py` | `test_analyze_api.py::test_r3_*` |
 | R-4 | `analyze.py`, `profile.py` | `test_analyze_api.py::test_r4_*` |
 | R-5 | `output.py` | `test_output.py` |
-| R-6 | `output.py`, `analyze.py` | `test_output.py`, `test_analyze_api.py::test_r6_*` |
+| R-6 | `output.py`, `analyze.py`, `prompts.py`(`PromptTask.fallback`) | `test_output.py`, `test_analyze_api.py::test_r6_*` |
 | R-7 | 계약 출력 스키마(if/then) + `output.py` | `test_output.py::test_r7_*` |
 | R-8 | `analyze.py` | `test_analyze_api.py::test_r8_*` |
 | R-9, R-10 | `images.py` | `test_images.py`, `test_analyze_api.py::test_r9_*`, `test_r10_*` |
 | R-11 | `images.py` | `test_analyze_api.py::test_r11_*` |
 | R-12 | `prompts.py`, `adapters/openai.py` | `test_prompts.py::test_r12_*`, `test_openai_adapter.py` |
-| R-13 | `prompts.py` | `test_prompts.py::test_r13_*` |
-| R-14 | `profile.py`, `prompts.py`, `main.py`(lifespan) | `test_profile.py`, `test_prompts.py`, `test_startup.py`, `test_startup_e2e.py` |
+| R-13 | `prompts.py`(대체 결과 정의도 해시에 넣는다) | `test_prompts.py::test_r13_*` |
+| R-14 | `profile.py`, `prompts.py`(예시·대체 결과 검증), `registry_bundle.py`(묶음 설정), `main.py`(lifespan) | `test_profile.py`, `test_prompts.py`, `test_registry_bundle.py`, `test_startup.py`, `test_startup_e2e.py` |
 | R-15 | `profile.py` | `test_startup.py::test_r15_*` |
 | R-16 | `api.py` | `test_analyze_api.py::test_r16_*` |
 | R-17 | `call_log.py` | `test_call_log.py`(PostgreSQL) |
 | R-18, R-19 | `adapters/openai.py` | `test_openai_adapter.py`(httpx2 MockTransport), `test_analyze_api.py::test_r18_*`, `test_r19_*` |
 | R-20, R-21 | `deletion.py` | `test_deletion.py`(PostgreSQL), `test_deletion_e2e.py`(Kafka) |
 | R-22, R-23 | `main.py`, `health.py` | `test_health.py` |
+| R-24 | Registry 폴더 규약, `adapters/mock.py`(출력 예시) | `test_mock_adapter.py::test_spec009_r24_*`, `test_analyze_api.py::test_spec009_r24_*`(`extended_registry_dir`의 `sample_check`) |
+| R-25 | `prompts.py`(`fallback.json`), `output.py`, `analyze.py` | `test_prompts.py::test_spec009_r25_*`, `test_analyze_api.py::test_spec009_r25_*` |
+| R-26, R-27, R-28 | `registry_bundle.py`, `settings.py`, `main.py`, `libs/storage` `artifacts.fetch_file` | `test_registry_bundle.py`, `libs/storage/tests/test_artifacts.py::test_spec009_r2[678]_*`, `test_startup_e2e.py::test_spec009_r2[67]_*`(SeaweedFS) |
 | NFR-1 | 전체 | `test_overhead.py`(integration, mock Adapter, 이미지 10장) |
 | NFR-2 | `adapters/` | `test_architecture.py`(openai import 위치 검사) |
 | NFR-3 | `analyze.py`, 로그 | `test_analyze_api.py::test_nfr3_*`(caplog) |
@@ -74,8 +77,10 @@ updated: 2026-11-03
 | `.../images.py` | 경로 검사(R-9, R-10)와 저장소 읽기(R-11). 저장소는 동기 boto3라 `asyncio.to_thread`로 병렬로 읽는다 |
 | `.../adapters/base.py` | `VlmAdapter` Protocol, `ProviderUnavailableError`, `ProviderFailedError`, 호출 결과(원문, 토큰 수) |
 | `.../adapters/openai.py` | `openai`·`openai_compatible` 공통 구현(AsyncOpenAI, base_url만 다름). 고정 접두부는 system 메시지, 가변부(프롬프트+입력 JSON+이미지)는 user 메시지 |
-| `.../adapters/mock.py` | 입력 eventType을 그대로 쓴 스키마에 맞는 결과를 돌려준다. mock 허용 설정이 꺼져 있으면 기동 실패(R-15) |
-| `.../output.py` | 응답에서 JSON 객체 추출(코드 블록·앞뒤 글 허용) → 출력 스키마 검증 → 실패 시 `unknown` 결과 |
+| `.../adapters/mock.py` | taskType 출력 스키마의 첫 예시에, 입력 변수와 이름이 같은 필드만 입력값으로 바꿔 돌려준다(R-24). taskType별 코드가 없다. mock 허용 설정이 꺼져 있으면 기동 실패(R-15) |
+| `.../output.py` | 응답에서 JSON 객체 추출(코드 블록·앞뒤 글 허용) → 출력 스키마 검증 → 실패 시 `PromptTask.fallback(..., "unknown")` |
+| `registry/prompts/<taskType>/fallback.json` | 대체 결과 정의(R-25). 값 전체가 `"$status"`면 상태, `"$input.<변수>"`면 입력 변수로 바꾼다. 기동할 때 입력 스키마에 없는 변수를 쓰면 실패하고, 입력 예시로 채운 결과가 출력 스키마와 맞는지 두 상태 모두 확인한다(R-14) |
+| `.../registry_bundle.py` | `build_bundle`: `prompts/`·`taxonomy/`·`profiles/*.toml`을 순서·시각·소유자를 고정한 tar.gz로 묶고 sha256을 돌려준다(같은 내용이면 같은 바이트). `open_bundle`: `fetch_file`로 받아 해시 확인 후 `data` 필터로 풀고, 다 푼 뒤 표시 파일을 남겨 다음 기동은 그 폴더를 쓴다(R-28). `resolve_sources`: 묶음 설정이 있으면 받아 푼 폴더와 그 안의 프로필, 없으면 이미지 경로(R-26). 키·해시 한쪽만, 절대 프로필 경로, 모델 버킷 없음은 `ProfileError`. CLI `python -m ai_gateway.registry_bundle`은 로컬 업로드 스크립트와 이후 CI가 쓴다 |
 | `.../analyze.py` | 유스케이스: 경로 검사 → 이미지 읽기 → (모델 미설정이면 `unverified`) → Adapter → 출력 검증 → 호출 로그 |
 | `.../call_log.py` | `ai.ai_call_log` 저장, 영상별 원문 삭제 |
 | `.../api.py` | FastAPI 라우터, 요청·응답 Pydantic 모델(계약 일치), ProblemDetail 예외 핸들러 |

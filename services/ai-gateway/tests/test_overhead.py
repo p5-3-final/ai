@@ -8,6 +8,7 @@ import pytest
 from ai_gateway.adapters.mock import MockAdapter
 from ai_gateway.call_log import CallLog
 from ai_gateway.db.migrate import upgrade
+from ai_gateway.prompts import PromptRegistry
 from gateway_support import SOURCE, analyze_body, gateway, post_analyze, profile
 from sqlalchemy.ext.asyncio import create_async_engine
 from vlm_storage.memory import InMemoryStorage
@@ -35,7 +36,7 @@ async def test_spec009_nfr1_overhead_p95_under_300ms(registry_dir: Path, databas
         registry_dir,
         profile(max_images=10),
         prepare=_put_images,
-        adapters={"fake": MockAdapter()},
+        adapters={"fake": MockAdapter(PromptRegistry.load(registry_dir))},
         call_log=CallLog(engine),
     ) as gw:
         for _ in range(REQUESTS):

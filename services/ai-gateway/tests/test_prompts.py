@@ -1,10 +1,11 @@
 import json
 import re
 import shutil
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
-from ai_gateway.prompts import PromptRegistry, PromptRegistryError
+from ai_gateway.prompts import FallbackStatus, PromptRegistry, PromptRegistryError
 
 CANDIDATE = {"eventType": "fall", "startSec": 61.2, "endSec": 66.2, "zoneName": None}
 
@@ -38,6 +39,7 @@ def test_spec009_r13_loads_event_judge_with_content_version(registry_dir: Path) 
         "prompts/_prefix.md",
         "prompts/event_judge/prompt.md",
         "prompts/event_judge/input.schema.json",
+        "prompts/event_judge/fallback.json",
         "prompts/event_judge/output.schema.json",
         # 출력 스키마가 참조하는 분류 체계가 바뀌어도 버전이 바뀐다.
         "taxonomy",
@@ -149,3 +151,76 @@ def _referenced_taxonomy(contracts: Path) -> str:
     found = re.search(r'"\.\./\.\./(taxonomy/[^"#]+)#', schema)
     assert found is not None, "출력 스키마가 분류 체계를 참조하지 않는다"
     return found.group(1)
+
+
+def _edit_json(path: Path, edit: Callable[[dict[str, object]], object]) -> None:
+    data = json.loads(path.read_text(encoding="utf-8"))
+    edit(data)
+    path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+
+
+@pytest.mark.parametrize("status", ["unknown", "unverified"])
+def test_spec009_r25_fallback_fills_input_variables_and_status(
+    registry_dir: Path, status: FallbackStatus
+) -> None:
+    """[SPEC-009 R-25] 대체 결과는 Registry 정의에 입력 변수와 상태만 채운다."""
+    task = PromptRegistry.load(registry_dir).get("event_judge")
+    assert task is not None
+
+    output = task.fallback(CANDIDATE, status)
+
+    assert output["eventType"] == "fall"
+    assert output["verificationStatus"] == status
+    assert output["eventDetected"] is None
+    assert task.output_errors(output) == []
+
+
+def test_spec009_r14_missing_fallback_fails_to_load(copied: Path) -> None:
+    """[SPEC-009 R-14] 대체 결과 정의가 없는 taskType은 기동에 실패한다."""
+    (copied / "prompts/event_judge/fallback.json").unlink()
+
+    with pytest.raises(PromptRegistryError, match="fallback"):
+        PromptRegistry.load(copied)
+
+
+def test_spec009_r14_fallback_with_unknown_input_fails_to_load(copied: Path) -> None:
+    """[SPEC-009 R-14] 입력 스키마에 없는 변수를 넣는 대체 결과는 기동에 실패한다."""
+    _edit_json(
+        copied / "prompts/event_judge/fallback.json",
+        lambda d: d.update({"description": "$input.nope"}),
+    )
+
+    with pytest.raises(PromptRegistryError, match="nope"):
+        PromptRegistry.load(copied)
+
+
+def test_spec009_r14_fallback_not_matching_output_schema_fails_to_load(copied: Path) -> None:
+    """[SPEC-009 R-14] 입력 예시로 만든 대체 결과가 출력 스키마와 맞지 않으면 기동에 실패한다."""
+    _edit_json(
+        copied / "prompts/event_judge/fallback.json",
+        lambda d: d.update({"eventDetected": "yes"}),
+    )
+
+    with pytest.raises(PromptRegistryError, match="fallback"):
+        PromptRegistry.load(copied)
+
+
+@pytest.mark.parametrize("schema", ["input", "output"])
+def test_spec009_r14_example_not_matching_schema_fails_to_load(copied: Path, schema: str) -> None:
+    """[SPEC-009 R-14] 입력·출력 예시는 자기 스키마와 맞아야 한다."""
+    _edit_json(
+        copied / f"prompts/event_judge/{schema}.schema.json",
+        lambda d: d.update({"examples": [{"eventType": "not-a-type"}]}),
+    )
+
+    with pytest.raises(PromptRegistryError, match="example"):
+        PromptRegistry.load(copied)
+
+
+@pytest.mark.parametrize("schema", ["input", "output"])
+def test_spec009_r14_missing_examples_fails_to_load(copied: Path, schema: str) -> None:
+    """[SPEC-009 R-14] 대체 결과 검증과 mock 출력에 쓰는 예시가 없으면 기동에 실패한다."""
+    _edit_json(copied / f"prompts/event_judge/{schema}.schema.json", lambda d: d.pop("examples"))
+
+    with pytest.raises(PromptRegistryError, match="example"):
+        PromptRegistry.load(copied)

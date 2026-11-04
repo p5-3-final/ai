@@ -8,19 +8,24 @@ import json
 from vlm_encoders.mock import MockEncoder
 
 from ai_gateway.adapters.base import Completion, Embeddings, ImageInput
-from ai_gateway.prompts import PromptMessage
+from ai_gateway.prompts import PromptMessage, PromptRegistry
 
 _INPUT_BLOCK = "```json\n"
 
 
 class MockAdapter:
-    """입력 JSON의 후보를 그대로 "확인됨"으로 판정한 event_judge 결과를 돌려준다.
+    """taskType 출력 스키마의 첫 예시를 "확인됨" 판정처럼 돌려준다.
+
+    taskType별 코드 없이 Registry 정의만 쓴다(SPEC-009 R-24). 입력 변수와 이름이 같은 출력 필드는
+    입력값으로 바꿔, 후보의 유형 같은 값이 요청을 따라가게 한다.
 
     Args:
+        prompts: 출력 예시를 찾을 Prompt Registry.
         embedding_dimension: `embed`가 돌려줄 벡터 차원(프로필의 embed_text 차원).
     """
 
-    def __init__(self, embedding_dimension: int = 8) -> None:
+    def __init__(self, prompts: PromptRegistry, embedding_dimension: int = 8) -> None:
+        self._prompts = prompts
         self._embedding_dimension = embedding_dimension
 
     async def complete(
@@ -34,22 +39,10 @@ class MockAdapter:
         max_retries: int,
         traceparent: str | None,
     ) -> Completion:
+        task = self._prompts.get(message.task_type)
+        example = task.output_example if task else {}
         variables = _input_json(message.variable_part)
-        reply = {
-            "eventType": variables.get("eventType", "other"),
-            "eventDetected": True,
-            "verificationStatus": "confirmed",
-            "description": f"mock 판정: 이미지 {len(images)}장",
-            "beforeState": None,
-            "afterState": None,
-            "riskDetected": False,
-            "riskType": None,
-            "riskReason": None,
-            "solution": None,
-            "severity": "low",
-            "evidenceStart": variables.get("startSec"),
-            "evidenceEnd": variables.get("endSec"),
-        }
+        reply = example | {k: v for k, v in variables.items() if k in example}
         return Completion(
             text=json.dumps(reply, ensure_ascii=False), input_tokens=None, output_tokens=None
         )

@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 
 import pytest
-from vlm_storage.artifacts import ArtifactError, fetch_model
+from vlm_storage.artifacts import ArtifactError, fetch_file, fetch_model
 from vlm_storage.memory import InMemoryStorage
 
 PREFIX = "models/mobileclip2-s0/dfndr2b"
@@ -108,3 +108,43 @@ def test_spec011_r18_downloads_again_when_cached_file_is_corrupted(tmp_path: Pat
     fetched = fetch_model(_storage(), MANIFEST_KEY, MANIFEST_SHA, tmp_path)
 
     assert fetched.files["open_clip_model.safetensors"].read_bytes() == WEIGHTS
+
+
+BUNDLE_KEY = "registry/abc/registry.tar.gz"
+BUNDLE = b"bundle"
+BUNDLE_SHA = hashlib.sha256(BUNDLE).hexdigest()
+
+
+def _bundle_storage() -> InMemoryStorage:
+    s = InMemoryStorage()
+    s.put_bytes(BUNDLE_KEY, BUNDLE, "application/gzip")
+    return s
+
+
+def test_spec009_r26_fetches_single_file_by_hash(tmp_path: Path) -> None:
+    """[SPEC-009 R-26] 해시로 고정한 파일 하나를 받아 해시 폴더에 둔다."""
+    path = fetch_file(_bundle_storage(), BUNDLE_KEY, BUNDLE_SHA, tmp_path)
+
+    assert path.read_bytes() == BUNDLE
+    assert path == tmp_path / BUNDLE_SHA / "registry.tar.gz"
+
+
+def test_spec009_r27_single_file_hash_mismatch_fails(tmp_path: Path) -> None:
+    """[SPEC-009 R-27] 해시가 다르면 실패하고 파일을 남기지 않는다."""
+    with pytest.raises(ArtifactError, match="sha256"):
+        fetch_file(_bundle_storage(), BUNDLE_KEY, "0" * 64, tmp_path)
+
+    assert not [p for p in tmp_path.rglob("*") if p.is_file()]
+
+
+def test_spec009_r27_missing_single_file_fails(tmp_path: Path) -> None:
+    """[SPEC-009 R-27] 저장소에 없으면 실패한다."""
+    with pytest.raises(ArtifactError, match="not found"):
+        fetch_file(InMemoryStorage(), BUNDLE_KEY, BUNDLE_SHA, tmp_path)
+
+
+def test_spec009_r28_single_file_reuses_cache(tmp_path: Path) -> None:
+    """[SPEC-009 R-28] 캐시에 해시가 같은 파일이 있으면 저장소를 읽지 않는다."""
+    first = fetch_file(_bundle_storage(), BUNDLE_KEY, BUNDLE_SHA, tmp_path)
+
+    assert fetch_file(InMemoryStorage(), BUNDLE_KEY, BUNDLE_SHA, tmp_path) == first

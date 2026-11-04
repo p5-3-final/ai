@@ -93,7 +93,7 @@ uv run python -m evals.run --suite <name>       # 평가
 - **모델 로딩**: 모델은 요청마다 로드하지 않고 기동할 때(`lifespan`, 워커는 시작 단계) 한 번 로드한다. 프로필을 검증하고, 로드에 실패하거나 출력 차원이 프로필과 다르면 기동에 실패한다. `/ready`는 로드가 끝난 뒤에만 200이다. 모델 가중치와 데이터셋은 git에 커밋하지 않는다. 가중치는 모델 저장소 `models/<종류>/<버전>/`에 `manifest.json`과 함께 두고, 프로필은 manifest 경로와 manifest sha256을 가리킨다. 받기는 `vlm_storage.artifacts.fetch_model`로 한다(docs ADR-0010 ②).
 - **설정**: `pydantic-settings`의 `Settings` 클래스로 환경변수를 읽는다. `os.environ`을 직접 읽지 않는다. 비밀값은 `SecretStr`로 감싼다.
 - **외부 LLM·API 호출**: 타임아웃, 재시도(지수 백오프), 토큰·비용 로깅을 반드시 둔다. API 키는 로그에 남기지 않는다.
-- **프롬프트**: 프롬프트는 코드에 긴 문자열로 하드코딩하지 않는다. 원본은 `services/ai-gateway/registry/prompts/<taskType>/`(프롬프트·입력·출력 스키마)이고 분류 체계는 서비스 간 계약에서 가져온다(docs ADR-0012). 버전 ID는 ai-gateway가 내용 해시로 계산한다(SPEC-009). 이미지에는 빌드할 때 넣는다(`--build-context vlm-contracts:docs=...`).
+- **프롬프트**: 프롬프트는 코드에 긴 문자열로 하드코딩하지 않는다. 원본은 `services/ai-gateway/registry/prompts/<taskType>/`(프롬프트·입력·출력 스키마와 각 예시, 대체 결과 `fallback.json`)이고 분류 체계는 서비스 간 계약에서 가져온다(docs ADR-0012). 버전 ID는 ai-gateway가 내용 해시로 계산한다(SPEC-009). 이미지에는 빌드할 때 넣는다(`--build-context vlm-contracts:docs=...`). 새 taskType은 이 폴더와 프로필 설정만 더하고 taskType별 코드를 쓰지 않는다(SPEC-009 R-24). 운영은 프롬프트·분류 체계·프로필 묶음(`python -m ai_gateway.registry_bundle`)을 모델 버킷에 올리고 `AI_GATEWAY_REGISTRY_BUNDLE`·`_SHA256`으로 가리킨다(R-26).
 - **평가**: 모델이나 프롬프트를 바꾸면 `evals`를 실행하고, 변경 전후 지표를 PR 본문에 첨부한다.
 - **로그**: `logging` 모듈로 JSON 구조화 로그를 남긴다. `print`는 금지한다. 사용자 입력 원문과 개인정보는 로그에 남기지 않는다.
 - **health**: ai-gateway는 `/health`(liveness)와 `/ready`를 제공한다. 워커는 `libs/common`의 health 엔드포인트로 같은 경로를 연다.

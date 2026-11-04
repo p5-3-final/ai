@@ -8,6 +8,7 @@ import httpx
 import pytest
 from ai_gateway.db.migrate import upgrade
 from ai_gateway.main import production_app
+from ai_gateway.registry_bundle import build_bundle
 from fastapi import FastAPI
 from gateway_support import (
     CALLER,
@@ -19,6 +20,7 @@ from gateway_support import (
 )
 from vlm_common.profile import ProfileError
 from vlm_encoders.base import EncoderLoadError
+from vlm_storage.artifacts import ArtifactError
 from vlm_storage.s3 import S3Storage, StorageSettings
 from vlm_testing import containers
 
@@ -186,5 +188,59 @@ async def test_spec011_r16_tampered_weights_fail_startup(
     app = production_app()
 
     with pytest.raises(EncoderLoadError, match="sha256"):
+        async with app.router.lifespan_context(app):
+            pass
+
+
+@pytest.mark.usefixtures("environment")
+async def test_spec009_r26_starts_from_registry_bundle_in_models_bucket(
+    database_url: str, registry_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """[SPEC-009 R-26] 설정이 모델 버킷의 Registry 묶음을 가리키면 묶음의 프로필·프롬프트로 뜬다."""
+    endpoint = StorageSettings(bucket=MODELS_BUCKET).endpoint_url
+    assert endpoint is not None
+    containers.create_bucket(endpoint, MODELS_BUCKET)
+    bundle = tmp_path / "registry.tar.gz"
+    sha256 = build_bundle(registry_dir, PROFILE.parent, bundle)
+    key = f"registry/{sha256[:12]}/registry.tar.gz"
+    S3Storage(StorageSettings(bucket=MODELS_BUCKET)).put_file(key, bundle, "application/gzip")
+    # 이미지 경로를 쓰지 않는다는 것을 보이려고 이미지 Registry 경로를 없는 폴더로 둔다.
+    monkeypatch.setenv("AI_GATEWAY_REGISTRY_DIR", str(tmp_path / "missing"))
+    monkeypatch.setenv("AI_GATEWAY_PROFILE_PATH", f"profiles/{PROFILE.name}")
+    monkeypatch.setenv("AI_GATEWAY_REGISTRY_BUNDLE", key)
+    monkeypatch.setenv("AI_GATEWAY_REGISTRY_BUNDLE_SHA256", sha256)
+    monkeypatch.setenv("AI_GATEWAY_MODELS_BUCKET", MODELS_BUCKET)
+    monkeypatch.setenv("AI_GATEWAY_MODEL_CACHE_DIR", str(tmp_path / "cache"))
+    await upgrade(database_url)
+    app = production_app()
+
+    async with app.router.lifespan_context(app):
+        async for client in _ready_client(app):
+            response = await client.post(
+                "/v1/analyze", json=analyze_body(), headers={"X-Caller": CALLER}
+            )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["promptVersion"].startswith("event_judge@")
+
+
+@pytest.mark.usefixtures("environment")
+async def test_spec009_r27_bundle_hash_mismatch_fails_startup(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """[SPEC-009 R-27] 모델 버킷의 묶음 해시가 설정과 다르면 앱이 뜨지 않는다."""
+    endpoint = StorageSettings(bucket=MODELS_BUCKET).endpoint_url
+    assert endpoint is not None
+    containers.create_bucket(endpoint, MODELS_BUCKET)
+    key = "registry/tampered/registry.tar.gz"
+    S3Storage(StorageSettings(bucket=MODELS_BUCKET)).put_bytes(key, b"tampered", "application/gzip")
+    monkeypatch.setenv("AI_GATEWAY_PROFILE_PATH", f"profiles/{PROFILE.name}")
+    monkeypatch.setenv("AI_GATEWAY_REGISTRY_BUNDLE", key)
+    monkeypatch.setenv("AI_GATEWAY_REGISTRY_BUNDLE_SHA256", "0" * 64)
+    monkeypatch.setenv("AI_GATEWAY_MODELS_BUCKET", MODELS_BUCKET)
+    monkeypatch.setenv("AI_GATEWAY_MODEL_CACHE_DIR", str(tmp_path / "cache"))
+    app = production_app()
+
+    with pytest.raises(ArtifactError, match="sha256"):
         async with app.router.lifespan_context(app):
             pass

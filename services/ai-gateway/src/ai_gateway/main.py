@@ -34,6 +34,7 @@ from ai_gateway.images import ImageReader
 from ai_gateway.problems import install_problem_handlers
 from ai_gateway.profile import GatewayProfile, check_profile
 from ai_gateway.prompts import PromptRegistry
+from ai_gateway.registry_bundle import resolve_sources
 from ai_gateway.settings import GatewaySettings
 
 SERVICE_NAME = "ai-gateway"
@@ -142,14 +143,16 @@ def load_encoder(
     return OpenClipEncoder.load(encoder.model_id, weights, encoder.dimension)
 
 
-def build_adapters(profile: GatewayProfile, api_key: str | None) -> dict[str, Adapter]:
+def build_adapters(
+    profile: GatewayProfile, prompts: PromptRegistry, api_key: str | None
+) -> dict[str, Adapter]:
     """프로필의 Adapter마다 구현을 만든다. 종류는 프로필 검증에서 이미 확인했다."""
     text = profile.embed.embed_text
     adapters: dict[str, Adapter] = {}
     for name, adapter in profile.adapters.items():
         if adapter.kind == "mock":
             dimension = text.dimension if text and text.adapter == name and text.dimension else 8
-            adapters[name] = MockAdapter(embedding_dimension=dimension)
+            adapters[name] = MockAdapter(prompts, embedding_dimension=dimension)
         else:
             adapters[name] = OpenAiAdapter(
                 api_key=api_key,
@@ -162,15 +165,18 @@ def build_adapters(profile: GatewayProfile, api_key: str | None) -> dict[str, Ad
 async def build_production(settings: GatewaySettings) -> GatewayDeps:
     """설정으로 운영 의존성을 만든다. 무엇이든 잘못되면 예외로 기동을 멈춘다(R-14)."""
     api_key = settings.openai_api_key.get_secret_value() if settings.openai_api_key else None
-    profile = load_profile(settings.profile_path, GatewayProfile)
-    check_profile(profile, allow_mock=settings.allow_mock, has_openai_key=api_key is not None)
-    prompts = PromptRegistry.load(settings.registry_dir)
-    check_tasks(profile, prompts)
     models = (
         S3Storage(StorageSettings(bucket=settings.models_bucket))
         if settings.models_bucket
         else None
     )
+    # 묶음 설정이 있으면 모델 버킷에서 받아 푼 Registry·프로필을 쓴다(SPEC-009 R-26).
+    # 받기는 블로킹이라 스레드에서 한다.
+    sources = await asyncio.to_thread(resolve_sources, settings, models)
+    profile = load_profile(sources.profile_path, GatewayProfile)
+    check_profile(profile, allow_mock=settings.allow_mock, has_openai_key=api_key is not None)
+    prompts = PromptRegistry.load(sources.registry_dir)
+    check_tasks(profile, prompts)
     # 가중치 받기·로드는 블로킹이다. 끝나야 lifespan이 끝나서 그 전에는 요청을 받지 않는다(R-25).
     encoder = await asyncio.to_thread(load_encoder, profile, models, settings.model_cache_dir)
     database_url = settings.database_url.get_secret_value()
@@ -186,7 +192,7 @@ async def build_production(settings: GatewaySettings) -> GatewayDeps:
         worker.stop()
         await engine.dispose()
 
-    adapters = build_adapters(profile, api_key)
+    adapters = build_adapters(profile, prompts, api_key)
     return GatewayDeps(
         profile=profile,
         prompts=prompts,

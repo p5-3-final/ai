@@ -6,6 +6,8 @@ from unittest.mock import ANY
 import httpx
 import pytest
 from ai_gateway.adapters.base import ProviderFailedError, ProviderUnavailableError
+from ai_gateway.adapters.mock import MockAdapter
+from ai_gateway.profile import GatewayProfile, TaskProfile
 from ai_gateway.prompts import PromptRegistry
 from gateway_support import (
     CALLER,
@@ -273,3 +275,58 @@ async def test_spec009_nfr3_logs_have_no_images_or_raw_output(
         assert raw not in rendered
         assert "jpeg-0" not in rendered
         assert "A동 적재 구역" not in rendered
+
+
+def _sample_check_profile(**task: object) -> GatewayProfile:
+    settings: dict[str, object] = {
+        "adapter": "fake",
+        "model": "fake-vlm",
+        "max_output_tokens": 200,
+        "max_images": 4,
+        "timeout_s": 5,
+        "max_retries": 0,
+    } | task
+    base = profile()
+    return base.model_copy(
+        update={"tasks": base.tasks | {"sample_check": TaskProfile.model_validate(settings)}}
+    )
+
+
+async def test_spec009_r24_task_added_only_to_registry_is_analyzed(
+    extended_registry_dir: Path,
+) -> None:
+    """[SPEC-009 R-24] Registry 폴더와 프로필 설정만 더한 taskType을 코드 변경 없이 분석한다."""
+    prompts = PromptRegistry.load(extended_registry_dir)
+    body = analyze_body(taskType="sample_check", variables={"zoneName": "C"})
+
+    async with gateway(
+        extended_registry_dir, _sample_check_profile(), adapters={"fake": MockAdapter(prompts)}
+    ) as gw:
+        response = await post_analyze(gw.client, body)
+
+    assert response.status_code == 200, response.text
+    assert response.json()["output"] == {
+        "zoneName": "C",
+        "present": True,
+        "verificationStatus": "confirmed",
+    }
+    assert response.json()["promptVersion"].startswith("sample_check@")
+
+
+async def test_spec009_r25_task_added_only_to_registry_gets_its_fallback(
+    extended_registry_dir: Path,
+) -> None:
+    """[SPEC-009 R-25] 모델이 없으면 그 taskType의 Registry 대체 결과를 unverified로 돌려준다."""
+    body = analyze_body(taskType="sample_check", variables={"zoneName": "C"})
+
+    async with gateway(
+        extended_registry_dir, _sample_check_profile(adapter=None, model=None)
+    ) as gw:
+        response = await post_analyze(gw.client, body)
+
+    assert response.status_code == 200, response.text
+    assert response.json()["output"] == {
+        "zoneName": "C",
+        "present": None,
+        "verificationStatus": "unverified",
+    }

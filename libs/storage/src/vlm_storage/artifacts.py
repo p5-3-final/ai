@@ -70,9 +70,29 @@ def fetch_model(
     return FetchedModel(manifest=manifest, files=files)
 
 
+def fetch_file(storage: ObjectStorage, key: str, sha256: str, cache_dir: Path) -> Path:
+    """manifest 없이 해시 하나로 고정한 파일(Registry 묶음 등)을 받아 확인한 로컬 경로를 돌려준다.
+
+    Args:
+        storage: 객체 저장소.
+        key: 객체 키(설정 값).
+        sha256: 기대하는 파일 해시(소문자 16진수, 설정 값).
+        cache_dir: 로컬 캐시 폴더. 파일은 `<cache_dir>/<sha256>/<키의 파일 이름>`에 둔다.
+
+    Raises:
+        ArtifactError: 파일이 없거나 해시가 다를 때.
+    """
+    name = PurePosixPath(key).name
+    return _fetch(storage, key, name, sha256, cache_dir / sha256)
+
+
 def _fetch_file(storage: ObjectStorage, key: str, expected: ManifestFile, folder: Path) -> Path:
-    target = folder / expected.name
-    if target.is_file() and _sha256(target) == expected.sha256:
+    return _fetch(storage, key, expected.name, expected.sha256, folder)
+
+
+def _fetch(storage: ObjectStorage, key: str, name: str, sha256: str, folder: Path) -> Path:
+    target = folder / name
+    if target.is_file() and _sha256(target) == sha256:
         return target
     folder.mkdir(parents=True, exist_ok=True)
     # 받다가 멈춘 파일이 캐시로 쓰이지 않도록 임시 이름으로 받아 확인한 뒤 옮긴다.
@@ -80,8 +100,8 @@ def _fetch_file(storage: ObjectStorage, key: str, expected: ManifestFile, folder
     try:
         storage.get_file(key, partial)
     except ObjectNotFoundError as e:
-        raise ArtifactError(f"model file not found: {key}") from e
-    if _sha256(partial) != expected.sha256:
+        raise ArtifactError(f"file not found: {key}") from e
+    if _sha256(partial) != sha256:
         partial.unlink()
         raise ArtifactError(f"sha256 mismatch for {key}")
     partial.replace(target)

@@ -5,14 +5,12 @@
 """
 
 import json
-from collections.abc import Callable, Iterator
+from collections.abc import Iterator
 from dataclasses import dataclass
-from typing import Literal
 
 from ai_gateway.prompts import PromptTask
 
 type JsonObject = dict[str, object]
-type FallbackStatus = Literal["unknown", "unverified"]
 
 _DECODER = json.JSONDecoder()
 
@@ -49,19 +47,8 @@ def parse_output(task: PromptTask, raw: str, variables: JsonObject) -> ParsedOut
     return _invalid(task, variables, errors)
 
 
-def fallback_output(task_type: str, variables: JsonObject, status: FallbackStatus) -> JsonObject:
-    """모델 판단 없이 ai-gateway가 만드는 결과. 확정값을 넣지 않는다.
-
-    Raises:
-        KeyError: 대체 결과가 정의되지 않은 taskType.
-    """
-    return _FALLBACKS[task_type](variables, status)
-
-
 def _invalid(task: PromptTask, variables: JsonObject, errors: list[str]) -> ParsedOutput:
-    return ParsedOutput(
-        output=fallback_output(task.task_type, variables, "unknown"), valid=False, errors=errors
-    )
+    return ParsedOutput(output=task.fallback(variables, "unknown"), valid=False, errors=errors)
 
 
 def _json_objects(raw: str) -> Iterator[JsonObject]:
@@ -73,27 +60,3 @@ def _json_objects(raw: str) -> Iterator[JsonObject]:
             continue
         if isinstance(value, dict):
             yield value
-
-
-def _event_judge_fallback(variables: JsonObject, status: FallbackStatus) -> JsonObject:
-    # 유형은 후보의 것을 이어 받는다(docs overview VLMAnalysis "비어 있으면 후보의 유형").
-    return {
-        "eventType": variables.get("eventType"),
-        "eventDetected": None,
-        "verificationStatus": status,
-        "description": None,
-        "beforeState": None,
-        "afterState": None,
-        "riskDetected": None,
-        "riskType": None,
-        "riskReason": None,
-        "solution": None,
-        "severity": None,
-        "evidenceStart": None,
-        "evidenceEnd": None,
-    }
-
-
-_FALLBACKS: dict[str, Callable[[JsonObject, FallbackStatus], JsonObject]] = {
-    "event_judge": _event_judge_fallback,
-}
