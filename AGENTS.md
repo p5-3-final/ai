@@ -26,7 +26,7 @@ ai/
 ├── pyproject.toml / uv.lock      # workspace 루트. 멤버 목록과 공통 개발 도구(ruff, mypy, pytest). lock은 하나
 ├── libs/
 │   ├── common/                   # config(Settings), logging, errors, health, 프로필 로딩·검증
-│   ├── messaging/                # Kafka 소비·발행, retry·DLQ 토픽, 처리 결과가 정해진 뒤 수동 커밋
+│   ├── messaging/                # Kafka 소비·발행, retry·DLQ 토픽, 처리 결과가 정해진 뒤 수동 커밋, 처리 단계 측정(SPEC-013)
 │   ├── contracts/                # 이벤트·모델 manifest Pydantic 모델 (docs 레포 service-contracts/events·models의 JSON Schema가 원본)
 │   ├── storage/                  # 객체 저장소 인터페이스(ObjectStorage)와 S3 API 구현, 테스트용 메모리 구현, manifest로 모델 산출물 받기
 │   ├── encoders/                 # 이미지·질의 인코더(ImageTextEncoder)와 open_clip 구현, 가중치 받기 (ai-gateway·frame-encoder 공유)
@@ -95,6 +95,7 @@ uv run python -m evals.run --suite <name>       # 평가
 - **외부 LLM·API 호출**: 타임아웃, 재시도(지수 백오프), 토큰·비용 로깅을 반드시 둔다. API 키는 로그에 남기지 않는다.
 - **프롬프트**: 프롬프트는 코드에 긴 문자열로 하드코딩하지 않는다. 원본은 `services/ai-gateway/registry/prompts/<taskType>/`(프롬프트·입력·출력 스키마와 각 예시, 대체 결과 `fallback.json`)이고 분류 체계는 서비스 간 계약에서 가져온다(docs ADR-0012). 버전 ID는 ai-gateway가 내용 해시로 계산한다(SPEC-009). 이미지에는 빌드할 때 넣는다(`--build-context vlm-contracts:docs=...`). 새 taskType은 이 폴더와 프로필 설정만 더하고 taskType별 코드를 쓰지 않는다(SPEC-009 R-24). 운영은 프롬프트·분류 체계·프로필 묶음(`python -m ai_gateway.registry_bundle`)을 모델 버킷에 올리고 `AI_GATEWAY_REGISTRY_BUNDLE`·`_SHA256`으로 가리킨다(R-26).
 - **평가**: 모델이나 프롬프트를 바꾸면 `evals`를 실행하고, 변경 전후 지표를 PR 본문에 첨부한다.
+- **처리 시간 측정**: `libs/messaging`이 소비마다 큐 대기·핸들러 전체를 자동으로 잰다. 핸들러 안의 세부 단계는 `with ctx.timing.stage("<단계 ID>"):`로 감싼다. 단계 ID는 docs `service-contracts/stages/`의 목록에 먼저 더하고 `vlm_contracts.stages.StageId`를 맞춘다(SPEC-013). 발행 설정(`STAGE_TIMING_PUBLISH` 등)을 끄면 JSON 로그로만 남는다.
 - **로그**: `logging` 모듈로 JSON 구조화 로그를 남긴다. `print`는 금지한다. 사용자 입력 원문과 개인정보는 로그에 남기지 않는다.
 - **health**: ai-gateway는 `/health`(liveness)와 `/ready`를 제공한다. 워커는 `libs/common`의 health 엔드포인트로 같은 경로를 연다.
 

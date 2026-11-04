@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import queue
 import threading
 import time
@@ -11,8 +12,10 @@ import pytest
 from confluent_kafka import Consumer, Message, Producer, TopicPartition
 from vlm_common.health import HealthState
 from vlm_contracts.events import VideoDeleted
-from vlm_messaging.publisher import KafkaPublisher
+from vlm_contracts.stages import StageTimingBatch
+from vlm_messaging.publisher import KafkaPublisher, PublishError
 from vlm_messaging.retry import RetryPolicy
+from vlm_messaging.timing import KafkaTimingSink, TimingSink
 from vlm_messaging.topics import dlq_topic, retry_topic
 from vlm_messaging.worker import (
     KafkaWorker,
@@ -77,11 +80,17 @@ def _worker(
     retry: RetryPolicy = FAST_RETRY,
     kafka: dict[str, str] | None = None,
     health: HealthState | None = None,
+    timing: TimingSink | None = None,
 ) -> KafkaWorker:
+    # 소비 그룹 이름은 테스트마다 다르므로 단계 ID 앞부분은 목록에 있는 서비스 이름을 쓴다.
     config = WorkerConfig(
-        bootstrap=setup.bootstrap, group_id=setup.group, retry=retry, kafka=kafka or {}
+        bootstrap=setup.bootstrap,
+        group_id=setup.group,
+        retry=retry,
+        kafka=kafka or {},
+        service="normalize",
     )
-    return KafkaWorker(config, routes, setup.publisher, health=health)
+    return KafkaWorker(config, routes, setup.publisher, health=health, timing=timing)
 
 
 def _committed(setup: Setup) -> int:
@@ -135,7 +144,9 @@ def test_handler_receives_parsed_event_and_offset_is_committed(
     start(_worker(setup, [route(setup.topic, VideoDeleted, handle)]))
 
     got, ctx = received.get(timeout=30)
-    assert got == event
+    # 발행기가 봉투에 발행 시각을 채운다(SPEC-013 R-8).
+    assert got.produced_at is not None
+    assert got.model_copy(update={"produced_at": None}) == event
     assert ctx.topic == setup.topic
     assert ctx.attempt == 1
     assert _wait_until(lambda: _committed(setup) == 1, timeout=10)
@@ -297,3 +308,78 @@ def test_r23_ready_after_subscribe_and_alive_while_idle(
     assert _wait_until(health.is_ready, timeout=10)
     time.sleep(3)
     assert health.is_alive()
+
+
+class FailingSink:
+    def emit(self, batch: StageTimingBatch, *, traceparent: str | None) -> None:
+        raise PublishError("sink down")
+
+
+def test_spec013_r5_worker_logs_one_batch_per_handler(
+    setup: Setup,
+    start: Callable[[KafkaWorker], threading.Thread],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    event = _event()
+    setup.publisher.publish(setup.topic, event)
+    caplog.set_level(logging.INFO, logger="vlm_messaging.timing")
+
+    async def handle(event: VideoDeleted, ctx: MessageContext) -> None:
+        with ctx.timing.stage("normalize.probe"):
+            pass
+
+    start(_worker(setup, [route(setup.topic, VideoDeleted, handle)]))
+
+    assert _wait_until(lambda: _committed(setup) == 1, timeout=30)
+    [record] = [r for r in caplog.records if r.getMessage() == "stage timing"]
+    batch = StageTimingBatch.model_validate(record.__dict__["stageTiming"])
+    assert batch.service == "normalize"
+    # 발행기가 producedAt을 채웠으므로 큐 대기도 남는다(R-1, R-8).
+    assert [t.path for t in batch.timings] == [
+        "normalize.queue_wait",
+        "normalize.handle/normalize.probe",
+        "normalize.handle",
+    ]
+    assert {t.subject.source_id for t in batch.timings} == {event.source_id}
+
+
+def test_spec013_r5_failed_handler_still_sends_batch_to_kafka(
+    setup: Setup,
+    start: Callable[[KafkaWorker], threading.Thread],
+    unique: Callable[[str], str],
+    create_topics: Callable[..., None],
+    read_all: Callable[[str, float], list[Message]],
+) -> None:
+    timing_topic = unique("stage.timing")
+    create_topics(timing_topic)
+    event = _event()
+    setup.publisher.publish(setup.topic, event)
+
+    async def fail(event: VideoDeleted, ctx: MessageContext) -> None:
+        raise NonRetryableError("bad video")
+
+    sink = KafkaTimingSink(setup.publisher, topic=timing_topic)
+    start(_worker(setup, [route(setup.topic, VideoDeleted, fail)], timing=sink))
+
+    [msg] = _wait_for_messages(read_all, timing_topic, timeout=30)
+    assert msg.key() == str(event.source_id).encode()
+    batch = StageTimingBatch.model_validate_json(msg.value() or b"")
+    handle = batch.timings[-1]
+    assert (handle.stage_id, handle.status) == ("normalize.handle", "error")
+
+
+def test_spec013_r6_sink_failure_does_not_change_commit(
+    setup: Setup, start: Callable[[KafkaWorker], threading.Thread]
+) -> None:
+    calls: queue.Queue[VideoDeleted] = queue.Queue()
+
+    async def handle(event: VideoDeleted, ctx: MessageContext) -> None:
+        calls.put(event)
+
+    setup.publisher.publish(setup.topic, _event())
+    start(_worker(setup, [route(setup.topic, VideoDeleted, handle)], timing=FailingSink()))
+
+    assert _wait_until(lambda: _committed(setup) == 1, timeout=30)
+    calls.get(timeout=1)
+    # 측정 실패로 메시지를 다시 처리하지 않는다.
+    assert calls.empty()

@@ -13,21 +13,38 @@
 import asyncio
 import logging
 import random
+import re
 import signal
+import socket
 import threading
 import time
 from collections.abc import Awaitable, Callable, Coroutine, Mapping, Sequence
 from concurrent.futures import Future
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 
-from confluent_kafka import Consumer, KafkaException, Message, TopicPartition
+from confluent_kafka import (
+    TIMESTAMP_LOG_APPEND_TIME,
+    Consumer,
+    KafkaException,
+    Message,
+    TopicPartition,
+)
 from pydantic import ValidationError
 from vlm_common.errors import VlmError
 from vlm_common.health import HealthState
 from vlm_contracts.events import Event
+from vlm_contracts.stages import STAGE_IDS
 
 from vlm_messaging.publisher import Headers, KafkaPublisher
 from vlm_messaging.retry import RetryPolicy
+from vlm_messaging.timing import (
+    KafkaTimingSink,
+    LogTimingSink,
+    MessagePosition,
+    StageRecorder,
+    TimingSink,
+)
 from vlm_messaging.topics import dlq_topic, retry_topic
 
 ATTEMPT_HEADER = "x-attempt"
@@ -37,6 +54,7 @@ ERROR_HEADER = "x-error"
 TRACEPARENT_HEADER = "traceparent"
 # 헤더가 커지면 브로커의 메시지 크기 제한에 걸리므로 오류 설명은 앞부분만 남긴다.
 _ERROR_HEADER_LIMIT = 1024
+_TRACE_ID = re.compile(r"[0-9a-f]{32}")
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +84,11 @@ class MessageContext:
     key: bytes | None
     attempt: int
     traceparent: str | None
+    timing: StageRecorder = field(
+        default_factory=lambda: StageRecorder(
+            service=None, attempt=1, received_at=datetime.now(UTC)
+        )
+    )
 
 
 type Dispatch = Callable[[bytes, MessageContext], Coroutine[None, None, None]]
@@ -92,7 +115,10 @@ def route[E: Event](
     """
 
     async def dispatch(value: bytes, ctx: MessageContext) -> None:
-        await handler(model.model_validate_json(value), ctx)
+        event = model.model_validate_json(value)
+        ctx.timing.begin(event)
+        with ctx.timing.handle():
+            await handler(event, ctx)
 
     return Route(topic, dispatch)
 
@@ -107,6 +133,8 @@ class WorkerConfig:
         retry: 재시도 정책.
         kafka: librdkafka 설정 덮어쓰기(예: `max.poll.interval.ms`).
         poll_timeout_s: poll 한 번의 대기 시간.
+        service: 서비스 이름. 측정 묶음의 서비스와 `<service>.queue_wait`·`<service>.handle` 단계
+            ID에 쓴다(SPEC-013). 없으면 소비 그룹 이름이다.
     """
 
     bootstrap: str
@@ -114,6 +142,7 @@ class WorkerConfig:
     retry: RetryPolicy = field(default_factory=RetryPolicy)
     kafka: Mapping[str, str] = field(default_factory=dict)
     poll_timeout_s: float = 0.5
+    service: str | None = None
 
 
 class KafkaWorker:
@@ -134,8 +163,16 @@ class KafkaWorker:
         rand: Callable[[], float] = random.random,
         clock: Callable[[], float] = time.time,
         health: HealthState | None = None,
+        timing: TimingSink | None = None,
     ) -> None:
         self._config = config
+        self._service = config.service or config.group_id
+        missing = {f"{self._service}.{s}" for s in ("queue_wait", "handle")} - STAGE_IDS
+        if missing:
+            # 목록에 없는 단계 ID를 남기지 않도록 기동할 때 막는다(SPEC-013 R-10).
+            raise ValueError(f"stage ids not in the contract list: {sorted(missing)}")
+        self._timing = timing or LogTimingSink()
+        self._pod = socket.gethostname()
         self._health = health
         self._routes = {r.topic: r for r in routes}
         self._original_of = {retry_topic(t, config.group_id): t for t in self._routes}
@@ -161,7 +198,10 @@ class KafkaWorker:
 
     def required_topics(self) -> list[str]:
         """구독 대상과 발행 대상을 합친 토픽 목록. 운영에서 미리 만들어 둘 토픽이다."""
-        return [*self._routes, *self._original_of, dlq_topic(self._config.group_id)]
+        topics = [*self._routes, *self._original_of, dlq_topic(self._config.group_id)]
+        if isinstance(self._timing, KafkaTimingSink):
+            topics.append(self._timing.topic)
+        return topics
 
     def stop(self) -> None:
         """처리 중인 메시지를 커밋하지 않고 루프를 끝내게 한다. 어느 스레드에서 불러도 된다."""
@@ -235,14 +275,23 @@ class KafkaWorker:
             self._delayed[(topic, partition)] = not_before
             return
 
-        traceparent = _header(msg, TRACEPARENT_HEADER)
+        raw_trace = _header(msg, TRACEPARENT_HEADER)
+        traceparent = raw_trace.decode() if raw_trace else None
+        attempt = int(_header(msg, ATTEMPT_HEADER) or b"1")
         ctx = MessageContext(
             topic=original,
             partition=partition,
             offset=offset,
             key=msg.key(),
-            attempt=int(_header(msg, ATTEMPT_HEADER) or b"1"),
-            traceparent=traceparent.decode() if traceparent else None,
+            attempt=attempt,
+            traceparent=traceparent,
+            timing=StageRecorder(
+                service=self._service,
+                attempt=attempt,
+                received_at=datetime.fromtimestamp(self._clock(), UTC),
+                broker_appended_at=_log_append_time(msg),
+                trace_id=_trace_id(traceparent),
+            ),
         )
         future: Future[None] = asyncio.run_coroutine_threadsafe(
             self._routes[original].dispatch(msg.value() or b"", ctx), loop
@@ -251,6 +300,7 @@ class KafkaWorker:
             logger.info("message abandoned without commit", extra=_log_fields(ctx))
             return
 
+        self._emit_timing(ctx, MessagePosition(topic, partition, offset))
         failure = future.exception()
         if failure is not None:
             # 계약과 맞지 않는 메시지와 재시도해도 같은 실패는 기다리지 않고 DLQ로 보낸다.
@@ -320,6 +370,18 @@ class KafkaWorker:
         dlq = dlq_topic(self._config.group_id)
         self._publisher.send_raw(dlq, msg.key(), msg.value() or b"", _with_trace(headers, ctx))
 
+    def _emit_timing(self, ctx: MessageContext, position: MessagePosition) -> None:
+        batch = ctx.timing.batch(service=self._service, pod=self._pod, position=position)
+        if batch is None:
+            return
+        try:
+            self._timing.emit(batch, traceparent=ctx.traceparent)
+        except VlmError as e:
+            # 측정은 부가 기능이라 보내지 못해도 커밋·재시도·DLQ를 바꾸지 않는다(SPEC-013 R-6).
+            logger.warning(
+                "stage timing not sent", extra={**_log_fields(ctx), "error": _describe(e)}
+            )
+
     def _commit(self, msg: Message, ctx: MessageContext) -> None:
         try:
             self._consumer.commit(message=msg, asynchronous=False)
@@ -342,6 +404,21 @@ def _header(msg: Message, name: str) -> bytes | None:
     for key, value in items:
         if key == name:
             return value.encode() if isinstance(value, str) else value
+    return None
+
+
+def _log_append_time(msg: Message) -> datetime | None:
+    """브로커가 붙인 적재 시각. 토픽이 생산자 시각(CreateTime)을 쓰면 None이다."""
+    kind, millis = msg.timestamp()
+    if kind != TIMESTAMP_LOG_APPEND_TIME:
+        return None
+    return datetime.fromtimestamp(millis / 1000, UTC)
+
+
+def _trace_id(traceparent: str | None) -> str | None:
+    parts = traceparent.split("-") if traceparent else []
+    if len(parts) == 4 and _TRACE_ID.fullmatch(parts[1]):
+        return parts[1]
     return None
 
 

@@ -6,6 +6,7 @@ from vlm_common.health import HealthState, serve_health
 from vlm_common.logging import configure_logging
 from vlm_contracts.events import VideoUploaded
 from vlm_messaging.publisher import KafkaPublisher
+from vlm_messaging.timing import KafkaTimingSink
 from vlm_messaging.worker import KafkaWorker, WorkerConfig, route
 from vlm_storage.s3 import S3Storage, StorageSettings
 from vlm_storage.storage import ObjectStorage
@@ -43,10 +44,14 @@ def build_worker(
         ),
     )
     return KafkaWorker(
-        WorkerConfig(bootstrap=worker.kafka_bootstrap, group_id=normalize.group_id),
+        # 단계 ID(`normalize.handle` 등)는 소비 그룹 설정과 상관없이 서비스 이름으로 남긴다.
+        WorkerConfig(
+            bootstrap=worker.kafka_bootstrap, group_id=normalize.group_id, service=SERVICE_NAME
+        ),
         [route("video.uploaded", VideoUploaded, service.handle)],
         publisher,
         health=health,
+        timing=KafkaTimingSink(publisher) if worker.stage_timing_publish else None,
     )
 
 

@@ -17,6 +17,7 @@ from vlm_contracts.events import (
     VideoNormalizing,
     VideoUploaded,
 )
+from vlm_messaging.timing import StageRecorder
 from vlm_messaging.worker import MessageContext
 from vlm_storage.storage import ObjectNotFoundError, ObjectStorage
 
@@ -90,9 +91,11 @@ class NormalizeService:
 
     async def handle(self, event: VideoUploaded, ctx: MessageContext) -> None:
         """워커 경로 핸들러. ffmpeg와 저장소 호출이 블로킹이라 스레드에서 처리한다."""
-        await asyncio.to_thread(self._process, event, ctx.traceparent)
+        await asyncio.to_thread(self._process, event, ctx.traceparent, ctx.timing)
 
-    def _process(self, uploaded: VideoUploaded, traceparent: str | None) -> None:
+    def _process(
+        self, uploaded: VideoUploaded, traceparent: str | None, timing: StageRecorder
+    ) -> None:
         source = uploaded.source_id
         normalization = ids.normalization_id(uploaded.event_id, self._config.normalization_version)
         # NFR-4: 영상 ID로만 식별하고 소유자·파일 정보는 남기지 않는다.
@@ -117,7 +120,7 @@ class NormalizeService:
                 # 먼저 보낸 video.normalizing은 media-service가 무시한다(R-18).
                 logger.info("original not found, skipping", extra=log)
                 return
-            outcome = self._normalize(source, normalization, work, original)
+            outcome = self._normalize(source, normalization, work, original, timing)
         if isinstance(outcome, _Output):
             self._publish(self._ready(uploaded, normalization, outcome), traceparent)
             logger.info("video normalized", extra={**log, "transcoded": outcome.transcoded})
@@ -126,11 +129,20 @@ class NormalizeService:
             logger.info("video rejected", extra={**log, "rejectReason": outcome})
 
     def _normalize(
-        self, source: UUID, normalization: UUID, work: Path, original: Path
+        self,
+        source: UUID,
+        normalization: UUID,
+        work: Path,
+        original: Path,
+        timing: StageRecorder,
     ) -> _Output | RejectReason:
-        """정규화 사본과 HLS를 저장하고 사본의 정보를 돌려준다. 거절이면 사유를 돌려준다."""
+        """정규화 사본과 HLS를 저장하고 사본의 정보를 돌려준다. 거절이면 사유를 돌려준다.
+
+        단계마다 걸린 시간을 남긴다(SPEC-013 R-9). 실패한 단계도 `error`로 남는다.
+        """
         try:
-            probe = self._media.probe(original)
+            with timing.stage("normalize.probe"):
+                probe = self._media.probe(original)
         except MediaReadError:
             return "UNREADABLE"
         decision = decide(probe, self._config.limits)
@@ -138,20 +150,25 @@ class NormalizeService:
             return decision.reason
         output = work / "video.mp4"
         try:
-            self._media.normalize(original, output, decision, probe.audio_codec)
-            segments = self._media.make_hls(output, work / "hls", self._config.hls_segment_s)
-            normalized = self._media.probe(output)
+            with timing.stage("normalize.transcode"):
+                self._media.normalize(original, output, decision, probe.audio_codec)
+            with timing.stage("normalize.hls"):
+                segments = self._media.make_hls(output, work / "hls", self._config.hls_segment_s)
+            with timing.stage("normalize.probe"):
+                normalized = self._media.probe(output)
         except (DecodeError, MediaReadError):
             return "DECODE_FAILED"
-        self._storage.put_file(
-            ids.normalized_key(source, normalization), output, _CONTENT_TYPES[".mp4"]
-        )
-        # 재생 목록을 마지막에 올려, 목록이 보이면 조각도 모두 있게 한다.
-        for path in sorted(segments, key=lambda p: p.suffix == ".m3u8"):
-            key = f"{ids.hls_prefix(source, normalization)}{path.name}"
+        with timing.stage("normalize.store", unit="files") as store:
             self._storage.put_file(
-                key, path, _CONTENT_TYPES.get(path.suffix, "application/octet-stream")
+                ids.normalized_key(source, normalization), output, _CONTENT_TYPES[".mp4"]
             )
+            # 재생 목록을 마지막에 올려, 목록이 보이면 조각도 모두 있게 한다.
+            for path in sorted(segments, key=lambda p: p.suffix == ".m3u8"):
+                key = f"{ids.hls_prefix(source, normalization)}{path.name}"
+                self._storage.put_file(
+                    key, path, _CONTENT_TYPES.get(path.suffix, "application/octet-stream")
+                )
+            store.count = 1 + len(segments)
         return _Output(normalized, decision.transcode)
 
     def _ready(

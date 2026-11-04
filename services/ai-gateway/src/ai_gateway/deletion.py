@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from vlm_common.health import HealthState
 from vlm_contracts.events import VideoDeleted
 from vlm_messaging.publisher import KafkaPublisher
+from vlm_messaging.timing import KafkaTimingSink
 from vlm_messaging.worker import KafkaWorker, MessageContext, WorkerConfig, route
 
 from ai_gateway.call_log import CallLog
@@ -44,7 +45,12 @@ class RunningWorker:
 
 
 def start_deletion_worker(
-    bootstrap: str, group_id: str, database_url: str, health: HealthState
+    bootstrap: str,
+    group_id: str,
+    database_url: str,
+    health: HealthState,
+    *,
+    publish_timing: bool = False,
 ) -> RunningWorker:
     """`video.deleted` 소비자를 데몬 스레드로 띄운다.
 
@@ -56,14 +62,19 @@ def start_deletion_worker(
         group_id: 소비 그룹. 재시도·DLQ 토픽 이름에도 쓴다.
         database_url: ai_db 접속 URL.
         health: 구독을 시작하면 준비 상태로 표시된다(R-23).
+        publish_timing: 처리 시간 측정 묶음을 `stage.timing`에 발행할지. 끄면 JSON 로그로만 남긴다
+            (SPEC-013 R-5).
     """
     engine = create_async_engine(database_url)
     handler = DeletionHandler(CallLog(engine))
+    publisher = KafkaPublisher(bootstrap=bootstrap, client_id=group_id)
     worker = KafkaWorker(
-        WorkerConfig(bootstrap=bootstrap, group_id=group_id),
+        # 단계 ID(`ai-gateway.handle` 등)는 소비 그룹 설정과 상관없이 서비스 이름으로 남긴다.
+        WorkerConfig(bootstrap=bootstrap, group_id=group_id, service="ai-gateway"),
         [route("video.deleted", VideoDeleted, handler.handle)],
-        KafkaPublisher(bootstrap=bootstrap, client_id=group_id),
+        publisher,
         health=health,
+        timing=KafkaTimingSink(publisher) if publish_timing else None,
     )
     thread = threading.Thread(target=worker.run, name="video-deleted-consumer", daemon=True)
     thread.start()

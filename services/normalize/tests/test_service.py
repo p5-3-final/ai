@@ -19,6 +19,7 @@ from normalize.ids import (
 from normalize.probe import MediaReadError, ProbeResult
 from normalize.service import NormalizeConfig, NormalizeService
 from vlm_contracts.events import Event, VideoNormalized, VideoNormalizing, VideoUploaded
+from vlm_messaging.timing import StageRecorder
 from vlm_messaging.worker import MessageContext
 from vlm_storage.memory import InMemoryStorage
 
@@ -326,3 +327,40 @@ async def test_nfr5_work_dir_removed_on_success_and_failure(
         await h.service.handle(_uploaded(), CTX)
 
     assert list(h.work_dir.iterdir()) == []
+
+
+def _timed_ctx() -> MessageContext:
+    recorder = StageRecorder(service="normalize", attempt=1, received_at=NOW)
+    return replace(CTX, timing=recorder)
+
+
+async def test_spec013_r9_records_probe_transcode_hls_and_store(tmp_path: Path) -> None:
+    h = _harness(tmp_path)
+    ctx = _timed_ctx()
+
+    await h.service.handle(_uploaded(), ctx)
+
+    stages = [(t.stage_id, t.status) for t in ctx.timing.timings]
+    # 원본과 정규화 사본을 한 번씩 읽는다.
+    assert stages == [
+        ("normalize.probe", "ok"),
+        ("normalize.transcode", "ok"),
+        ("normalize.hls", "ok"),
+        ("normalize.probe", "ok"),
+        ("normalize.store", "ok"),
+    ]
+    store = ctx.timing.timings[-1]
+    # 정규화 사본 1개와 HLS 파일 3개(FakeMedia)
+    assert (store.count, store.unit) == (4, "files")
+
+
+async def test_spec013_r9_failed_transcode_is_recorded_as_error(tmp_path: Path) -> None:
+    h = _harness(tmp_path, FakeMedia(normalize_error=DecodeError("broken")))
+    ctx = _timed_ctx()
+
+    await h.service.handle(_uploaded(), ctx)
+
+    assert [(t.stage_id, t.status) for t in ctx.timing.timings] == [
+        ("normalize.probe", "ok"),
+        ("normalize.transcode", "error"),
+    ]

@@ -27,6 +27,9 @@ class Event(BaseModel):
     occurred_at: AwareDatetime
     source_id: UUID
     owner_id: UUID
+    # 발행 라이브러리가 채우는 발행 시각(SPEC-013 R-8). 채우지 않는 생산자도 있어 선택 필드이고,
+    # 없으면 JSON에서 빼서 그 생산자의 메시지 모양을 바꾸지 않는다.
+    produced_at: AwareDatetime | None = Field(default=None, exclude_if=lambda v: v is None)
 
 
 class VideoUploaded(Event):
