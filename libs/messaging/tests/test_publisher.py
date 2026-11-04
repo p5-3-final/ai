@@ -61,3 +61,21 @@ def test_unreachable_broker_raises_publish_error() -> None:
 
     with pytest.raises(PublishError):
         publisher.publish("video.deleted", _deleted())
+
+
+def test_spec013_r8_publish_fills_produced_at(
+    bootstrap: str,
+    unique: Callable[[str], str],
+    create_topics: Callable[..., None],
+    read_all: Callable[[str, float], list[Message]],
+) -> None:
+    topic = unique("video.deleted")
+    create_topics(topic)
+    sent_at = datetime(2026, 11, 4, 9, 0, 0, 250000, tzinfo=UTC)
+    publisher = KafkaPublisher(bootstrap=bootstrap, client_id="test", now=lambda: sent_at)
+
+    publisher.publish(topic, _deleted())
+
+    [msg] = read_all(topic, 5.0)
+    payload = json.loads(msg.value() or b"")
+    assert datetime.fromisoformat(payload["producedAt"]) == sent_at

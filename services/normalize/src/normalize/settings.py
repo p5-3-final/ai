@@ -8,11 +8,14 @@ from vlm_common.settings import ServiceSettings
 
 
 class WorkerSettings(ServiceSettings):
-    """Kafka 워커 공통 설정. 환경변수 `KAFKA_BOOTSTRAP`, `HEALTH_PORT`, `LOG_LEVEL`."""
+    """Kafka 워커 공통 설정. 환경변수 `KAFKA_BOOTSTRAP`, `HEALTH_PORT`, `LOG_LEVEL`,
+    `STAGE_TIMING_PUBLISH`."""
 
     kafka_bootstrap: str
     # docs 서비스 카탈로그 "포트 규칙": 워커는 컨테이너 포트 8000에 health 전용 서버만 연다.
     health_port: int = 8000
+    # 처리 시간 측정 묶음을 stage.timing에 발행한다. 끄면 JSON 로그로만 남긴다(SPEC-013 R-5).
+    stage_timing_publish: bool = False
 
 
 class NormalizeSettings(BaseSettings):

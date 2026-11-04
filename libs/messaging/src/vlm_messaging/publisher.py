@@ -1,6 +1,7 @@
 """이벤트 발행."""
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
+from datetime import UTC, datetime
 
 from confluent_kafka import KafkaError, KafkaException, Message, Producer
 from vlm_common.errors import VlmError
@@ -21,8 +22,15 @@ class KafkaPublisher:
     워커는 결과를 발행한 뒤에야 입력 offset을 커밋하므로, 발행이 확인되기 전에는 돌아오지 않는다.
     """
 
-    def __init__(self, bootstrap: str, client_id: str, timeout_s: float = 10.0) -> None:
+    def __init__(
+        self,
+        bootstrap: str,
+        client_id: str,
+        timeout_s: float = 10.0,
+        now: Callable[[], datetime] = lambda: datetime.now(UTC),
+    ) -> None:
         self._timeout_s = timeout_s
+        self._now = now
         self._producer = Producer(
             {
                 "bootstrap.servers": bootstrap,
@@ -37,7 +45,7 @@ class KafkaPublisher:
     def publish(
         self, topic: str, event: Event, *, key: str | None = None, traceparent: str | None = None
     ) -> None:
-        """이벤트를 camelCase JSON으로 발행한다.
+        """이벤트를 camelCase JSON으로 발행한다. 봉투의 `producedAt`은 발행 시각으로 채운다.
 
         Args:
             topic: 토픽 이름.
@@ -49,7 +57,9 @@ class KafkaPublisher:
             PublishError: 제한 시간 안에 브로커 확인을 받지 못했을 때.
         """
         headers = [("traceparent", traceparent.encode())] if traceparent else []
-        value = event.model_dump_json(by_alias=True).encode()
+        # 소비자가 큐 대기 시간을 재도록 보내기 직전 시각을 싣는다(SPEC-013 R-8).
+        stamped = event.model_copy(update={"produced_at": self._now()})
+        value = stamped.model_dump_json(by_alias=True).encode()
         self.send_raw(topic, key or str(event.source_id), value, headers)
 
     def send_raw(self, topic: str, key: str | bytes | None, value: bytes, headers: Headers) -> None:

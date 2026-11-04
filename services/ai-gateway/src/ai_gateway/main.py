@@ -185,7 +185,11 @@ async def build_production(settings: GatewaySettings) -> GatewayDeps:
         await conn.execute(text("SELECT 1"))
     health = HealthState()
     worker = start_deletion_worker(
-        settings.kafka_bootstrap, settings.group_id, database_url, health
+        settings.kafka_bootstrap,
+        settings.group_id,
+        database_url,
+        health,
+        publish_timing=settings.stage_timing_publish,
     )
 
     async def close() -> None:

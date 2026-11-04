@@ -26,6 +26,8 @@ class GatewaySettings(ServiceSettings):
     allow_mock: bool = False
     kafka_bootstrap: str = Field(validation_alias="KAFKA_BOOTSTRAP")
     group_id: str = "ai-gateway"
+    # 처리 시간 측정 묶음을 stage.timing에 발행한다. 끄면 JSON 로그로만 남긴다(SPEC-013 R-5).
+    stage_timing_publish: bool = False
     openai_api_key: SecretStr | None = None
     # 인코더 가중치를 받는 모델 버킷(SPEC-011 R-15). 영상 버킷(S3_BUCKET)과 권한을 나눈다.
     models_bucket: str | None = None
