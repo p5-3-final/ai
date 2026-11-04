@@ -1,4 +1,5 @@
 import json
+import re
 import shutil
 from pathlib import Path
 
@@ -39,12 +40,12 @@ def test_spec009_r13_loads_event_judge_with_content_version(contracts_dir: Path)
         "prompts/event_judge/input.schema.json",
         "prompts/event_judge/output.schema.json",
         # 출력 스키마가 참조하는 분류 체계가 바뀌어도 버전이 바뀐다.
-        "taxonomy/v1/taxonomy.schema.json",
+        "taxonomy",
     ],
 )
 def test_spec009_r13_any_content_change_changes_version(copied: Path, changed: str) -> None:
     before = PromptRegistry.load(copied).get("event_judge")
-    path = copied / changed
+    path = copied / (_referenced_taxonomy(copied) if changed == "taxonomy" else changed)
     if path.suffix == ".json":
         data = json.loads(path.read_text(encoding="utf-8"))
         data["description"] = str(data.get("description", "")) + " 바뀜"
@@ -140,3 +141,11 @@ def test_issue17_prompt_includes_output_schema_with_taxonomy(contracts_dir: Path
     assert "$ref" not in part
     # 호출마다 같은 지시·스키마가 입력보다 앞에 와야 공급자 프롬프트 캐시를 받는다.
     assert part.index("riskReason") < part.index("61.2")
+
+
+def _referenced_taxonomy(contracts: Path) -> str:
+    # 분류 체계 버전 폴더는 계약과 함께 바뀌므로 경로를 고정하지 않고 출력 스키마에서 찾는다.
+    schema = (contracts / "prompts/event_judge/output.schema.json").read_text(encoding="utf-8")
+    found = re.search(r'"\.\./\.\./(taxonomy/[^"#]+)#', schema)
+    assert found is not None, "출력 스키마가 분류 체계를 참조하지 않는다"
+    return found.group(1)
