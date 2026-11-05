@@ -72,3 +72,20 @@ def test_settings_read_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     assert settings.endpoint_url == "http://seaweedfs:8333"
     assert settings.path_style
     assert settings.region == "us-east-1"
+
+
+def test_conditional_create_keeps_one_winner(storage: ObjectStorage) -> None:
+    """[#31] 동시 최초 보존은 하나만 성공하고 나머지는 원 payload를 덮어쓰지 않는다."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        results = list(
+            pool.map(
+                lambda n: storage.put_bytes_if_absent("snapshot", str(n).encode(), "text/plain"),
+                range(8),
+            )
+        )
+    assert sum(results) == 1
+    winner = storage.get_bytes("snapshot")
+    assert not storage.put_bytes_if_absent("snapshot", b"changed", "text/plain")
+    assert storage.get_bytes("snapshot") == winner

@@ -23,6 +23,10 @@ class ObjectStorage(Protocol):
         """`data`를 `key`에 쓴다."""
         ...
 
+    def put_bytes_if_absent(self, key: str, data: bytes, content_type: str) -> bool:
+        """키가 없을 때만 원자적으로 쓴다. 이미 있으면 변경 없이 False다."""
+        ...
+
     def put_file(self, key: str, path: Path, content_type: str) -> None:
         """로컬 파일을 `key`에 올린다. 큰 파일은 구현이 나눠 올린다."""
         ...

@@ -1,6 +1,7 @@
 """단위 테스트용 메모리 저장소. 운영 코드에서 쓰지 않는다."""
 
 from pathlib import Path
+from threading import Lock
 
 from vlm_storage.storage import ObjectNotFoundError
 
@@ -9,10 +10,19 @@ class InMemoryStorage:
     """`ObjectStorage`를 dict로 구현한다. S3 구현과 같은 테스트 묶음으로 동작을 맞춘다."""
 
     def __init__(self) -> None:
+        self._lock = Lock()
         self._objects: dict[str, tuple[bytes, str]] = {}
 
     def put_bytes(self, key: str, data: bytes, content_type: str) -> None:
         self._objects[key] = (data, content_type)
+
+    def put_bytes_if_absent(self, key: str, data: bytes, content_type: str) -> bool:
+        """S3 조건부 생성과 같은 동시성 의미를 제공한다."""
+        with self._lock:
+            if key in self._objects:
+                return False
+            self._objects[key] = (data, content_type)
+            return True
 
     def put_file(self, key: str, path: Path, content_type: str) -> None:
         self.put_bytes(key, path.read_bytes(), content_type)
