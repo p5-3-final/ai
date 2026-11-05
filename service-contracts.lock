@@ -1,4 +1,4 @@
 # 서비스 간 계약 버전 고정(docs ADR-0013). CI가 이 버전을 받아 CONTRACTS_DIR로 넘긴다.
 # 올리기: scripts/fetch-service-contracts.sh --update <버전>
-version=2.5.1
-sha256=d5ba713429a9c9d49e07b277177ed3f91707b8bdafde2a31f1fdf89530025040
+version=2.7.0
+sha256=e5f97824c237f9061e86b080359453929eda67b41a1de70c99184626b3caf895

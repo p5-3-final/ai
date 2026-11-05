@@ -76,11 +76,11 @@ class PromptTask:
 
     def input_errors(self, variables: object) -> list[str]:
         """입력 변수가 입력 스키마와 맞지 않는 이유 목록. 맞으면 빈 목록(R-2)."""
-        return _errors(self.input_validator, variables)
+        return schema_errors(self.input_validator, variables)
 
     def output_errors(self, output: object) -> list[str]:
         """모델 출력이 출력 스키마와 맞지 않는 이유 목록. 맞으면 빈 목록(R-5)."""
-        return _errors(self.output_validator, output)
+        return schema_errors(self.output_validator, output)
 
     def fallback(self, variables: JsonObject, status: FallbackStatus) -> JsonObject:
         """모델 판단 없이 만드는 결과(R-6 `unknown`, R-8 `unverified`). 확정값은 넣지 않는다.
@@ -120,12 +120,8 @@ class PromptRegistry:
         """
         prompts_dir = registry_dir / "prompts"
         prefix = _read_text(prompts_dir / _PREFIX_FILE)
-        schemas = _load_schemas(registry_dir)
-        registry: Registry[Schema] = Registry().with_resources(
-            (str(schema["$id"]), Resource.from_contents(schema, default_specification=DRAFT202012))
-            for schema in schemas.values()
-            if "$id" in schema
-        )
+        schemas = load_schemas(registry_dir)
+        registry = schema_registry(schemas)
         tasks: dict[str, PromptTask] = {}
         for task_dir in sorted(p for p in prompts_dir.iterdir() if p.is_dir()):
             tasks[task_dir.name] = _load_task(task_dir, prefix, schemas, registry)
@@ -152,9 +148,9 @@ def _load_task(
         if path not in schemas:
             raise PromptRegistryError(f"missing schema: {path}")
     referenced = sorted(
-        _referenced_files(input_path, schemas) | _referenced_files(output_path, schemas)
+        referenced_files(input_path, schemas) | referenced_files(output_path, schemas)
     )
-    taxonomy_version = _taxonomy_version(
+    taxonomy_version = taxonomy_version_of(
         task_dir.name, task_dir.parent.parent / "taxonomy", referenced
     )
     fallback = _read_fallback(task_dir / _FALLBACK_FILE)
@@ -163,10 +159,10 @@ def _load_task(
         _RENDER_FORMAT,
         prefix,
         instruction,
-        _canonical(schemas[input_path]),
-        _canonical(schemas[output_path]),
-        *(_canonical(schemas[p]) for p in referenced),
-        _canonical(fallback),
+        canonical(schemas[input_path]),
+        canonical(schemas[output_path]),
+        *(canonical(schemas[p]) for p in referenced),
+        canonical(fallback),
     ):
         # 구분자를 넣어 경계가 다른 두 내용이 같은 해시가 되지 않게 한다.
         digest.update(part.encode("utf-8"))
@@ -194,17 +190,15 @@ def _load_task(
     )
 
 
-def _taxonomy_version(task_type: str, taxonomy_dir: Path, referenced: list[Path]) -> str | None:
-    """참조한 분류 체계 파일의 버전 폴더 이름.
+def taxonomy_version_of(owner: str, taxonomy_dir: Path, referenced: list[Path]) -> str | None:
+    """참조한 분류 체계 파일의 버전 폴더 이름. `owner`는 오류 메시지에 쓸 이름이다.
 
     결과가 어느 버전의 enum인지 하나로 정해져야 해서 버전이 섞이면 실패한다(R-30).
     """
     root = taxonomy_dir.resolve()
     versions = {p.relative_to(root).parts[0] for p in referenced if p.is_relative_to(root)}
     if len(versions) > 1:
-        raise PromptRegistryError(
-            f"{task_type}: schemas refer to taxonomy versions {sorted(versions)}"
-        )
+        raise PromptRegistryError(f"{owner}: schemas refer to taxonomy versions {sorted(versions)}")
     return versions.pop() if versions else None
 
 
@@ -228,7 +222,7 @@ def _checked_examples(
     if not isinstance(examples, list) or not examples:
         raise PromptRegistryError(f"{task_type}: {kind} schema needs at least one example")
     for index, example in enumerate(examples):
-        if errors := _errors(validator, example):
+        if errors := schema_errors(validator, example):
             raise PromptRegistryError(f"{task_type}: {kind} example {index} is invalid: {errors}")
     first = examples[0]
     if not isinstance(first, dict):
@@ -250,7 +244,7 @@ def _check_fallback(
     if unknown:
         raise PromptRegistryError(f"{task_type}: fallback uses unknown input variables {unknown}")
     for status in _FALLBACK_STATUSES:
-        if errors := _errors(output_validator, _fill_object(fallback, input_example, status)):
+        if errors := schema_errors(output_validator, _fill_object(fallback, input_example, status)):
             raise PromptRegistryError(
                 f"{task_type}: fallback does not match the output schema: {errors}"
             )
@@ -282,9 +276,16 @@ def _input_names(node: object) -> set[str]:
     return set()
 
 
-def _load_schemas(registry_dir: Path) -> dict[Path, JsonObject]:
+def load_schemas(
+    registry_dir: Path, folders: tuple[str, ...] = ("prompts", "taxonomy")
+) -> dict[Path, JsonObject]:
+    """`registry_dir`의 `folders` 아래 `*.schema.json`을 읽어 형식을 검사한다.
+
+    Raises:
+        PromptRegistryError: JSON이나 스키마가 잘못됐을 때.
+    """
     schemas: dict[Path, JsonObject] = {}
-    for folder in ("prompts", "taxonomy"):
+    for folder in folders:
         for path in sorted((registry_dir / folder).rglob("*.schema.json")):
             try:
                 schema = json.loads(path.read_text(encoding="utf-8"))
@@ -297,7 +298,16 @@ def _load_schemas(registry_dir: Path) -> dict[Path, JsonObject]:
     return schemas
 
 
-def _referenced_files(path: Path, schemas: dict[Path, JsonObject]) -> set[Path]:
+def schema_registry(schemas: dict[Path, JsonObject]) -> Registry[Schema]:
+    """`$id`가 있는 스키마를 `$id`로 찾게 하는 참조 저장소."""
+    return Registry().with_resources(
+        (str(schema["$id"]), Resource.from_contents(schema, default_specification=DRAFT202012))
+        for schema in schemas.values()
+        if "$id" in schema
+    )
+
+
+def referenced_files(path: Path, schemas: dict[Path, JsonObject]) -> set[Path]:
     """스키마가 `$ref`로 참조하는 다른 파일(분류 체계 등)을 재귀로 모은다."""
     found: set[Path] = set()
     pending = [path]
@@ -351,7 +361,8 @@ def _refs(node: object) -> list[str]:
     return []
 
 
-def _canonical(schema: JsonObject) -> str:
+def canonical(schema: JsonObject) -> str:
+    """키 순서·공백을 고정한 JSON. 내용 해시를 계산할 때 쓴다."""
     # 들여쓰기·키 순서만 바뀐 JSON은 같은 버전이 되게 한다.
     return json.dumps(schema, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
 
@@ -363,7 +374,8 @@ def _read_text(path: Path) -> str:
         raise PromptRegistryError(f"missing prompt file: {path}") from e
 
 
-def _errors(validator: Draft202012Validator, instance: object) -> list[str]:
+def schema_errors(validator: Draft202012Validator, instance: object) -> list[str]:
+    """검증 실패 이유를 `<경로>: <메시지>` 목록으로 돌려준다. 맞으면 빈 목록."""
     return [
         f"{'/'.join(str(p) for p in error.absolute_path) or '<root>'}: {error.message}"
         for error in validator.iter_errors(instance)
