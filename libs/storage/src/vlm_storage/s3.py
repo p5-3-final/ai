@@ -53,6 +53,18 @@ class S3Storage:
     def put_bytes(self, key: str, data: bytes, content_type: str) -> None:
         self._client.put_object(Bucket=self._bucket, Key=key, Body=data, ContentType=content_type)
 
+    def put_bytes_if_absent(self, key: str, data: bytes, content_type: str) -> bool:
+        """최초 이벤트 스냅샷을 원자적으로 보존한다. 다른 오류는 재시도를 위해 전파한다."""
+        try:
+            self._client.put_object(
+                Bucket=self._bucket, Key=key, Body=data, ContentType=content_type, IfNoneMatch="*"
+            )
+        except ClientError as e:
+            if e.response.get("Error", {}).get("Code") == "PreconditionFailed":
+                return False
+            raise
+        return True
+
     def put_file(self, key: str, path: Path, content_type: str) -> None:
         self._client.upload_file(
             str(path), self._bucket, key, ExtraArgs={"ContentType": content_type}

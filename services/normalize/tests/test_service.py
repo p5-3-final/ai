@@ -20,7 +20,7 @@ from normalize.probe import MediaReadError, ProbeResult
 from normalize.service import NormalizeConfig, NormalizeService
 from vlm_contracts.events import Event, VideoNormalized, VideoNormalizing, VideoUploaded
 from vlm_messaging.timing import StageRecorder
-from vlm_messaging.worker import MessageContext
+from vlm_messaging.worker import MessageContext, NonRetryableError
 from vlm_storage.memory import InMemoryStorage
 
 SOURCE = UUID("0192f0d2-1a2b-7c3d-8e4f-5a6b7c8d9e0f")
@@ -364,3 +364,57 @@ async def test_spec013_r9_failed_transcode_is_recorded_as_error(tmp_path: Path) 
         ("normalize.probe", "ok"),
         ("normalize.transcode", "error"),
     ]
+
+
+async def test_replay_keeps_original_payload_after_clock_changes(tmp_path: Path) -> None:
+    """[SPEC-007 R-14] 재시작 후에도 최초 occurredAt과 전체 결과를 재사용한다."""
+    h = _harness(tmp_path)
+    await h.service.handle(_uploaded(), CTX)
+    first = _normalized(h).model_dump_json(by_alias=True)
+    h.publisher.published.clear()
+    h.media.calls.clear()
+    restarted = NormalizeService(
+        h.storage,
+        h.media,
+        h.publisher,
+        NormalizeConfig(Limits(1.0, 14_400.0, 30.0), 6.0, h.work_dir, VERSION),
+        clock=lambda: NOW.replace(day=4),
+    )
+    await restarted.handle(_uploaded(), CTX)
+    assert _normalized(h).model_dump_json(by_alias=True) == first
+    assert "normalize" not in h.media.calls
+
+
+@pytest.mark.parametrize("rejected", [False, True])
+async def test_publisher_failure_reuses_saved_ready_or_rejected(
+    tmp_path: Path, rejected: bool
+) -> None:
+    """[#31 SPEC-007 R-14] broker 실패 뒤 원 시각·결과를 재사용한다."""
+
+    class FailingPublisher(RecordingPublisher):
+        def publish(
+            self,
+            topic: str,
+            event: Event,
+            *,
+            key: str | None = None,
+            traceparent: str | None = None,
+        ) -> None:
+            super().publish(topic, event, key=key, traceparent=traceparent)
+            if topic == "video.normalized":
+                raise RuntimeError("injected broker failure")
+
+    h = _harness(tmp_path, media=FakeMedia(original=MediaReadError("bad")) if rejected else None)
+    config = NormalizeConfig(Limits(1.0, 14_400.0, 30.0), 6.0, h.work_dir, VERSION)
+    failure = FailingPublisher()
+    first = NormalizeService(h.storage, h.media, failure, config, clock=lambda: NOW)
+    with pytest.raises(RuntimeError, match="broker failure"):
+        await first.handle(_uploaded(), CTX)
+    saved = failure.events("video.normalized")[0]
+    replay = NormalizeService(
+        h.storage, h.media, h.publisher, config, clock=lambda: NOW.replace(day=4)
+    )
+    await replay.handle(_uploaded(), CTX)
+    assert _normalized(h).model_dump_json(by_alias=True) == saved.model_dump_json(by_alias=True)
+    with pytest.raises(NonRetryableError, match="input conflicts"):
+        await replay.handle(_uploaded().model_copy(update={"owner_id": UUID(int=7)}), CTX)

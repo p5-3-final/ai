@@ -1,6 +1,7 @@
 """영상 하나를 정규화하는 처리 순서(SPEC-007 R-1~R-14)."""
 
 import asyncio
+import json
 import logging
 import tempfile
 from collections.abc import Callable
@@ -10,6 +11,7 @@ from pathlib import Path
 from typing import Protocol
 from uuid import UUID
 
+from pydantic import BaseModel
 from vlm_contracts.events import (
     Event,
     RejectReason,
@@ -18,7 +20,7 @@ from vlm_contracts.events import (
     VideoUploaded,
 )
 from vlm_messaging.timing import StageRecorder
-from vlm_messaging.worker import MessageContext
+from vlm_messaging.worker import MessageContext, NonRetryableError
 from vlm_storage.storage import ObjectNotFoundError, ObjectStorage
 
 from normalize import ids
@@ -68,6 +70,14 @@ class _Output:
     transcoded: bool
 
 
+class ResultSnapshot(BaseModel):
+    """최초 결과와 원 입력을 함께 보존해 같은 ID의 변경 입력도 구별한다."""
+
+    request: VideoUploaded
+    definition: str
+    event: VideoNormalized
+
+
 class NormalizeService:
     """`video.uploaded` 하나를 받아 정규화 결과를 저장하고 발행한다.
 
@@ -109,6 +119,25 @@ class NormalizeService:
             ),
             traceparent,
         )
+        snapshot_key = f"sources/{source}/normalizations/{normalization}/result-event.json"
+        definition = json.dumps(
+            {
+                "version": self._config.normalization_version,
+                "hls": self._config.hls_segment_s,
+                "min": self._config.limits.min_duration_s,
+                "max": self._config.limits.max_duration_s,
+                "fps": self._config.limits.max_fps,
+            },
+            sort_keys=True,
+        )
+        try:
+            cached = ResultSnapshot.model_validate_json(self._storage.get_bytes(snapshot_key))
+        except ObjectNotFoundError:
+            cached = None
+        if cached is not None:
+            self._check_snapshot(cached, uploaded, definition)
+            self._publish(cached.event, traceparent)
+            return
         # NFR-5: 성공·거절·예외 모두에서 작업 파일을 지우도록 임시 폴더 안에서만 처리한다.
         with tempfile.TemporaryDirectory(dir=self._config.work_dir) as tmp:
             work = Path(tmp)
@@ -122,11 +151,28 @@ class NormalizeService:
                 return
             outcome = self._normalize(source, normalization, work, original, timing)
         if isinstance(outcome, _Output):
-            self._publish(self._ready(uploaded, normalization, outcome), traceparent)
+            result = self._ready(uploaded, normalization, outcome)
             logger.info("video normalized", extra={**log, "transcoded": outcome.transcoded})
         else:
-            self._publish(self._rejected(uploaded, normalization, outcome), traceparent)
+            result = self._rejected(uploaded, normalization, outcome)
             logger.info("video rejected", extra={**log, "rejectReason": outcome})
+
+        snapshot = ResultSnapshot(request=uploaded, definition=definition, event=result)
+        self._storage.put_bytes_if_absent(
+            snapshot_key, snapshot.model_dump_json().encode(), "application/json"
+        )
+        saved = ResultSnapshot.model_validate_json(self._storage.get_bytes(snapshot_key))
+        self._check_snapshot(saved, uploaded, definition)
+        if saved.event.model_dump(exclude={"occurred_at"}) != result.model_dump(
+            exclude={"occurred_at"}
+        ):
+            raise NonRetryableError("normalization result conflicts with immutable snapshot")
+        self._publish(saved.event, traceparent)
+
+    @staticmethod
+    def _check_snapshot(snapshot: ResultSnapshot, request: VideoUploaded, definition: str) -> None:
+        if snapshot.request != request or snapshot.definition != definition:
+            raise NonRetryableError("normalization input conflicts with immutable snapshot")
 
     def _normalize(
         self,
