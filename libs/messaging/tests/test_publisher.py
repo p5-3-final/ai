@@ -79,3 +79,21 @@ def test_spec013_r8_publish_fills_produced_at(
     [msg] = read_all(topic, 5.0)
     payload = json.loads(msg.value() or b"")
     assert datetime.fromisoformat(payload["producedAt"]) == sent_at
+
+
+def test_spec014_publisher_preserves_durable_produced_at(
+    bootstrap: str,
+    unique: Callable[[str], str],
+    create_topics: Callable[..., None],
+    read_all: Callable[[str, float], list[Message]],
+) -> None:
+    """[SPEC-014 R-1 R-8] 영속 payload의 최초 발행 시각을 재발행에서 덮어쓰지 않는다."""
+    topic = unique("video.deleted")
+    create_topics(topic)
+    first = datetime(2026, 11, 4, 9, 0, tzinfo=UTC)
+    later = datetime(2026, 11, 5, 9, 0, tzinfo=UTC)
+    event = _deleted().model_copy(update={"produced_at": first})
+    publisher = KafkaPublisher(bootstrap=bootstrap, client_id="test", now=lambda: later)
+    publisher.publish(topic, event)
+    [msg] = read_all(topic, 5.0)
+    assert datetime.fromisoformat(json.loads(msg.value() or b"")["producedAt"]) == first

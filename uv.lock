@@ -10,6 +10,7 @@ resolution-markers = [
 members = [
     "ai-gateway",
     "ai-workspace",
+    "chunk-processor",
     "normalize",
     "vlm-common",
     "vlm-contracts",
@@ -293,6 +294,29 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/9d/8a/b618149cc5207943a0242068d7a27897f56a62947b5a039085f2a22029f8/charset_normalizer-3.5.2-cp37-abi3-win_amd64.whl", hash = "sha256:9f56f72050826f63dcee7a7f55b0a77168cb3bfc553fd405e7f8f9ece75a4036", size = 200092, upload-time = "2026-09-30T04:38:49.707Z" },
     { url = "https://files.pythonhosted.org/packages/03/cf/4c66866fa9e2b1c78e3c911516d1de497a677b7ac60f1eceda74ce777ca3/charset_normalizer-3.5.2-cp37-abi3-win_arm64.whl", hash = "sha256:40ab6bffa02ae10a0581e6c198be7d2d8ca5c2a0c64e4ed3465d766df457573e", size = 294363, upload-time = "2026-09-30T04:38:51.312Z" },
     { url = "https://files.pythonhosted.org/packages/fc/ad/d07d7862a62ffa6d79d68074d14823243dd235a77c45262acbf6adeb28bf/charset_normalizer-3.5.2-py3-none-any.whl", hash = "sha256:b6b751274acb69d77b3323d6b7dbaa3c7fdfc1eb829b7eb61d262f32e1af9685", size = 68872, upload-time = "2026-09-30T04:39:21.828Z" },
+]
+
+[[package]]
+name = "chunk-processor"
+version = "0.1.0"
+source = { editable = "services/chunk-processor" }
+dependencies = [
+    { name = "asyncpg" },
+    { name = "sqlalchemy", extra = ["asyncio"] },
+    { name = "vlm-common" },
+    { name = "vlm-contracts" },
+    { name = "vlm-messaging" },
+    { name = "vlm-storage" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "asyncpg", specifier = ">=0.32.0" },
+    { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.1.6" },
+    { name = "vlm-common", editable = "libs/common" },
+    { name = "vlm-contracts", editable = "libs/contracts" },
+    { name = "vlm-messaging", editable = "libs/messaging" },
+    { name = "vlm-storage", editable = "libs/storage" },
 ]
 
 [[package]]

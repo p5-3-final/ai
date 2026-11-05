@@ -12,6 +12,8 @@ from pydantic.alias_generators import to_camel
 
 # 계약의 단계 ID 목록 v1. 목록에 없는 ID는 mypy가 막는다(R-10).
 type StageId = Literal[
+    "chunk-processor.queue_wait",
+    "chunk-processor.handle",
     "normalize.queue_wait",
     "normalize.handle",
     "normalize.probe",

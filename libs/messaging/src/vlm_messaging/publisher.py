@@ -10,6 +10,11 @@ from vlm_contracts.events import Event
 Headers = Sequence[tuple[str, bytes]]
 
 
+def prepare_event[E: Event](event: E, at: datetime) -> E:
+    """영속 저장 전에 최초 발행 준비 시각을 채운다. 저장된 시각은 재발행에서 보존한다."""
+    return event if event.produced_at is not None else event.model_copy(update={"produced_at": at})
+
+
 class PublishError(VlmError):
     """브로커가 메시지를 받았다고 확인하지 못했다."""
 
@@ -45,7 +50,7 @@ class KafkaPublisher:
     def publish(
         self, topic: str, event: Event, *, key: str | None = None, traceparent: str | None = None
     ) -> None:
-        """이벤트를 camelCase JSON으로 발행한다. 봉투의 `producedAt`은 발행 시각으로 채운다.
+        """이벤트를 camelCase JSON으로 발행한다. 없는 `producedAt`만 최초 발행 준비 시각으로 채운다.
 
         Args:
             topic: 토픽 이름.
@@ -58,7 +63,7 @@ class KafkaPublisher:
         """
         headers = [("traceparent", traceparent.encode())] if traceparent else []
         # 소비자가 큐 대기 시간을 재도록 보내기 직전 시각을 싣는다(SPEC-013 R-8).
-        stamped = event.model_copy(update={"produced_at": self._now()})
+        stamped = prepare_event(event, self._now())
         value = stamped.model_dump_json(by_alias=True).encode()
         self.send_raw(topic, key or str(event.source_id), value, headers)
 
