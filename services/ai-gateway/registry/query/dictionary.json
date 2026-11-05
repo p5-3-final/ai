@@ -1,0 +1,47 @@
+{
+  "version": "v1",
+  "stopPhrases": [
+    "찾아주세요", "찾아 주세요", "찾아줘", "찾아 줘", "찾기",
+    "보여주세요", "보여 주세요", "보여줘", "보여 줘",
+    "검색해 주세요", "검색해주세요", "검색해 줘", "검색해줘",
+    "알려주세요", "알려 주세요", "알려줘", "알려 줘",
+    "장면", "영상", "화면", "부분"
+  ],
+  "englishStopwords": [
+    "find", "show", "me", "locate", "search", "scene", "scenes", "video", "clip", "please", "where", "appear", "appears"
+  ],
+  "temporalTerms": [
+    "작업 종료 후", "종료 후", "작업 후", "끝난 뒤", "끝난 후", "이후", "이전", "전후", "그 뒤",
+    "남은", "남아 있는", "아직", "계속", "동안", "언제", "얼마나", "몇 번", "변화"
+  ],
+  "visualQuery": {"template": "a photo of {targets}", "separator": " and "},
+  "entries": [
+    {"phrases": ["안전모 미착용", "안전모를 착용하지 않은", "안전모 착용하지 않은", "안전모를 안", "안전모 안", "안전모 없이", "안전모를 벗은", "헬멧 미착용", "헬멧 안", "헬멧 없이"], "target": "person without a hard hat", "eventType": "ppe_missing"},
+    {"phrases": ["안전모 착용", "안전모를 쓴", "안전모를 착용", "안전모 쓴"], "target": "person wearing a hard hat"},
+    {"phrases": ["안전조끼 미착용", "안전조끼 안", "조끼 안 입은", "조끼 미착용", "조끼 없이"], "target": "person without a safety vest", "eventType": "ppe_missing"},
+    {"phrases": ["보호구 미착용", "보호구 안", "보호구 없이"], "target": "person without protective equipment", "eventType": "ppe_missing"},
+    {"phrases": ["쓰러진", "쓰러져", "쓰러짐", "넘어진", "넘어져", "넘어짐", "낙상", "추락"], "target": "fallen person", "eventType": "fall"},
+    {"phrases": ["위험구역", "위험 구역", "출입금지 구역", "출입 금지 구역", "접근금지 구역"], "target": "person", "eventType": "hazard_zone_access"},
+    {"phrases": ["싸우", "몸싸움", "폭행"], "target": "person"},
+    {"phrases": ["작업자", "사람", "인원", "근로자"], "target": "person"},
+    {"phrases": ["지게차"], "target": "forklift"},
+    {"phrases": ["굴착기", "포클레인"], "target": "excavator"},
+    {"phrases": ["트럭", "화물차"], "target": "truck"},
+    {"phrases": ["자동차", "차량", "승용차"], "target": "car"},
+    {"phrases": ["오토바이", "이륜차"], "target": "motorcycle"},
+    {"phrases": ["자전거"], "target": "bicycle"},
+    {"phrases": ["연기"], "target": "smoke", "eventType": "fire_or_smoke"},
+    {"phrases": ["불꽃", "화염", "불이 난", "화재"], "target": "flame", "eventType": "fire_or_smoke"},
+    {"phrases": ["방호 미복구", "방호벽 미복구", "펜스 미복구", "바리케이드 미복구", "방호 해제"], "target": "safety barrier", "eventType": "barrier_not_restored"},
+    {"phrases": ["안전시설 이동", "안전시설을 옮긴", "펜스 이동", "펜스를 옮긴", "라바콘 이동", "라바콘을 옮긴"], "target": "safety barrier", "eventType": "object_moved"},
+    {"phrases": ["장비 방치", "방치된 장비", "공구 방치", "방치된 공구"], "target": "unattended equipment", "eventType": "equipment_abandoned"},
+    {"phrases": ["물건 제거", "사라진 물건", "없어진 물건", "물건이 사라진", "물건이 없어진", "치워진 물건"], "target": "object", "eventType": "object_removed"},
+    {"phrases": ["안전모", "헬멧"], "target": "hard hat"},
+    {"phrases": ["안전조끼", "형광조끼"], "target": "safety vest"},
+    {"phrases": ["라바콘", "안전콘"], "target": "traffic cone"},
+    {"phrases": ["펜스", "바리케이드", "방호벽"], "target": "safety barrier"},
+    {"phrases": ["팔레트", "파렛트"], "target": "pallet"},
+    {"phrases": ["상자", "박스"], "target": "box"},
+    {"phrases": ["강아지"], "target": "dog"}
+  ]
+}
