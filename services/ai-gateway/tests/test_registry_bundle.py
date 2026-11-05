@@ -50,6 +50,16 @@ def test_spec009_r26_bundle_has_prompts_taxonomy_and_profiles(
     assert "profiles/local-mock.toml" in names
 
 
+def test_spec012_r23_bundle_has_query_dictionary(bundle: tuple[bytes, str]) -> None:
+    """[SPEC-012 R-23] 질의 사전도 Registry 묶음에 들어간다."""
+    data, _ = bundle
+    with tarfile.open(fileobj=__import__("io").BytesIO(data)) as tar:
+        names = tar.getnames()
+
+    assert "query/dictionary.json" in names
+    assert "query/dictionary.schema.json" in names
+
+
 def test_spec009_r26_same_content_gives_same_bundle(
     registry_dir: Path, tmp_path: Path, bundle: tuple[bytes, str]
 ) -> None:

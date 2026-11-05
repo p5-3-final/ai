@@ -13,6 +13,9 @@ from vlm_encoders.model_id import ModelId
 AdapterKind = Literal["openai", "openai_compatible", "mock"]
 EncoderKind = Literal["open_clip", "mock"]
 
+# `/v1/parse`가 쓰는 Prompt Registry taskType. 설정은 [tasks]가 아니라 [parse]에 있다(SPEC-012).
+QUERY_PARSE_TASK = "query_parse"
+
 # 경로 패턴 안에서 요청의 sourceId로 바꿔 넣는 자리.
 SOURCE_ID_PLACEHOLDER = "{source_id}"
 
@@ -149,6 +152,24 @@ class EmbedProfile(Profile):
     embed_text: TextEmbeddingTask | None = None
 
 
+class ParseProfile(Profile):
+    """`/v1/parse`(SPEC-012). `adapter`·`model`이 없으면 LLM 보조 없이 사전만 쓴다(R-12)."""
+
+    # 검색 문장 길이 상한(R-21)
+    max_query_chars: int = Field(gt=0)
+    adapter: str | None = None
+    model: str | None = None
+    max_output_tokens: int = Field(gt=0)
+    timeout_s: float = Field(gt=0)
+    max_retries: int = Field(ge=0)
+
+    @model_validator(mode="after")
+    def _both_or_none(self) -> Self:
+        if (self.adapter is None) != (self.model is None):
+            raise ValueError("adapter and model must be set together")
+        return self
+
+
 class GatewayProfile(Profile):
     callers: CallersProfile
     images: ImagesProfile
@@ -156,12 +177,14 @@ class GatewayProfile(Profile):
     tasks: dict[str, TaskProfile]
     encoder: EncoderProfile | None = None
     embed: EmbedProfile = Field(default_factory=EmbedProfile)
+    parse: ParseProfile
 
     @model_validator(mode="after")
     def _adapter_refs(self) -> Self:
         refs = [(name, task.adapter) for name, task in self.tasks.items()]
         if self.embed.embed_text is not None:
             refs.append(("embed_text", self.embed.embed_text.adapter))
+        refs.append(("parse", self.parse.adapter))
         for name, adapter in refs:
             if adapter is not None and adapter not in self.adapters:
                 raise ValueError(f"task {name} refers to unknown adapter {adapter!r}")
@@ -172,7 +195,8 @@ def check_profile(profile: GatewayProfile, *, allow_mock: bool, has_openai_key: 
     """환경과 맞춰 봐야 하는 규칙을 검사한다. 프로필 파일만으로는 알 수 없는 것들이다.
 
     Raises:
-        ProfileError: mock 허용 없이 mock Adapter·인코더를 쓰거나(SPEC-009 R-15, SPEC-011 R-24),
+        ProfileError: mock 허용 없이 mock Adapter·인코더를 쓰거나(SPEC-009 R-15, SPEC-011 R-24,
+            SPEC-012 R-28),
             API 키 없이 openai Adapter를 쓸 때.
     """
     if profile.encoder is not None and profile.encoder.kind == "mock" and not allow_mock:
@@ -180,6 +204,8 @@ def check_profile(profile: GatewayProfile, *, allow_mock: bool, has_openai_key: 
     used = {t.adapter for t in profile.tasks.values() if t.adapter is not None}
     if profile.embed.embed_text is not None and profile.embed.embed_text.adapter is not None:
         used.add(profile.embed.embed_text.adapter)
+    if profile.parse.adapter is not None:
+        used.add(profile.parse.adapter)
     for name in sorted(used):
         kind = profile.adapters[name].kind
         if kind == "mock" and not allow_mock:

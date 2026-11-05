@@ -38,6 +38,7 @@ class MockAdapter:
         timeout_s: float,
         max_retries: int,
         traceparent: str | None,
+        temperature: float | None = None,
     ) -> Completion:
         task = self._prompts.get(message.task_type)
         example = task.output_example if task else {}

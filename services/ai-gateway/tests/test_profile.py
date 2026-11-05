@@ -24,6 +24,12 @@ max_output_tokens = 800
 max_images = 12
 timeout_s = 30
 max_retries = 2
+
+[parse]
+max_query_chars = 200
+max_output_tokens = 200
+timeout_s = 10
+max_retries = 0
 """
 
 
@@ -232,3 +238,56 @@ def test_spec011_r24_mock_text_embedding_adapter_requires_allow_mock(tmp_path: P
 
     with pytest.raises(ProfileError, match="mock"):
         check_profile(profile, allow_mock=False, has_openai_key=False)
+
+
+PARSE_LLM = '[parse]\nadapter = "ollama"\nmodel = "qwen3-vl:4b-instruct"\n'
+
+
+def test_spec012_r12_parse_without_model_uses_dictionary_only(tmp_path: Path) -> None:
+    """[SPEC-012 R-12] [parse]에 모델이 없으면 LLM 보조 없이 사전만 쓴다."""
+    profile = _load(tmp_path, VALID)
+
+    check_profile(profile, allow_mock=False, has_openai_key=False)
+    assert (profile.parse.adapter, profile.parse.model) == (None, None)
+    assert profile.parse.max_query_chars == 200
+
+
+def test_spec012_r10_parse_model_loads(tmp_path: Path) -> None:
+    """[SPEC-012 R-10] [parse]의 Adapter·모델로 query_parse를 부른다."""
+    profile = _load(tmp_path, VALID.replace("[parse]\n", PARSE_LLM))
+
+    check_profile(profile, allow_mock=False, has_openai_key=False)
+    assert (profile.parse.adapter, profile.parse.model) == ("ollama", "qwen3-vl:4b-instruct")
+
+
+@pytest.mark.parametrize(
+    ("name", "old", "new"),
+    [
+        ("[parse] 없음", "[parse]\nmax_query_chars = 200\n", "[other]\n"),
+        ("길이 상한 0", "max_query_chars = 200", "max_query_chars = 0"),
+        ("모르는 Adapter 참조", "[parse]\n", '[parse]\nadapter = "nope"\nmodel = "m"\n'),
+        ("Adapter만 있고 모델 없음", "[parse]\n", '[parse]\nadapter = "ollama"\n'),
+    ],
+)
+def test_spec012_r21_invalid_parse_profile_fails(
+    tmp_path: Path, name: str, old: str, new: str
+) -> None:
+    """[SPEC-012 R-21] [parse]의 길이 상한과 Adapter 참조를 검사한다."""
+    assert old in VALID, name
+    with pytest.raises(ProfileError):
+        check_profile(
+            _load(tmp_path, VALID.replace(old, new)), allow_mock=True, has_openai_key=True
+        )
+
+
+def test_spec012_r28_mock_parse_adapter_requires_allow_mock(tmp_path: Path) -> None:
+    """[SPEC-012 R-28] query_parse가 mock Adapter를 쓰면 mock 허용 설정이 있어야 한다."""
+    text = (
+        VALID.replace("[parse]\n", '[parse]\nadapter = "fake"\nmodel = "mock"\n')
+        + '\n[adapters.fake]\nkind = "mock"\n'
+    )
+    profile = _load(tmp_path, text)
+
+    with pytest.raises(ProfileError, match="mock"):
+        check_profile(profile, allow_mock=False, has_openai_key=False)
+    check_profile(profile, allow_mock=True, has_openai_key=False)

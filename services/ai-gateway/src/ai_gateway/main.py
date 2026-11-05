@@ -31,9 +31,11 @@ from ai_gateway.call_log import CallLog
 from ai_gateway.deletion import start_deletion_worker
 from ai_gateway.embed import EmbedService
 from ai_gateway.images import ImageReader
+from ai_gateway.parse import ParseService
 from ai_gateway.problems import install_problem_handlers
-from ai_gateway.profile import GatewayProfile, check_profile
+from ai_gateway.profile import QUERY_PARSE_TASK, GatewayProfile, check_profile
 from ai_gateway.prompts import PromptRegistry
+from ai_gateway.query_dictionary import QueryDictionary
 from ai_gateway.registry_bundle import resolve_sources
 from ai_gateway.settings import GatewaySettings
 
@@ -50,6 +52,8 @@ class GatewayDeps:
 
     profile: GatewayProfile
     prompts: PromptRegistry
+    # 기동할 때 검증한 질의 사전(SPEC-012 R-23)
+    dictionary: QueryDictionary
     storage: ObjectStorage
     adapters: dict[str, VlmAdapter]
     call_log: CallLogWriter
@@ -72,6 +76,9 @@ def create_app(build: Callable[[], Awaitable[GatewayDeps]]) -> FastAPI:
         )
         app.state.embed = EmbedService(
             deps.profile, deps.encoder, ImageReader(deps.storage), deps.embedders, deps.call_log
+        )
+        app.state.parse = ParseService(
+            deps.profile, deps.dictionary, deps.prompts, deps.adapters, deps.call_log
         )
         app.state.is_ready = deps.is_ready
         try:
@@ -98,15 +105,37 @@ def create_app(build: Callable[[], Awaitable[GatewayDeps]]) -> FastAPI:
 def check_tasks(profile: GatewayProfile, prompts: PromptRegistry) -> None:
     """프로필의 taskType과 Prompt Registry의 taskType이 같은지 확인한다.
 
+    `query_parse`는 [parse]가 설정이라 [tasks]와 비교하지 않는다(SPEC-012).
+
     Raises:
         ProfileError: 프롬프트가 없는 taskType 설정이 있거나, 설정이 없는 프롬프트가 있을 때.
     """
-    configured, prompted = set(profile.tasks), set(prompts.task_types())
+    configured = set(profile.tasks)
+    prompted = set(prompts.task_types()) - {QUERY_PARSE_TASK}
     if configured - prompted:
         raise ProfileError(f"tasks without prompts: {sorted(configured - prompted)}")
     if prompted - configured:
         # 이미지 상한을 모르는 taskType 요청을 받지 않도록, 모델이 없어도 설정은 둬야 한다.
         raise ProfileError(f"prompts without task settings: {sorted(prompted - configured)}")
+
+
+def check_parse(dictionary: QueryDictionary, prompts: PromptRegistry) -> None:
+    """`/v1/parse`의 질의 사전과 `query_parse` 프롬프트가 함께 쓸 수 있는지 확인한다.
+
+    응답의 분류 체계 버전은 해석 방법과 상관없이 하나여야 한다(SPEC-012 R-30, R-31).
+
+    Raises:
+        ProfileError: `query_parse` 프롬프트가 없거나, 사전과 출력 스키마의 분류 체계 버전이
+            다를 때.
+    """
+    task = prompts.get(QUERY_PARSE_TASK)
+    if task is None:
+        raise ProfileError(f"missing {QUERY_PARSE_TASK} prompt")
+    if task.taxonomy_version != dictionary.taxonomy_version:
+        raise ProfileError(
+            f"query dictionary refers to taxonomy {dictionary.taxonomy_version} but "
+            f"{QUERY_PARSE_TASK} refers to taxonomy {task.taxonomy_version}"
+        )
 
 
 def load_encoder(
@@ -177,6 +206,8 @@ async def build_production(settings: GatewaySettings) -> GatewayDeps:
     check_profile(profile, allow_mock=settings.allow_mock, has_openai_key=api_key is not None)
     prompts = PromptRegistry.load(sources.registry_dir)
     check_tasks(profile, prompts)
+    dictionary = QueryDictionary.load(sources.registry_dir)
+    check_parse(dictionary, prompts)
     # 가중치 받기·로드는 블로킹이다. 끝나야 lifespan이 끝나서 그 전에는 요청을 받지 않는다(R-25).
     encoder = await asyncio.to_thread(load_encoder, profile, models, settings.model_cache_dir)
     database_url = settings.database_url.get_secret_value()
@@ -200,6 +231,7 @@ async def build_production(settings: GatewaySettings) -> GatewayDeps:
     return GatewayDeps(
         profile=profile,
         prompts=prompts,
+        dictionary=dictionary,
         storage=S3Storage(StorageSettings()),
         adapters=dict[str, VlmAdapter](adapters),
         call_log=CallLog(engine),

@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vlm.example/contracts/query/dictionary.schema.json",
+  "title": "QueryDictionary",
+  "description": "질의 사전(SPEC-012). 검색 문장을 규칙으로 표준 질의로 해석한다. 표현은 정규화한 형태(소문자, 공백 하나)로 쓴다. 버전 이름을 그대로 두고 내용만 바꿔도 ai-gateway가 내용 해시로 다른 사전 버전을 만든다(R-29).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "stopPhrases", "englishStopwords", "temporalTerms", "visualQuery", "entries"],
+  "properties": {
+    "version": {"type": "string", "pattern": "^v[0-9]+$", "description": "사람이 붙이는 버전 이름"},
+    "stopPhrases": {
+      "type": "array",
+      "uniqueItems": true,
+      "description": "정규화할 때 지우는 요청 표현(R-2). 사전 표현·시간 표현 안에 들어 있으면 안 된다.",
+      "items": {"$ref": "#/$defs/phrase"}
+    },
+    "englishStopwords": {
+      "type": "array",
+      "uniqueItems": true,
+      "description": "영어 구문에서 지우는 단어(R-8). 단어 단위로 지운다.",
+      "items": {"type": "string", "pattern": "^[a-z]+$"}
+    },
+    "temporalTerms": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "description": "하나라도 있으면 route가 temporal_video_rag인 시간·상태 표현(R-3)",
+      "items": {"$ref": "#/$defs/phrase"}
+    },
+    "visualQuery": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["template", "separator"],
+      "description": "대상어로 영어 검색 문장을 만드는 형식(R-16)",
+      "properties": {
+        "template": {"type": "string", "pattern": "\\{targets\\}", "description": "{targets} 자리에 대상어를 separator로 이어 넣는다"},
+        "separator": {"type": "string", "minLength": 1}
+      }
+    },
+    "entries": {
+      "type": "array",
+      "minItems": 1,
+      "description": "한국어 표현 → 영어 대상어·이벤트 유형. 순서가 결과의 순서다(R-5, R-7).",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["phrases", "target"],
+        "properties": {
+          "phrases": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/phrase"}},
+          "target": {"$ref": "#/$defs/target"},
+          "eventType": {"$ref": "../taxonomy/v2/taxonomy.schema.json#/$defs/detectableEventType"}
+        }
+      }
+    }
+  },
+  "$defs": {
+    "phrase": {
+      "type": "string",
+      "minLength": 2,
+      "maxLength": 40,
+      "description": "부분 문자열로 찾는다. 한 글자 표현은 다른 단어 안에서 잘못 맞아 받지 않는다."
+    },
+    "target": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9 -]*[a-z0-9]$",
+      "maxLength": 64,
+      "description": "영어 시각 대상어(계약 ParseResponse.targets)"
+    }
+  }
+}

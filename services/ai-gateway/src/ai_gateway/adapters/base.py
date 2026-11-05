@@ -61,8 +61,9 @@ class VlmAdapter(Protocol):
         timeout_s: float,
         max_retries: int,
         traceparent: str | None,
+        temperature: float | None = None,
     ) -> Completion:
-        """모델을 한 번 부른다.
+        """모델을 한 번 부른다. `temperature`가 None이면 공급자 기본값을 쓴다.
 
         Raises:
             ProviderUnavailableError: 일시적으로 쓸 수 없을 때.

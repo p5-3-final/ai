@@ -371,3 +371,14 @@ async def test_spec009_r29_task_without_taxonomy_returns_null_version(
     assert response.json()["taxonomyVersion"] is None
     [entry] = gw.call_log.entries
     assert entry.taxonomy_version is None
+
+
+async def test_spec012_r10_query_parse_is_not_an_analyze_task(registry_dir: Path) -> None:
+    """[SPEC-012 R-10] query_parse는 /v1/parse 전용이라 /v1/analyze로 부를 수 없다."""
+    async with gateway(registry_dir) as gw:
+        response = await post_analyze(
+            gw.client, analyze_body(taskType="query_parse", variables={"query": "x"})
+        )
+
+    _problem(response, 400, "AI_UNKNOWN_TASK_TYPE")
+    assert gw.adapter.calls == []

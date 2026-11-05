@@ -256,3 +256,17 @@ def test_spec009_r30_mixed_taxonomy_versions_fail_to_load(copied: Path) -> None:
 
     with pytest.raises(PromptRegistryError, match="taxonomy versions"):
         PromptRegistry.load(copied)
+
+
+def test_spec012_r10_query_parse_prompt_loads(registry_dir: Path) -> None:
+    """[SPEC-012 R-10] query_parse는 Registry 폴더 하나로 정의한다."""
+    task = PromptRegistry.load(registry_dir).get("query_parse")
+
+    assert task is not None
+    assert re.fullmatch(r"query_parse@[0-9a-f]{12}", task.version)
+    assert task.taxonomy_version == "v2"
+    assert task.input_errors({"query": "형광 작업복 입은 사람"}) == []
+    assert task.output_errors({"targets": ["person"], "eventTypes": ["fall"]}) == []
+    assert task.output_errors({"targets": [], "eventTypes": []}) != []
+    assert task.output_errors({"targets": ["person"], "eventTypes": ["other"]}) != []
+    assert task.fallback({"query": "x"}, "unknown") == {"targets": ["person"], "eventTypes": []}
