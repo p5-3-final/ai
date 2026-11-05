@@ -111,7 +111,101 @@ class VideoNormalized(Event):
         return self
 
 
+class TimeRange(BaseModel):
+    """정규화 영상 시작 기준 정수 ms, 시작 포함·끝 제외."""
+
+    model_config = ConfigDict(
+        alias_generator=to_camel, populate_by_name=True, frozen=True, extra="forbid"
+    )
+    start_ms: int = Field(ge=0, le=9223372036854775807)
+    end_ms: int = Field(gt=0, le=9223372036854775807)
+
+    @model_validator(mode="after")
+    def ordered(self) -> Self:
+        if self.start_ms >= self.end_ms:
+            raise ValueError("range must be increasing")
+        return self
+
+
+class ProcessingProfile(BaseModel):
+    """SPEC-008에 저장된 불변 프로필 참조."""
+
+    model_config = ConfigDict(
+        alias_generator=to_camel, populate_by_name=True, frozen=True, extra="forbid"
+    )
+    version: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,99}$")
+    mode: Literal["production", "local"]
+    inference_profile_version: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,99}$")
+
+
+class ChunkRequested(Event):
+    """SPEC-010 요청. 재전달은 실행 ID와 전체 입력을 유지한다."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    event_type: Literal["chunk.requested"] = "chunk.requested"
+    schema_version: Literal[1] = 1
+    job_id: UUID
+    chunk_id: UUID
+    execution_id: UUID
+    request_id: UUID
+    normalization_id: UUID
+    normalized_key: str
+    owned_range: TimeRange
+    processing_range: TimeRange
+    processing_profile: ProcessingProfile
+    start_before: AwareDatetime
+
+    @model_validator(mode="after")
+    def consistent(self) -> Self:
+        prefix = f"sources/{self.source_id}/normalizations/{self.normalization_id}/"
+        if (
+            self.request_id != self.execution_id
+            or self.start_before <= self.occurred_at
+            or not self.normalized_key.startswith(prefix)
+            or any(v in self.normalized_key for v in ("..", "?", "#"))
+            or self.processing_range.start_ms > self.owned_range.start_ms
+            or self.processing_range.end_ms < self.owned_range.end_ms
+        ):
+            raise ValueError("inconsistent chunk request")
+        return self
+
+
+class ChunkExecutionFinished(Event):
+    """SPEC-014 실제 종료 이벤트. 불명 timeout에는 생성하지 않는다."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    event_type: Literal["chunk.execution.finished"] = "chunk.execution.finished"
+    schema_version: Literal[1] = 1
+    job_id: UUID
+    chunk_id: UUID
+    execution_id: UUID
+    request_id: UUID
+    normalization_id: UUID
+    outcome: Literal["SUCCEEDED", "FAILED"]
+    result_key: str | None
+    error_code: str | None = Field(pattern=r"^[A-Z][A-Z0-9_]{0,99}$")
+
+    @model_validator(mode="after")
+    def terminal(self) -> Self:
+        expected = (
+            f"sources/{self.source_id}/jobs/{self.job_id}/chunks/{self.chunk_id}"
+            f"/executions/{self.execution_id}/result.json"
+        )
+        if self.request_id != self.execution_id:
+            raise ValueError("requestId must equal executionId")
+        if self.outcome == "SUCCEEDED":
+            if self.result_key != expected or self.error_code is not None:
+                raise ValueError("success requires immutable result reference and no error")
+        elif self.result_key is not None or self.error_code is None:
+            raise ValueError("failure requires error and no result reference")
+        return self
+
+
 EVENT_MODELS: dict[str, type[Event]] = {
+    "chunk.requested": ChunkRequested,
+    "chunk.execution.finished": ChunkExecutionFinished,
     "video.uploaded": VideoUploaded,
     "video.deleted": VideoDeleted,
     "video.normalizing": VideoNormalizing,

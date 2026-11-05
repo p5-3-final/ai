@@ -19,6 +19,7 @@ from vlm_contracts.events import (
     VideoNormalizing,
     VideoUploaded,
 )
+from vlm_messaging.publisher import prepare_event
 from vlm_messaging.timing import StageRecorder
 from vlm_messaging.worker import MessageContext, NonRetryableError
 from vlm_storage.storage import ObjectNotFoundError, ObjectStorage
@@ -136,6 +137,8 @@ class NormalizeService:
             cached = None
         if cached is not None:
             self._check_snapshot(cached, uploaded, definition)
+            if cached.event.produced_at is None:
+                raise NonRetryableError("legacy snapshot requires publication reconciliation")
             self._publish(cached.event, traceparent)
             return
         # NFR-5: 성공·거절·예외 모두에서 작업 파일을 지우도록 임시 폴더 안에서만 처리한다.
@@ -157,14 +160,15 @@ class NormalizeService:
             result = self._rejected(uploaded, normalization, outcome)
             logger.info("video rejected", extra={**log, "rejectReason": outcome})
 
+        result = prepare_event(result, self._clock())
         snapshot = ResultSnapshot(request=uploaded, definition=definition, event=result)
         self._storage.put_bytes_if_absent(
             snapshot_key, snapshot.model_dump_json().encode(), "application/json"
         )
         saved = ResultSnapshot.model_validate_json(self._storage.get_bytes(snapshot_key))
         self._check_snapshot(saved, uploaded, definition)
-        if saved.event.model_dump(exclude={"occurred_at"}) != result.model_dump(
-            exclude={"occurred_at"}
+        if saved.event.model_dump(exclude={"occurred_at", "produced_at"}) != result.model_dump(
+            exclude={"occurred_at", "produced_at"}
         ):
             raise NonRetryableError("normalization result conflicts with immutable snapshot")
         self._publish(saved.event, traceparent)
