@@ -37,7 +37,7 @@ ai-gateway에 `/v1/parse`를 더한다. 질의 사전(`registry/query/dictionary
 | R-27 | `gw/parse.py` | `test_parse_api.py::test_spec012_r27_*`, `t/test_call_log.py::test_spec012_r27_*`(PostgreSQL) |
 | R-28 | `gw/profile.py`(`check_profile`) | `t/test_profile.py::test_spec012_r28_*` |
 | R-30, R-31 | `gw/query_dictionary.py`, `gw/main.py`(`check_parse`) | `test_query_dictionary.py::test_spec012_r30_*`, `test_startup.py::test_spec012_r31_*` |
-| NFR-1 | `gw/parse.py` | `test_parse_api.py::test_spec012_nfr1_*`(인메모리 호출 로그 기준 p95), 로컬 compose 측정 |
+| NFR-1 | `gw/parse.py` | `test_parse_api.py::test_spec012_nfr1_*`(인메모리 호출 로그 기준 p95), 로컬 compose 측정(p95 3.8ms) |
 | NFR-2 | `gw/parse.py`(Adapter에 프로필 제한 시간 전달) | `test_parse_api.py::test_spec012_nfr2_*` |
 | NFR-3 | `gw/parse.py`(로그 필드) | `test_parse_api.py::test_spec012_nfr3_*` |
 | NFR-4 | `reg/query/dictionary.json` | `test_query_dictionary.py::test_spec012_nfr4_*`(예시 세트) |
@@ -134,4 +134,5 @@ sequenceDiagram
 
 - 리스크: 부분 문자열 매칭이라 짧은 표현이 다른 단어 안에서 맞을 수 있다(예: "개"). 사전에 두 글자 이상 표현만 두고, 예시 세트로 확인한다.
 - 리스크: `_prefix.md`는 이벤트 확인용 공통 규칙이라 `query_parse`에도 붙는다. 작업 지시에서 출력 형식을 다시 적는다.
+- 리스크: 작은 로컬 모델은 추상적인 질문에 이벤트 유형 이름을 대상어로 내기도 한다(로컬 compose에서 확인). 출력 검증이 막아 safe-fallback이 되고, 작업 지시에 금지 문장을 넣었다.
 - 롤백 방법: PR revert. 사전·프롬프트만 문제면 Registry 파일을 되돌린다.
