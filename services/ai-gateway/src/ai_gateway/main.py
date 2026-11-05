@@ -32,7 +32,7 @@ from ai_gateway.deletion import start_deletion_worker
 from ai_gateway.embed import EmbedService
 from ai_gateway.images import ImageReader
 from ai_gateway.problems import install_problem_handlers
-from ai_gateway.profile import GatewayProfile, check_profile
+from ai_gateway.profile import QUERY_PARSE_TASK, GatewayProfile, check_profile
 from ai_gateway.prompts import PromptRegistry
 from ai_gateway.registry_bundle import resolve_sources
 from ai_gateway.settings import GatewaySettings
@@ -98,10 +98,13 @@ def create_app(build: Callable[[], Awaitable[GatewayDeps]]) -> FastAPI:
 def check_tasks(profile: GatewayProfile, prompts: PromptRegistry) -> None:
     """프로필의 taskType과 Prompt Registry의 taskType이 같은지 확인한다.
 
+    `query_parse`는 [parse]가 설정이라 [tasks]와 비교하지 않는다(SPEC-012).
+
     Raises:
         ProfileError: 프롬프트가 없는 taskType 설정이 있거나, 설정이 없는 프롬프트가 있을 때.
     """
-    configured, prompted = set(profile.tasks), set(prompts.task_types())
+    configured = set(profile.tasks)
+    prompted = set(prompts.task_types()) - {QUERY_PARSE_TASK}
     if configured - prompted:
         raise ProfileError(f"tasks without prompts: {sorted(configured - prompted)}")
     if prompted - configured:

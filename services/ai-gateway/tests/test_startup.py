@@ -130,3 +130,8 @@ def test_spec011_r15_loads_open_clip_from_models_bucket(tmp_path: Path) -> None:
 
     assert isinstance(encoder, OpenClipEncoder)
     assert len(encoder.encode_texts(["a forklift"])[0]) == 512
+
+
+def test_spec012_r10_query_parse_is_configured_by_parse_section(registry_dir: Path) -> None:
+    """[SPEC-012 R-10] query_parse 설정은 [tasks]가 아니라 [parse]에 있다."""
+    check_tasks(profile(), PromptRegistry.load(registry_dir))

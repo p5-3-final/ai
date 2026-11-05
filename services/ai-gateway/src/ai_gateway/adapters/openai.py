@@ -60,6 +60,7 @@ class OpenAiAdapter:
         timeout_s: float,
         max_retries: int,
         traceparent: str | None,
+        temperature: float | None = None,
     ) -> Completion:
         # 재시도(지수 백오프)는 SDK가 429·5xx·연결 오류에만 한다. 횟수는 프로필 값이다.
         client = self._client.with_options(timeout=timeout_s, max_retries=max_retries)
@@ -73,6 +74,8 @@ class OpenAiAdapter:
             {"role": "user", "content": content},
         ]
         headers = {"traceparent": traceparent} if traceparent else None
+        # 값이 없으면 보내지 않아 공급자 기본값을 쓴다. 일부 모델은 temperature를 받지 않는다.
+        sampling = openai.omit if temperature is None else temperature
         try:
             if self._compatible:
                 # Ollama 등 호환 서버는 max_completion_tokens를 모를 수 있어 예전 이름을 쓴다.
@@ -80,6 +83,7 @@ class OpenAiAdapter:
                     model=model,
                     messages=messages,
                     max_tokens=max_output_tokens,
+                    temperature=sampling,
                     extra_headers=headers,
                 )
             else:
@@ -87,6 +91,7 @@ class OpenAiAdapter:
                     model=model,
                     messages=messages,
                     max_completion_tokens=max_output_tokens,
+                    temperature=sampling,
                     extra_headers=headers,
                 )
         except (openai.APIStatusError, openai.APIConnectionError) as e:

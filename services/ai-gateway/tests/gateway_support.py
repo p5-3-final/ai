@@ -71,6 +71,20 @@ def embed_settings() -> dict[str, object]:
     }
 
 
+def parse_settings(**changes: object) -> dict[str, object]:
+    """테스트 프로필의 `[parse]`. 기본은 가짜 Adapter의 `fake-llm`이다."""
+    settings: dict[str, object] = {
+        "max_query_chars": 50,
+        "adapter": "fake",
+        "model": "fake-llm",
+        "max_output_tokens": 200,
+        "timeout_s": 5,
+        "max_retries": 0,
+    }
+    settings.update(changes)
+    return settings
+
+
 def profile(extra: dict[str, object] | None = None, **task: object) -> GatewayProfile:
     """테스트 프로필. `task`로 event_judge 설정을, `extra`로 최상위 항목을 바꾼다."""
     event_judge: dict[str, object] = {
@@ -88,6 +102,7 @@ def profile(extra: dict[str, object] | None = None, **task: object) -> GatewayPr
             "images": {"allowed_patterns": [r"^sources/{source_id}/.+/blurred/[^/]+\.(jpg|png)$"]},
             "adapters": {"fake": {"kind": "mock"}},
             "tasks": {"event_judge": event_judge},
+            "parse": parse_settings(),
             **(extra or {}),
         }
     )
@@ -127,6 +142,7 @@ class FakeAdapter:
         timeout_s: float,
         max_retries: int,
         traceparent: str | None,
+        temperature: float | None = None,
     ) -> Completion:
         self.calls.append(AdapterCall(model, message, images, max_output_tokens, traceparent))
         if isinstance(self.reply, Exception):

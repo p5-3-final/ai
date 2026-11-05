@@ -40,3 +40,12 @@ max_inputs = 64
 max_text_chars = 2000
 timeout_s = 5
 max_retries = 0
+
+# 사전 밖 한국어 문장은 mock이 출력 예시를 돌려준다(SPEC-012).
+[parse]
+max_query_chars = 200
+adapter = "mock"
+model = "mock"
+max_output_tokens = 200
+timeout_s = 5
+max_retries = 0

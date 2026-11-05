@@ -75,7 +75,8 @@ class AnalyzeService:
         if command.caller not in self._profile.callers.allowed:
             raise CallerForbiddenError("caller is not allowed")
         task = self._prompts.get(command.task_type)
-        if task is None:
+        # [tasks]에 없는 Registry taskType(query_parse)은 /v1/parse 전용이다(SPEC-012).
+        if task is None or command.task_type not in self._profile.tasks:
             raise UnknownTaskTypeError(f"unknown taskType: {command.task_type}")
         errors = task.input_errors(command.variables)
         if errors:

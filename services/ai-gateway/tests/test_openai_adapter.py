@@ -228,3 +228,41 @@ async def test_spec011_r21_rejected_embedding_requests_are_failed(code: int) -> 
     """[SPEC-011 R-21] 429 외 4xx는 공급자 거부다."""
     with pytest.raises(ProviderFailedError):
         await _embed(_adapter(_status(code)), ["a"])
+
+
+@pytest.mark.parametrize("compatible", [False, True])
+async def test_spec012_r10_sends_temperature_when_given(compatible: bool) -> None:
+    """[SPEC-012 R-10] query_parse는 temperature 0으로 부른다."""
+    seen: list[httpx2.Request] = []
+
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        seen.append(request)
+        return httpx2.Response(200, json=_completion("{}"))
+
+    await _adapter(handler, compatible=compatible).complete(
+        model="m",
+        message=MESSAGE,
+        images=[],
+        max_output_tokens=200,
+        timeout_s=5,
+        max_retries=0,
+        traceparent=None,
+        temperature=0.0,
+    )
+
+    [request] = seen
+    assert json.loads(request.content)["temperature"] == 0
+
+
+async def test_spec012_r10_omits_temperature_by_default() -> None:
+    """[SPEC-012 R-10] /v1/analyze는 지금처럼 공급자 기본값을 쓴다."""
+    seen: list[httpx2.Request] = []
+
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        seen.append(request)
+        return httpx2.Response(200, json=_completion("{}"))
+
+    await _complete(_adapter(handler))
+
+    [request] = seen
+    assert "temperature" not in json.loads(request.content)

@@ -61,3 +61,15 @@ max_inputs = 64
 max_text_chars = 2000
 timeout_s = 30
 max_retries = 1
+
+# 질의 해석(SPEC-012). 사전 밖 한국어 문장만 VLM과 같은 로컬 모델에 묻는다. 모델을 지우면 사전만 쓴다.
+[parse]
+# 검색창 한 줄
+max_query_chars = 200
+adapter = "ollama"
+model = "qwen3-vl:4b-instruct"
+# 대상어 3개와 이벤트 유형 목록이면 충분하다
+max_output_tokens = 200
+# 검색 응답을 오래 붙잡지 않는다. 넘으면 safe-fallback(R-13)
+timeout_s = 20
+max_retries = 0

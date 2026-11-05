@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vlm.example/contracts/prompts/query_parse/output.schema.json",
+  "title": "QueryParseOutput",
+  "description": "query_parse 결과. 모델이 이 형식으로 답하고 ai-gateway가 검증한다. 맞지 않으면 safe-fallback이다(SPEC-012 R-10, R-14).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["targets", "eventTypes"],
+  "properties": {
+    "targets": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 3,
+      "uniqueItems": true,
+      "description": "영어 시각 대상어(계약 ParseResponse.targets)",
+      "items": {"type": "string", "pattern": "^[a-z0-9][a-z0-9 -]*[a-z0-9]$", "maxLength": 64}
+    },
+    "eventTypes": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"$ref": "../../taxonomy/v2/taxonomy.schema.json#/$defs/detectableEventType"}
+    }
+  },
+  "examples": [{"targets": ["person", "ladder"], "eventTypes": []}]
+}
