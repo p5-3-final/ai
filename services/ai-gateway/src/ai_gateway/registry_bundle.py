@@ -1,4 +1,4 @@
-"""Prompt Registry 묶음(프롬프트·분류 체계·프로필)을 만들고 저장소에서 받아 푼다.
+"""Prompt Registry 묶음(프롬프트·질의 사전·분류 체계·프로필)을 만들고 저장소에서 받아 푼다.
 
 SPEC-009 R-26~R-28.
 
@@ -23,8 +23,8 @@ from vlm_storage.storage import ObjectStorage
 
 from ai_gateway.settings import GatewaySettings
 
-# 묶음 안의 폴더. prompts·taxonomy는 이미지의 /app/registry와 같은 배치다.
-_REGISTRY_FOLDERS = ("prompts", "taxonomy")
+# 묶음 안의 폴더. 이미지의 /app/registry와 같은 배치다.
+_REGISTRY_FOLDERS = ("prompts", "query", "taxonomy")
 _PROFILES_FOLDER = "profiles"
 # 다 푼 뒤에만 남겨, 풀다 멈춘 폴더를 캐시로 쓰지 않게 한다.
 _COMPLETE_MARKER = ".complete"

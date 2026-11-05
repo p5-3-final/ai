@@ -43,13 +43,15 @@ RUN groupadd --system --gid 10001 app \
     && useradd --system --uid 10001 --gid app --no-create-home app \
     && install -d -o 10001 -g 10001 /var/cache/vlm-models
 COPY --from=build /opt/venv /opt/venv
-# Prompt Registry(SPEC-009). 프롬프트는 이 레포가 원본이고 분류 체계는 계약에서 가져와 합친다(docs ADR-0012).
+# Prompt Registry(SPEC-009, SPEC-012). 프롬프트·질의 사전은 이 레포가 원본이고 분류 체계는 계약에서
+# 가져와 합친다(docs ADR-0012).
 COPY services/ai-gateway/registry/prompts /app/registry/prompts
+COPY services/ai-gateway/registry/query /app/registry/query
 COPY --from=docs-contracts taxonomy /app/registry/taxonomy
 COPY services/ai-gateway/profiles /app/profiles
 ENV AI_GATEWAY_REGISTRY_DIR=/app/registry \
     AI_GATEWAY_PROFILE_PATH=/app/profiles/local.toml
 USER 10001:10001
 EXPOSE 8000
-# 접근 로그는 구조화 로그와 형식이 달라 끄고, 호출마다 "analyze completed"를 남긴다.
+# 접근 로그는 구조화 로그와 형식이 달라 끄고, 호출마다 "analyze completed"·"parse completed"를 남긴다.
 CMD ["uvicorn", "--factory", "ai_gateway.main:production_app", "--host", "0.0.0.0", "--port", "8000", "--no-access-log"]

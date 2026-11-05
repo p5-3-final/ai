@@ -1,6 +1,7 @@
 """운영 조립(build_production)을 실제 PostgreSQL·Kafka·SeaweedFS로 검증한다."""
 
 import asyncio
+import shutil
 from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
 
@@ -8,6 +9,7 @@ import httpx
 import pytest
 from ai_gateway.db.migrate import upgrade
 from ai_gateway.main import production_app
+from ai_gateway.query_dictionary import QueryDictionaryError
 from ai_gateway.registry_bundle import build_bundle
 from fastapi import FastAPI
 from gateway_support import (
@@ -242,5 +244,39 @@ async def test_spec009_r27_bundle_hash_mismatch_fails_startup(
     app = production_app()
 
     with pytest.raises(ArtifactError, match="sha256"):
+        async with app.router.lifespan_context(app):
+            pass
+
+
+@pytest.mark.usefixtures("environment")
+async def test_spec012_r25_production_app_parses_after_ready(database_url: str) -> None:
+    """[SPEC-012 R-1, R-25] 사전을 읽은 뒤 준비되고, 사전·LLM(mock) 해석을 모두 한다."""
+    await upgrade(database_url)
+    app = production_app()
+
+    async with app.router.lifespan_context(app):
+        async for client in _ready_client(app):
+            headers = {"X-Caller": "search-service"}
+            rule = await client.post("/v1/parse", json={"query": "지게차"}, headers=headers)
+            llm = await client.post("/v1/parse", json={"query": "사다리 위"}, headers=headers)
+
+    assert rule.status_code == 200
+    assert rule.json()["parseMethod"] == "industrial-rule"
+    assert llm.status_code == 200
+    assert llm.json()["parseMethod"] == "llm"
+
+
+@pytest.mark.usefixtures("environment")
+async def test_spec012_r24_broken_dictionary_fails_startup(
+    monkeypatch: pytest.MonkeyPatch, registry_dir: Path, tmp_path: Path
+) -> None:
+    """[SPEC-012 R-24] 질의 사전이 없으면 앱이 뜨지 않는다."""
+    broken = tmp_path / "registry"
+    shutil.copytree(registry_dir, broken)
+    (broken / "query" / "dictionary.json").unlink()
+    monkeypatch.setenv("AI_GATEWAY_REGISTRY_DIR", str(broken))
+    app = production_app()
+
+    with pytest.raises(QueryDictionaryError):
         async with app.router.lifespan_context(app):
             pass

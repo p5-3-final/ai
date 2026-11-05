@@ -119,6 +119,25 @@ def check_tasks(profile: GatewayProfile, prompts: PromptRegistry) -> None:
         raise ProfileError(f"prompts without task settings: {sorted(prompted - configured)}")
 
 
+def check_parse(dictionary: QueryDictionary, prompts: PromptRegistry) -> None:
+    """`/v1/parse`의 질의 사전과 `query_parse` 프롬프트가 함께 쓸 수 있는지 확인한다.
+
+    응답의 분류 체계 버전은 해석 방법과 상관없이 하나여야 한다(SPEC-012 R-30, R-31).
+
+    Raises:
+        ProfileError: `query_parse` 프롬프트가 없거나, 사전과 출력 스키마의 분류 체계 버전이
+            다를 때.
+    """
+    task = prompts.get(QUERY_PARSE_TASK)
+    if task is None:
+        raise ProfileError(f"missing {QUERY_PARSE_TASK} prompt")
+    if task.taxonomy_version != dictionary.taxonomy_version:
+        raise ProfileError(
+            f"query dictionary refers to taxonomy {dictionary.taxonomy_version} but "
+            f"{QUERY_PARSE_TASK} refers to taxonomy {task.taxonomy_version}"
+        )
+
+
 def load_encoder(
     profile: GatewayProfile, models: ObjectStorage | None, cache_dir: Path
 ) -> ImageTextEncoder | None:
@@ -188,6 +207,7 @@ async def build_production(settings: GatewaySettings) -> GatewayDeps:
     prompts = PromptRegistry.load(sources.registry_dir)
     check_tasks(profile, prompts)
     dictionary = QueryDictionary.load(sources.registry_dir)
+    check_parse(dictionary, prompts)
     # 가중치 받기·로드는 블로킹이다. 끝나야 lifespan이 끝나서 그 전에는 요청을 받지 않는다(R-25).
     encoder = await asyncio.to_thread(load_encoder, profile, models, settings.model_cache_dir)
     database_url = settings.database_url.get_secret_value()

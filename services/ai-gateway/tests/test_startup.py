@@ -1,11 +1,13 @@
+import shutil
 from pathlib import Path
 
 import pytest
 from ai_gateway.adapters.mock import MockAdapter
 from ai_gateway.adapters.openai import OpenAiAdapter
-from ai_gateway.main import build_adapters, check_tasks, load_encoder
+from ai_gateway.main import build_adapters, check_parse, check_tasks, load_encoder
 from ai_gateway.profile import GatewayProfile
 from ai_gateway.prompts import PromptRegistry
+from ai_gateway.query_dictionary import QueryDictionary
 from ai_gateway.settings import GatewaySettings
 from gateway_support import ENCODER_MANIFEST_KEY, profile, put_encoder_model, random_weights
 from pydantic import SecretStr
@@ -135,3 +137,32 @@ def test_spec011_r15_loads_open_clip_from_models_bucket(tmp_path: Path) -> None:
 def test_spec012_r10_query_parse_is_configured_by_parse_section(registry_dir: Path) -> None:
     """[SPEC-012 R-10] query_parse 설정은 [tasks]가 아니라 [parse]에 있다."""
     check_tasks(profile(), PromptRegistry.load(registry_dir))
+
+
+def test_spec012_r31_matching_taxonomy_versions_pass(registry_dir: Path) -> None:
+    check_parse(QueryDictionary.load(registry_dir), PromptRegistry.load(registry_dir))
+
+
+def test_spec012_r31_taxonomy_version_mismatch_fails(registry_dir: Path, tmp_path: Path) -> None:
+    """[SPEC-012 R-31] 사전과 query_parse 출력 스키마가 다른 분류 체계 버전이면 기동 실패."""
+    target = tmp_path / "registry"
+    shutil.copytree(registry_dir, target)
+    shutil.copytree(target / "taxonomy" / "v2", target / "taxonomy" / "v3")
+    output = target / "prompts" / "query_parse" / "output.schema.json"
+    output.write_text(
+        output.read_text(encoding="utf-8").replace("taxonomy/v2/", "taxonomy/v3/"),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ProfileError, match="taxonomy"):
+        check_parse(QueryDictionary.load(target), PromptRegistry.load(target))
+
+
+def test_spec012_r10_missing_query_parse_prompt_fails(registry_dir: Path, tmp_path: Path) -> None:
+    """[SPEC-012 R-10] query_parse 프롬프트가 없으면 기동에 실패한다."""
+    target = tmp_path / "registry"
+    shutil.copytree(registry_dir, target)
+    shutil.rmtree(target / "prompts" / "query_parse")
+
+    with pytest.raises(ProfileError, match="query_parse"):
+        check_parse(QueryDictionary.load(target), PromptRegistry.load(target))
