@@ -10,6 +10,7 @@ from pydantic.alias_generators import to_camel
 
 from ai_gateway.analyze import AnalyzeCommand, AnalyzeService
 from ai_gateway.embed import EmbedCommand, EmbedService
+from ai_gateway.parse import ParseCommand, ParseService
 
 router = APIRouter()
 
@@ -125,4 +126,56 @@ async def embed(
         model_id=result.model_id,
         dimension=result.dimension,
         vectors=result.vectors,
+    )
+
+
+class ParseRequest(_Body):
+    query: str = Field(min_length=1)
+
+
+class ParseResponse(_Body):
+    call_id: UUID
+    route: str
+    targets: list[str]
+    event_types: list[str]
+    visual_query: str
+    parse_method: str
+    rationale: str
+    dictionary_version: str
+    prompt_version: str | None
+    taxonomy_version: str | None
+    canonical_query: str
+
+
+def _parse_service(request: Request) -> ParseService:
+    service: ParseService = request.app.state.parse
+    return service
+
+
+@router.post("/v1/parse", response_model_by_alias=True)
+async def parse(
+    body: ParseRequest,
+    service: Annotated[ParseService, Depends(_parse_service)],
+    x_caller: Annotated[str | None, Header()] = None,
+    traceparent: Annotated[str | None, Header()] = None,
+) -> ParseResponse:
+    result = await service.parse(
+        ParseCommand(
+            caller=x_caller or "",
+            query=body.query,
+            traceparent=_valid_traceparent(traceparent),
+        )
+    )
+    return ParseResponse(
+        call_id=result.call_id,
+        route=result.route,
+        targets=list(result.targets),
+        event_types=list(result.event_types),
+        visual_query=result.visual_query,
+        parse_method=result.parse_method,
+        rationale=result.rationale,
+        dictionary_version=result.dictionary_version,
+        prompt_version=result.prompt_version,
+        taxonomy_version=result.taxonomy_version,
+        canonical_query=result.canonical_query,
     )

@@ -144,3 +144,44 @@ async def test_spec011_r23_saves_embed_call_without_source_or_prompt(engine: Asy
         )
     assert (row["source_id"], row["prompt_version"], row["input_count"]) == (None, None, 2)
     assert row["output"] == {"dimension": 512}
+
+
+async def test_spec012_r27_saves_parse_call_without_source(engine: AsyncEngine) -> None:
+    """[SPEC-012 R-27] 해석 호출은 영상 ID·모델 원문 없이 해석 방법·사전 버전을 남긴다."""
+    entry = replace(
+        _entry(),
+        source_id=None,
+        task_type="query_parse",
+        adapter=None,
+        model_id=None,
+        prompt_version=None,
+        image_keys=[],
+        request_config={},
+        output={
+            "parseMethod": "industrial-rule",
+            "dictionaryVersion": "v1@0123456789ab",
+            "route": "video_retrieval",
+            "eventTypes": ["ppe_missing"],
+        },
+        raw_output=None,
+        input_tokens=None,
+        output_tokens=None,
+    )
+
+    await CallLog(engine).save(entry)
+
+    async with engine.connect() as conn:
+        row = (
+            (
+                await conn.execute(
+                    text("SELECT * FROM ai.ai_call_log WHERE call_id = :id"), {"id": entry.call_id}
+                )
+            )
+            .mappings()
+            .one()
+        )
+    assert row["task_type"] == "query_parse"
+    assert row["source_id"] is None
+    assert row["raw_output"] is None
+    assert row["output"]["parseMethod"] == "industrial-rule"
+    assert row["output"]["dictionaryVersion"] == "v1@0123456789ab"

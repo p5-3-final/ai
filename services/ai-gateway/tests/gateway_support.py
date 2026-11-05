@@ -24,6 +24,7 @@ from ai_gateway.call_log import CallLogEntry
 from ai_gateway.main import GatewayDeps, create_app
 from ai_gateway.profile import GatewayProfile
 from ai_gateway.prompts import PromptMessage, PromptRegistry
+from ai_gateway.query_dictionary import QueryDictionary
 from safetensors.torch import save
 from vlm_encoders.base import ImageTextEncoder
 from vlm_encoders.mock import MockEncoder
@@ -123,6 +124,8 @@ class AdapterCall:
     images: list[ImageInput]
     max_output_tokens: int
     traceparent: str | None
+    timeout_s: float = 0
+    temperature: float | None = None
 
 
 @dataclass
@@ -144,7 +147,11 @@ class FakeAdapter:
         traceparent: str | None,
         temperature: float | None = None,
     ) -> Completion:
-        self.calls.append(AdapterCall(model, message, images, max_output_tokens, traceparent))
+        self.calls.append(
+            AdapterCall(
+                model, message, images, max_output_tokens, traceparent, timeout_s, temperature
+            )
+        )
         if isinstance(self.reply, Exception):
             raise self.reply
         return Completion(text=self.reply, input_tokens=100, output_tokens=20)
@@ -220,6 +227,7 @@ async def gateway(
     deps = GatewayDeps(
         profile=gateway_profile or profile(),
         prompts=PromptRegistry.load(registry_dir),
+        dictionary=QueryDictionary.load(registry_dir),
         storage=storage,
         adapters=adapters if adapters is not None else {"fake": fake},
         call_log=call_log if call_log is not None else recording,
@@ -301,3 +309,10 @@ def put_encoder_model(models: ObjectStorage, weights: bytes, dimension: int = 51
     models.put_bytes(f"{prefix}/{name}", weights, "application/octet-stream")
     models.put_bytes(ENCODER_MANIFEST_KEY, raw, "application/json")
     return hashlib.sha256(raw).hexdigest()
+
+
+async def post_parse(
+    client: httpx.AsyncClient, query: object, caller: str | None = CALLER
+) -> httpx.Response:
+    headers = {"X-Caller": caller} if caller is not None else {}
+    return await client.post("/v1/parse", json={"query": query}, headers=headers)
