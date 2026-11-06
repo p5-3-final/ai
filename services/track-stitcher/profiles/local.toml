@@ -1,0 +1,24 @@
+# track-stitcher 기준값 프로필(SPEC-022 R-22).
+# 아래 값은 로컬 동작 확인용 자리값이다. 실제 영상 평가로 정한 값이 아니다.
+# 운영 값은 AI 담당자가 평가(evals)로 정하고 version을 올린다.
+
+# track.manifest·번역표의 stitchProfile
+version = "local-1"
+
+[boundary]
+# 겹침 구간 공통 관측 IoU 평균의 하한(0~1, R-4)
+min_mean_iou = 0.5
+# 잇기 위한 최소 공통 관측 수(1 이상, R-4)
+min_common_observations = 2
+# 두 청크 박스를 같은 순간으로 볼 시각 차(0 이상). 검출 fps 간격(10fps면 100ms)의 절반 정도(R-6)
+time_tolerance_ms = 100
+
+[reid]
+# 크롭 벡터 평균의 코사인 유사도 하한(0~1, R-9)
+min_similarity = 0.8
+# 앞 트랙 끝과 뒤 트랙 시작 사이 최대 간격(1 이상, R-9)
+max_gap_ms = 60000
+
+[finalize]
+# 마지막 입력 뒤 받은 청크만으로 끝낼 때까지 기다리는 시간(1 이상, 기본 30분, R-15)
+wait_timeout_s = 1800
