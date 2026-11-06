@@ -29,5 +29,8 @@ def segment_vector(frames: list[Vector]) -> Vector:
 
 
 def cosine(a: Vector, b: Vector) -> float:
-    """길이 1인 두 벡터의 코사인 유사도(내적)."""
-    return math.sumprod(a, b)
+    """길이 1인 두 벡터의 코사인 유사도(내적).
+
+    반올림 오차로 1을 조금 넘는 값이 나올 수 있어 -1~1로 자른다. 후보 점수는 계약상 이 범위다.
+    """
+    return max(-1.0, min(1.0, math.sumprod(a, b)))
