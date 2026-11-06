@@ -1,12 +1,15 @@
 """event-analyzer 기동 조립: 설정 검증, ai-gateway 클라이언트, 워커 토픽."""
 
+import time
+
 import httpx
 import pytest
 from ea_support import candidate, candidates_message, judged
 from event_analyzer.__main__ import build_client, build_worker
 from event_analyzer.settings import EventAnalyzerSettings, WorkerSettings
 from pydantic import ValidationError
-from vlm_ai_client.client import AnalyzeImage, AnalyzeRequest
+from vlm_ai_client.client import AiGatewayError
+from vlm_ai_client.models import AnalyzeRequest, ImageRef
 from vlm_common.health import HealthState
 
 
@@ -51,7 +54,7 @@ async def test_spec020_r1_client_calls_configured_gateway_as_event_analyzer() ->
             AnalyzeRequest(
                 task_type="event_judge",
                 source_id=source.source_id,
-                images=[AnalyzeImage(storage_key=k) for k in source.candidates[0].frame_keys],
+                images=[ImageRef(storage_key=k) for k in source.candidates[0].frame_keys],
                 variables={},
             )
         )
@@ -75,3 +78,50 @@ def test_spec020_r16_r17_worker_uses_retry_and_dlq_topics() -> None:
         "event.candidate.vector.event-analyzer.retry",
         "event-analyzer.dlq",
     ]
+
+
+async def test_spec021_r9_r14_client_retries_only_connection_failures_within_call_timeout() -> None:
+    """[SPEC-021 R-9·R-14] 조립한 클라이언트는 연결 실패만 다시 부르고 503·504는 한 번이다.
+
+    마감은 호출 제한 시간(`call_timeout_s`)이다.
+    """
+    seen: list[httpx.Request] = []
+    replies: list[httpx.Response | Exception] = [
+        httpx.ConnectError("refused"),
+        httpx.Response(
+            504,
+            json={
+                "type": "about:blank",
+                "title": "t",
+                "status": 504,
+                "code": "AI_DEADLINE_EXCEEDED",
+            },
+        ),
+    ]
+
+    def gateway(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        reply = replies.pop(0)
+        if isinstance(reply, Exception):
+            raise reply
+        return reply
+
+    settings = _settings(call_timeout_s=30, max_retries=2, retry_base_delay_s=0)
+    client = build_client(settings, transport=httpx.MockTransport(gateway))
+    started_ms = time.time() * 1000
+    async with client:
+        source = candidates_message(candidate(0))
+        with pytest.raises(AiGatewayError) as raised:
+            await client.analyze(
+                AnalyzeRequest(
+                    task_type="event_judge",
+                    source_id=source.source_id,
+                    images=[ImageRef(storage_key=k) for k in source.candidates[0].frame_keys],
+                    variables={},
+                )
+            )
+
+    assert raised.value.code == "AI_DEADLINE_EXCEEDED"
+    assert len(seen) == 2
+    deadline_ms = int(seen[0].headers["X-Request-Deadline"])
+    assert 29_000 <= deadline_ms - started_ms <= 31_000

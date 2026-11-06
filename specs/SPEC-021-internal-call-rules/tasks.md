@@ -38,22 +38,22 @@ updated: 2026-11-06
 ## Phase 2: US-2 계약과 코드가 어긋나지 않음 — ai-client (P1)
 
 - [x] T015 [R-7] 잠금 계약으로 `tmp_path`에 다시 생성한 결과가 커밋된 `ac/models.py`와 같아야 한다. Red는 생성 파일이 없는 상태의 비교 실패, Green은 스크립트로 생성해 커밋 — 테스트 `act/test_ai_client_generated.py`, 구현 `ac/models.py`(생성), `scripts/generate-ai-client.sh`
-- [ ] T016 [R-6] 클라이언트가 생성 모델만 쓴다: `ac/` 안에 `models.py` 밖의 `BaseModel` 하위 클래스가 없고, 계약 예시가 생성 모델로 왕복된다. 손 작성 모델 삭제, event-analyzer import를 `vlm_ai_client.models`로(`AnalyzeImage` → `ImageRef`) — 테스트 `act/test_ai_client_models.py`, 기존 `act/test_ai_gateway_client.py`·`t/test_analyzer_service.py`, 구현 `ac/client.py`, `ea/service.py`
-- [ ] T017 [R-13] `embed`: 요청 본문·헤더, 생성 응답 모델 — 테스트 `act/test_ai_gateway_client.py`, 구현 `ac/client.py`
-- [ ] T018 [R-13] `parse`: 요청 본문·헤더, 생성 응답 모델 — 테스트 `act/test_ai_gateway_client.py`, 구현 `ac/client.py`
+- [x] T016 [R-6] 클라이언트가 생성 모델만 쓴다: `ac/` 안에 `models.py` 밖의 `BaseModel` 하위 클래스가 없고, 계약 예시가 생성 모델로 왕복된다. 손 작성 모델 삭제, event-analyzer import를 `vlm_ai_client.models`로(`AnalyzeImage` → `ImageRef`) — 테스트 `act/test_ai_client_models.py`, 기존 `act/test_ai_gateway_client.py`·`t/test_analyzer_service.py`, 구현 `ac/client.py`, `ea/service.py`
+- [x] T017 [R-13] `embed`: 요청 본문·헤더, 생성 응답 모델 — 테스트 `act/test_ai_gateway_client.py`, 구현 `ac/client.py`
+- [x] T018 [R-13] `parse`: 요청 본문·헤더, 생성 응답 모델 — 테스트 `act/test_ai_gateway_client.py`, 구현 `ac/client.py`
 
 ## Phase 3: US-1·US-3 마감과 재시도 — ai-client (P1)
 
-- [ ] T019 [R-8] 모든 호출에 `X-Request-Deadline` = 첫 시도 시각 + `timeout_s`(가짜 시계), 재시도에도 같은 값, 시도별 httpx 제한 시간 = min(`timeout_s`, 남은 시간) — 테스트 `act/test_ai_gateway_client.py`, 구현 `ac/client.py`
-- [ ] T020 [R-9] analyze: 연결 실패(`ConnectError`·`ConnectTimeout`·`PoolTimeout`)만 설정 횟수까지 지수 대기 후 재시도, 502·503·504·응답 시간 초과·보낸 뒤 끊김은 한 번만 부른다. 기존 SPEC-020 R-11 테스트를 이 규칙으로 바꾼다 — 테스트 `act/test_ai_gateway_client.py`, 구현 `ac/client.py`(`_ANALYZE_RULE`)
-- [ ] T021 [R-10] embed·parse: 503과 연결 실패(보낸 뒤 끊김 포함)는 설정 횟수까지 재시도, 502·504·4xx·응답 시간 초과는 재시도 안 함 — 테스트 `act/test_ai_gateway_client.py`, 구현 `ac/client.py`(`_READ_RULE`)
-- [ ] T022 [R-11] 다음 대기가 끝나는 시각이 마감 이후면 대기하지 않고 마지막 오류로 끝남 — 테스트 `act/test_ai_gateway_client.py`, 구현 `ac/client.py`
-- [ ] T023 [R-12] 오류 코드: 504 → `AI_DEADLINE_EXCEEDED`(ProblemDetail), 코드 없는 상태 → `AI_HTTP_<상태>`, 연결 실패 → `AI_CONNECTION_FAILED`, 응답 시간 초과 → `AI_TIMEOUT`, 계약과 다른 2xx → `AI_INVALID_RESPONSE`. 기존 동작과 같은 경우는 Red 없음으로 PR에 적는다 — 테스트 `act/test_ai_gateway_client.py`
+- [x] T019 [R-8] 모든 호출에 `X-Request-Deadline` = 첫 시도 시각 + `timeout_s`(가짜 시계), 재시도에도 같은 값, 시도별 httpx 제한 시간 = min(`timeout_s`, 남은 시간) — 테스트 `act/test_ai_gateway_client.py`, 구현 `ac/client.py`
+- [x] T020 [R-9] analyze: 연결 실패(`ConnectError`·`ConnectTimeout`·`PoolTimeout`)만 설정 횟수까지 지수 대기 후 재시도, 502·503·504·응답 시간 초과·보낸 뒤 끊김은 한 번만 부른다. 기존 SPEC-020 R-11 테스트를 이 규칙으로 바꾼다 — 테스트 `act/test_ai_gateway_client.py`, 구현 `ac/client.py`(`_ANALYZE_RULE`)
+- [x] T021 [R-10] embed·parse: 503과 연결 실패(보낸 뒤 끊김 포함)는 설정 횟수까지 재시도, 502·504·4xx·응답 시간 초과는 재시도 안 함 — 테스트 `act/test_ai_gateway_client.py`, 구현 `ac/client.py`(`_READ_RULE`)
+- [x] T022 [R-11] 다음 대기가 끝나는 시각이 마감 이후면 대기하지 않고 마지막 오류로 끝남 — 테스트 `act/test_ai_gateway_client.py`, 구현 `ac/client.py`
+- [x] T023 [R-12] 오류 코드: 504 → `AI_DEADLINE_EXCEEDED`(ProblemDetail), 코드 없는 상태 → `AI_HTTP_<상태>`, 연결 실패 → `AI_CONNECTION_FAILED`, 응답 시간 초과 → `AI_TIMEOUT`, 계약과 다른 2xx → `AI_INVALID_RESPONSE`. 기존 동작과 같은 경우는 Red 없음으로 PR에 적는다 — 테스트 `act/test_ai_gateway_client.py`
 
 ## Phase 4: event-analyzer (P1)
 
-- [ ] T024 [R-14] 클라이언트가 504 `AI_DEADLINE_EXCEEDED`를 던지면 그 판정을 실패로 기록하고 메시지를 거절하지 않으며 호출은 한 번이다. 지금 코드로도 통과할 가능성이 높아 Red 없음이면 PR에 적는다 — 테스트 `t/test_analyzer_service.py`, 구현 `ea/service.py`(필요하면)
-- [ ] T025 [R-9] [R-14] 조립: 재시도 설정이 analyze 규칙(연결 실패만)으로 클라이언트에 전달되고 `call_timeout_s`가 마감이 됨. 설정 주석을 "연결 실패 재시도"로 고침 — 테스트 `t/test_analyzer_main.py`, 구현 `ea/__main__.py`, `ea/settings.py`
+- [x] T024 [R-14] 클라이언트가 504 `AI_DEADLINE_EXCEEDED`를 던지면 그 판정을 실패로 기록하고 메시지를 거절하지 않으며 호출은 한 번이다. 지금 코드로도 통과할 가능성이 높아 Red 없음이면 PR에 적는다 — 테스트 `t/test_analyzer_service.py`, 구현 `ea/service.py`(필요하면)
+- [x] T025 [R-9] [R-14] 조립: 재시도 설정이 analyze 규칙(연결 실패만)으로 클라이언트에 전달되고 `call_timeout_s`가 마감이 됨. 설정 주석을 "연결 실패 재시도"로 고침 — 테스트 `t/test_analyzer_main.py`, 구현 `ea/__main__.py`, `ea/settings.py`
 - [ ] T026 워커 e2e가 새 클라이언트로 그대로 통과(Kafka testcontainer) — 테스트 `t/test_analyzer_worker_e2e.py`
 
 ## Phase 5: 마무리

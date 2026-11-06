@@ -16,7 +16,8 @@ from ea_support import (
     judged,
 )
 from event_analyzer.service import AnalyzerConfig, EventAnalyzerService
-from vlm_ai_client.client import AiGatewayError, AnalyzeRequest
+from vlm_ai_client.client import AiGatewayError
+from vlm_ai_client.models import AnalyzeRequest
 from vlm_contracts.events import Event, EventAnalyzed, EventCandidateVector, VLMAnalysis
 from vlm_messaging.publisher import PublishError
 from vlm_messaging.timing import StageRecorder
@@ -342,3 +343,15 @@ async def test_spec020_r17_publish_failure_is_raised_for_retry() -> None:
 
     with pytest.raises(PublishError):
         await service.handle(candidates_message(candidate(0)), CTX)
+
+
+async def test_spec021_r14_deadline_exceeded_is_recorded_as_failed_call() -> None:
+    """[SPEC-021 R-14] 504 AI_DEADLINE_EXCEEDED는 메시지를 거절하지 않고 그 판정의 실패로 남긴다."""
+    gateway = FakeGateway(reply=lambda r: gateway_error("AI_DEADLINE_EXCEEDED", 504))
+
+    _, [event] = await _run(candidates_message(candidate(0)), gateway)
+
+    assert event.analysis.verification_status == "unknown"
+    [judgment] = event.judgments
+    assert (judgment.error_code, judgment.call_id) == ("AI_DEADLINE_EXCEEDED", None)
+    assert gateway.task_types() == ["event_judge"]

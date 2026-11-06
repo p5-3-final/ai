@@ -27,6 +27,8 @@ openapi-scopes = ["schemas", "paths"]
 output-model-type = "pydantic_v2.BaseModel"
 target-python-version = "3.12"
 snake-case-field = true
+# 호출부가 파이썬 이름(snake_case)으로 만들 수 있게 한다. JSON은 계약 이름(camelCase)이다.
+allow-population-by-field-name = true
 use-standard-collections = true
 use-union-operator = true
 field-constraints = true

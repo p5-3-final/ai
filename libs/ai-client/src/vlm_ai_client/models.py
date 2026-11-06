@@ -12,6 +12,7 @@ from vlm_contracts.events import DetectableEventType
 class ParseRequest(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
+        populate_by_name=True,
     )
     query: Annotated[
         str,
@@ -81,6 +82,7 @@ type Text = Annotated[str, Field(min_length=1)]
 class EmbedImageRef(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
+        populate_by_name=True,
     )
     storage_key: Annotated[
         str,
@@ -94,6 +96,9 @@ class EmbedImageRef(BaseModel):
 
 
 class EmbedResponse(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
     call_id: Annotated[
         UUID, Field(alias="callId", description="호출 ID. 호출 로그를 찾는 키다. (SPEC-011 R-23)")
     ]
@@ -115,6 +120,7 @@ class EmbedResponse(BaseModel):
 class ImageRef(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
+        populate_by_name=True,
     )
     storage_key: Annotated[
         str,
@@ -134,6 +140,9 @@ class ImageRef(BaseModel):
 
 
 class AnalyzeResponse(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
     call_id: Annotated[
         UUID,
         Field(
@@ -180,11 +189,17 @@ class AnalyzeResponse(BaseModel):
 
 
 class Error(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
     field: Annotated[str, Field(examples=["email"])]
     message: Annotated[str, Field(examples=["올바른 형식의 이메일 주소여야 합니다"])]
 
 
 class ProblemDetail(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
     type: AnyUrl
     title: Annotated[str, Field(examples=["Conflict"])]
     status: Annotated[int, Field(examples=[409])]
@@ -207,6 +222,9 @@ type Role = Literal["USER", "OPERATOR", "ADMIN"]
 
 
 class PageMeta(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
     page: Annotated[int, Field(ge=0)]
     size: Annotated[int, Field(ge=1)]
     total_elements: Annotated[int, Field(alias="totalElements")]
@@ -216,6 +234,7 @@ class PageMeta(BaseModel):
 class EmbedRequest(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
+        populate_by_name=True,
     )
     task_type: Annotated[EmbedTaskType, Field(alias="taskType")]
     texts: Annotated[
@@ -237,6 +256,7 @@ class EmbedRequest(BaseModel):
 class AnalyzeRequest(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
+        populate_by_name=True,
     )
     task_type: Annotated[TaskType, Field(alias="taskType")]
     source_id: Annotated[
@@ -261,6 +281,9 @@ class AnalyzeRequest(BaseModel):
 
 
 class ParseResponse(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
     call_id: Annotated[
         UUID,
         Field(alias="callId", description="호출 ID. 호출 로그를 찾는 키다. (SPEC-012 R-1, R-27)"),

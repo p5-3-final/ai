@@ -1,9 +1,10 @@
 [project]
 name = "vlm-common"
 version = "0.1.0"
-description = "ai 레포 공통 기반: 설정, 로그, 예외, 프로필 로딩"
+description = "ai 레포 공통 기반: 설정, 로그, 예외, 프로필 로딩, 내부 호출 규칙(마감·재시도)"
 requires-python = ">=3.12,<3.13"
 dependencies = [
+    "httpx>=0.28.1",
     "pydantic>=2.14.2",
     "pydantic-settings>=2.16.2",
 ]
