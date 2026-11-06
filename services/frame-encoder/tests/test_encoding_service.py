@@ -11,6 +11,7 @@ from fe_support import (
     encoder,
     frame_key,
     image_bytes,
+    put_images,
     segment_ready,
     storage_with_images,
 )
@@ -206,4 +207,37 @@ async def test_spec_019_r17_undecodable_image_goes_to_dlq_without_output() -> No
         await service.handle(ready, CTX)
 
     assert not storage.exists(VECTORS_KEY)
+    assert publisher.published == []
+
+
+class UnavailableStorage(InMemoryStorage):
+    """읽기나 쓰기가 일시적으로 실패하는 저장소."""
+
+    def __init__(self, *, fail_read: bool = False, fail_write: bool = False) -> None:
+        super().__init__()
+        self._fail_read = fail_read
+        self._fail_write = fail_write
+
+    def get_bytes(self, key: str) -> bytes:
+        if self._fail_read:
+            raise ConnectionError("storage unavailable")
+        return super().get_bytes(key)
+
+    def put_bytes(self, key: str, data: bytes, content_type: str) -> None:
+        if self._fail_write and key == VECTORS_KEY:
+            raise ConnectionError("storage unavailable")
+        super().put_bytes(key, data, content_type)
+
+
+@pytest.mark.parametrize("failure", ["read", "write"])
+async def test_spec_019_r18_transient_storage_error_is_retried(failure: str) -> None:
+    ready = segment_ready()
+    storage = UnavailableStorage(fail_read=failure == "read", fail_write=failure == "write")
+    put_images(storage, ready)
+    publisher = RecordingPublisher()
+
+    # 재시도 토픽으로 보내려면 NonRetryableError가 아닌 원래 오류가 나가야 한다.
+    with pytest.raises(ConnectionError):
+        await _service(storage, publisher).handle(ready, CTX)
+
     assert publisher.published == []

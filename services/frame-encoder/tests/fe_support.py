@@ -74,12 +74,15 @@ def segment_ready(segments: int = 2, crops: int = 3) -> SegmentReady:
     )
 
 
-def storage_with_images(ready: SegmentReady) -> InMemoryStorage:
-    storage = InMemoryStorage()
+def put_images(storage: InMemoryStorage, ready: SegmentReady) -> InMemoryStorage:
     keys = [f.key for s in ready.segments for f in s.frames] + [c.key for c in ready.crops]
     for key in keys:
         storage.put_bytes(key, image_bytes(key), "image/jpeg")
     return storage
+
+
+def storage_with_images(ready: SegmentReady) -> InMemoryStorage:
+    return put_images(InMemoryStorage(), ready)
 
 
 @dataclass
