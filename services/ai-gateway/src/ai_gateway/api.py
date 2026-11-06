@@ -1,5 +1,6 @@
 """HTTP 계층: 요청·응답 모델(계약 `ai-gateway.yaml`)과 오류 응답."""
 
+import logging
 import re
 from typing import Annotated
 from uuid import UUID
@@ -8,11 +9,14 @@ from fastapi import APIRouter, Depends, Header, Request
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
 
+from ai_gateway.adapters.base import DeadlineExceededError
 from ai_gateway.analyze import AnalyzeCommand, AnalyzeService, UnverifiedReason
+from ai_gateway.deadline import Deadline, parse_deadline_header
 from ai_gateway.embed import EmbedCommand, EmbedService
 from ai_gateway.parse import ParseCommand, ParseService
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 _TRACEPARENT = re.compile(r"00-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}")
 
@@ -45,6 +49,34 @@ class AnalyzeResponse(_Body):
     output: dict[str, object]
 
 
+async def _request_deadline(
+    request: Request,
+    x_request_deadline: Annotated[str | None, Header()] = None,
+    x_caller: Annotated[str | None, Header()] = None,
+) -> Deadline | None:
+    """세 operation의 마감 헤더. 서비스보다 먼저 돌아 지난 마감은 아무것도 부르지 않는다(R-2·NFR-1).
+
+    검사 순서는 형식(400) → 마감(504)이다. 형식이 틀린 값은 마감으로 해석할 수 없다.
+    """
+    deadline = parse_deadline_header(x_request_deadline)
+    if deadline is not None and deadline.expired():
+        # 호출 로그도 DB 저장소라 남기지 않는다. 거절은 JSON 로그로만 본다(plan 4.2).
+        logger.info(
+            "request rejected",
+            extra={
+                "code": DeadlineExceededError.code,
+                "caller": x_caller,
+                "path": request.url.path,
+                "deadline_lag_ms": deadline.lag_ms(),
+            },
+        )
+        raise DeadlineExceededError("request deadline has passed", sent=False)
+    return deadline
+
+
+type RequestDeadline = Annotated[Deadline | None, Depends(_request_deadline)]
+
+
 def _service(request: Request) -> AnalyzeService:
     service: AnalyzeService = request.app.state.analyze
     return service
@@ -53,6 +85,7 @@ def _service(request: Request) -> AnalyzeService:
 @router.post("/v1/analyze", response_model_by_alias=True)
 async def analyze(
     body: AnalyzeRequest,
+    deadline: RequestDeadline,
     service: Annotated[AnalyzeService, Depends(_service)],
     x_caller: Annotated[str | None, Header()] = None,
     traceparent: Annotated[str | None, Header()] = None,
@@ -65,6 +98,7 @@ async def analyze(
             image_keys=[i.storage_key for i in body.images],
             variables=body.variables,
             traceparent=_valid_traceparent(traceparent),
+            deadline=deadline,
         )
     )
     return AnalyzeResponse(
@@ -110,6 +144,7 @@ def _embed_service(request: Request) -> EmbedService:
 @router.post("/v1/embed", response_model_by_alias=True)
 async def embed(
     body: EmbedRequest,
+    deadline: RequestDeadline,
     service: Annotated[EmbedService, Depends(_embed_service)],
     x_caller: Annotated[str | None, Header()] = None,
     traceparent: Annotated[str | None, Header()] = None,
@@ -121,6 +156,7 @@ async def embed(
             texts=body.texts,
             image_keys=[i.storage_key for i in body.images] if body.images is not None else None,
             traceparent=_valid_traceparent(traceparent),
+            deadline=deadline,
         )
     )
     return EmbedResponse(
@@ -158,6 +194,7 @@ def _parse_service(request: Request) -> ParseService:
 @router.post("/v1/parse", response_model_by_alias=True)
 async def parse(
     body: ParseRequest,
+    deadline: RequestDeadline,
     service: Annotated[ParseService, Depends(_parse_service)],
     x_caller: Annotated[str | None, Header()] = None,
     traceparent: Annotated[str | None, Header()] = None,
@@ -167,6 +204,7 @@ async def parse(
             caller=x_caller or "",
             query=body.query,
             traceparent=_valid_traceparent(traceparent),
+            deadline=deadline,
         )
     )
     return ParseResponse(

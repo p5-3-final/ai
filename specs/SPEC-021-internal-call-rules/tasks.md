@@ -23,16 +23,16 @@ updated: 2026-11-06
 
 ## Phase 1: US-1 포기한 호출에 비용을 쓰지 않음 — ai-gateway (P1)
 
-- [ ] T004 [R-4] `X-Request-Deadline`이 0 이상의 정수가 아니면(빈 값, 음수, 소수, 17자리, 문자) 세 operation 모두 400 `AI_INVALID_REQUEST`, `errors[].field`가 헤더 이름 — 테스트 `gwt/test_deadline_api.py`, 구현 `gw/deadline.py`, `gw/api.py`
-- [ ] T005 [R-2] 지난 마감이면 504 `AI_DEADLINE_EXCEEDED`이고 저장소·캐시·예산·Adapter 호출 수가 0, 호출 로그 행 없음 — 테스트 `gwt/test_deadline_api.py`, 구현 `gw/api.py`(헤더 의존성), `gw/errors.py`·`gw/adapters/base.py`(`DeadlineExceededError`)
-- [ ] T006 [R-2] 504 본문이 계약 ProblemDetail·`DeadlineExceeded` 응답 예시와 맞음 — 테스트 `gwt/test_contract.py`
-- [ ] T007 [R-5] 헤더가 없으면 Adapter가 받은 `timeout_s`가 프로필 값 그대로(analyze, embed_text, parse LLM) — 테스트 `gwt/test_deadline_api.py`, 구현 `gw/analyze.py`·`embed.py`·`parse.py`(명령 객체 `deadline: Deadline | None`)
-- [ ] T008 [R-1] analyze: 남은 시간이 프로필보다 짧으면 Adapter `timeout_s` = 호출 시점의 남은 시간, 길면 프로필 값 — 테스트 `gwt/test_deadline_api.py`, 구현 `gw/deadline.py` `cap`, `gw/analyze.py`
-- [ ] T009 [R-1] embed_text·parse LLM 경로도 같은 규칙 — 테스트 `gwt/test_deadline_api.py`, 구현 `gw/embed.py`, `gw/parse.py`
-- [ ] T010 [R-1] 게이트의 잠금 대기·분당 한도 대기가 남은 시간으로 끊기고 그때 `DeadlineExceededError`(예약 되돌림) — 테스트 `gwt/test_gate.py`, 구현 `gw/gate.py`
-- [ ] T011 [R-3] analyze: Adapter가 남은 시간 안에 끝나지 않으면 504, 호출 로그 status `unavailable`·`error_code` `AI_DEADLINE_EXCEEDED`, 예산은 예약액으로 정산. 프로필 제한 시간이 먼저 끝나면 지금처럼 503 — 테스트 `gwt/test_deadline_api.py`, 구현 `gw/analyze.py`(`asyncio.timeout`, 예외 변환)
-- [ ] T012 [R-3] embed_text는 504, parse LLM 경로는 `safe-fallback` 대신 504(호출 로그는 남김) — 테스트 `gwt/test_deadline_api.py`, 구현 `gw/embed.py`, `gw/parse.py`
-- [ ] T013 [NFR-1] mock 프로필에서 지난 마감 요청 200회 p95 20ms 이하 — 테스트 `gwt/test_deadline_latency.py`
+- [x] T004 [R-4] `X-Request-Deadline`이 0 이상의 정수가 아니면(빈 값, 음수, 소수, 17자리, 문자) 세 operation 모두 400 `AI_INVALID_REQUEST`, `errors[].field`가 헤더 이름 — 테스트 `gwt/test_deadline_api.py`, 구현 `gw/deadline.py`, `gw/api.py`
+- [x] T005 [R-2] 지난 마감이면 504 `AI_DEADLINE_EXCEEDED`이고 저장소·캐시·예산·Adapter 호출 수가 0, 호출 로그 행 없음 — 테스트 `gwt/test_deadline_api.py`, 구현 `gw/api.py`(헤더 의존성), `gw/errors.py`·`gw/adapters/base.py`(`DeadlineExceededError`)
+- [x] T006 [R-2] 504 본문이 계약 ProblemDetail·`DeadlineExceeded` 응답 예시와 맞음 — 테스트 `gwt/test_contract.py`
+- [x] T007 [R-5] 헤더가 없으면 Adapter가 받은 `timeout_s`가 프로필 값 그대로(analyze, embed_text, parse LLM) — 테스트 `gwt/test_deadline_api.py`, 구현 `gw/analyze.py`·`embed.py`·`parse.py`(명령 객체 `deadline: Deadline | None`)
+- [x] T008 [R-1] analyze: 남은 시간이 프로필보다 짧으면 Adapter `timeout_s` = 호출 시점의 남은 시간, 길면 프로필 값 — 테스트 `gwt/test_deadline_api.py`, 구현 `gw/deadline.py` `cap`, `gw/analyze.py`
+- [x] T009 [R-1] embed_text·parse LLM 경로도 같은 규칙 — 테스트 `gwt/test_deadline_api.py`, 구현 `gw/embed.py`, `gw/parse.py`
+- [x] T010 [R-1] 게이트의 잠금 대기·분당 한도 대기가 남은 시간으로 끊기고 그때 `DeadlineExceededError`(예약 되돌림) — 테스트 `gwt/test_gate.py`, 구현 `gw/gate.py`
+- [x] T011 [R-3] analyze: Adapter가 남은 시간 안에 끝나지 않으면 504, 호출 로그 status `unavailable`·`error_code` `AI_DEADLINE_EXCEEDED`, 예산은 예약액으로 정산. 프로필 제한 시간이 먼저 끝나면 지금처럼 503 — 테스트 `gwt/test_deadline_api.py`, 구현 `gw/analyze.py`(`asyncio.timeout`, 예외 변환)
+- [x] T012 [R-3] embed_text는 504, parse LLM 경로는 `safe-fallback` 대신 504(호출 로그는 남김) — 테스트 `gwt/test_deadline_api.py`, 구현 `gw/embed.py`, `gw/parse.py`
+- [x] T013 [NFR-1] mock 프로필에서 지난 마감 요청 200회 p95 20ms 이하 — 테스트 `gwt/test_deadline_latency.py`
 - [ ] T014 [NFR-2] 기존 성능 테스트 통과 확인(`gwt/test_overhead.py`, `gwt/test_embed_latency.py`). 새 코드 없음, 결과를 PR에 적는다
 
 ## Phase 2: US-2 계약과 코드가 어긋나지 않음 — ai-client (P1)

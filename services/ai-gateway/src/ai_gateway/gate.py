@@ -5,6 +5,7 @@
 호출 로그를 정한다.
 """
 
+import asyncio
 import hashlib
 import json
 from collections.abc import Awaitable, Callable
@@ -13,8 +14,13 @@ from decimal import Decimal
 from typing import Literal, Protocol
 from uuid import UUID
 
-from ai_gateway.adapters.base import ProviderFailedError, ProviderUnavailableError
+from ai_gateway.adapters.base import (
+    DeadlineExceededError,
+    ProviderFailedError,
+    ProviderUnavailableError,
+)
 from ai_gateway.budget import Reservation, cost_of
+from ai_gateway.deadline import Deadline, cap
 from ai_gateway.profile import GatewayProfile
 
 type JsonObject = dict[str, object]
@@ -76,6 +82,8 @@ class GateCall:
     input_tokens: int
     output_tokens: int
     timeout_s: float
+    # 호출자 마감(SPEC-021). 있으면 대기·모델 호출이 남은 시간 안에서 끝난다.
+    deadline: Deadline | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -137,12 +145,16 @@ class ModelGate:
             cached = await self._cache.get(key)
             if cached is not None:
                 return _cached(cached)
-            locked = await self._cache.try_lock(key, call.timeout_s)
+            locked = await self._cache.try_lock(key, _wait_s(call))
             if locked is False:
                 # 다른 요청이 같은 입력을 부르는 중이다. 결과가 오면 쓰고 실패하면 직접 부른다(R-8).
-                awaited = await self._cache.wait_for(key, call.timeout_s)
+                awaited = await self._cache.wait_for(key, _wait_s(call))
                 if awaited is not None:
                     return _cached(awaited)
+                if _expired(call):
+                    # 기다리는 동안 마감이 지났다. 공급자에 보내지 않았다(SPEC-021 R-1).
+                    error = DeadlineExceededError("deadline passed while waiting", sent=False)
+                    return GateResult(kind="failed", error=error)
         else:
             locked = None
         try:
@@ -160,10 +172,8 @@ class ModelGate:
         if reservation is None:
             return GateResult(kind="budget_exceeded")
         try:
-            await self._limiter.acquire(
-                call.adapter, call.model, call.input_tokens + call.output_tokens, call.timeout_s
-            )
-            produced = await invoke()
+            await self._acquire(call)
+            produced = await _invoke(call, invoke)
         except (ProviderUnavailableError, ProviderFailedError) as e:
             settled = await self._close_failed(reservation, e)
             return GateResult(kind="failed", error=e, reserved_usd=estimate, settled_usd=settled)
@@ -179,6 +189,16 @@ class ModelGate:
             kind="called", value=produced.value, reserved_usd=estimate, settled_usd=actual
         )
 
+    async def _acquire(self, call: GateCall) -> None:
+        tokens = call.input_tokens + call.output_tokens
+        try:
+            await self._limiter.acquire(call.adapter, call.model, tokens, _wait_s(call))
+        except ProviderUnavailableError as e:
+            # 차례를 기다리다 마감이 지났으면 분당 한도가 아니라 마감 초과다. 보내지 않았다(R-1).
+            if _expired(call):
+                raise DeadlineExceededError("deadline passed while waiting", sent=False) from e
+            raise
+
     async def _close_failed(self, reservation: Reservation, error: Exception) -> Decimal:
         # 보내지 못했으면 되돌리고(R-13), 보냈을 수 있으면 예상 비용으로 남긴다(R-22).
         if isinstance(error, ProviderUnavailableError) and not error.sent:
@@ -186,6 +206,39 @@ class ModelGate:
             return Decimal(0)
         await self._budget.settle(reservation, reservation.cost)
         return reservation.cost
+
+
+def _wait_s(call: GateCall) -> float:
+    """대기(잠금·분당 한도)의 제한 시간. 부를 때마다 남은 시간으로 다시 계산한다(SPEC-021 R-1)."""
+    return cap(call.deadline, call.timeout_s)
+
+
+def _expired(call: GateCall) -> bool:
+    return call.deadline is not None and call.deadline.expired()
+
+
+async def _invoke[T](call: GateCall, invoke: Callable[[], Awaitable[Produced[T]]]) -> Produced[T]:
+    """외부 모델 호출을 마감 안에서 끝낸다(SPEC-021 R-3).
+
+    Adapter는 `timeout_s`를 시도마다 적용하고 프로필 `max_retries`만큼 다시 시도하므로 호출 전체를
+    남은 시간으로 한 번 더 감싼다. 공급자 시간 초과로 끝났는데 그때 마감이 지났으면 원인을 마감으로
+    바꾼다. 마감이 남았으면 지금처럼 공급자 오류(503)다.
+    """
+    deadline = call.deadline
+    if deadline is None:
+        return await invoke()
+    scope = asyncio.timeout(deadline.remaining_s())
+    try:
+        async with scope:
+            return await invoke()
+    except TimeoutError as e:
+        if not scope.expired():
+            raise
+        raise DeadlineExceededError("deadline passed while calling the model", sent=True) from e
+    except ProviderUnavailableError as e:
+        if isinstance(e, DeadlineExceededError) or not deadline.expired():
+            raise
+        raise DeadlineExceededError("deadline passed while calling the model", sent=e.sent) from e
 
 
 def _cached[T](value: JsonObject) -> GateResult[T]:

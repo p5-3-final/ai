@@ -14,6 +14,7 @@ from ai_gateway.adapters.base import (
     VlmAdapter,
 )
 from ai_gateway.call_log import CallLogEntry, CallStatus, new_call_id
+from ai_gateway.deadline import Deadline, cap
 from ai_gateway.errors import (
     CallerForbiddenError,
     InvalidRequestError,
@@ -45,6 +46,8 @@ class AnalyzeCommand:
     image_keys: list[str]
     variables: JsonObject
     traceparent: str | None = None
+    # 호출자 마감(SPEC-021). 없으면 프로필 제한 시간만 쓴다(R-5).
+    deadline: Deadline | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -112,7 +115,8 @@ class AnalyzeService:
                 message=task.render(command.variables),
                 images=images,
                 max_output_tokens=settings.max_output_tokens,
-                timeout_s=settings.timeout_s,
+                # 호출 직전의 남은 시간으로 줄인다(SPEC-021 R-1).
+                timeout_s=cap(command.deadline, settings.timeout_s),
                 max_retries=settings.max_retries,
                 traceparent=command.traceparent,
             )
@@ -148,6 +152,7 @@ class AnalyzeService:
                 input_tokens=settings.estimated_input_tokens,
                 output_tokens=settings.max_output_tokens,
                 timeout_s=settings.timeout_s,
+                deadline=command.deadline,
             ),
             invoke,
         )

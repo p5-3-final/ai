@@ -1,8 +1,15 @@
+import asyncio
+import time
 from dataclasses import dataclass, field, replace
 from decimal import Decimal
 
 import pytest
-from ai_gateway.adapters.base import ProviderFailedError, ProviderUnavailableError
+from ai_gateway.adapters.base import (
+    DeadlineExceededError,
+    ProviderFailedError,
+    ProviderUnavailableError,
+)
+from ai_gateway.deadline import Deadline
 from ai_gateway.gate import GateCall, ModelGate, Produced
 from ai_gateway.rate_limit import RateLimitedError
 from gateway_support import MemoryBudget, MemoryCache, profile
@@ -201,3 +208,75 @@ async def test_spec016_r15_rate_limit_counts_estimated_tokens() -> None:
     await _gate(limiter=limiter).run(CALL, Invoker())
 
     assert limiter.calls == [1500]
+
+
+def _deadline_in(seconds: float) -> Deadline:
+    return Deadline(int((time.time() + seconds) * 1000))
+
+
+@dataclass
+class SlowLimiter:
+    """차례를 주지 않고 받은 제한 시간만큼 기다린 뒤 분당 한도 오류를 던진다."""
+
+    timeouts: list[float] = field(default_factory=list)
+
+    async def acquire(self, adapter: str, model: str, tokens: int, timeout_s: float) -> None:
+        self.timeouts.append(timeout_s)
+        await asyncio.sleep(timeout_s)
+        raise RateLimitedError("busy")
+
+
+async def test_spec021_r1_waiting_for_same_input_stops_at_deadline() -> None:
+    """[SPEC-021 R-1] 같은 입력의 잠금 대기가 남은 시간으로 끊기면 마감 초과다(보내지 않음)."""
+    cache = MemoryCache(locks={"k1"}, wait_s=10, awaited=STORED)
+    budget, invoke = MemoryBudget(), Invoker()
+    started = time.perf_counter()
+
+    result = await _gate(cache, budget).run(replace(CALL, deadline=_deadline_in(0.2)), invoke)
+
+    assert time.perf_counter() - started < 2
+    assert result.kind == "failed"
+    assert isinstance(result.error, DeadlineExceededError)
+    assert result.error.sent is False
+    assert (invoke.calls, budget.reserves) == (0, 0)
+
+
+async def test_spec021_r1_rate_limit_wait_uses_remaining_time_and_releases_budget() -> None:
+    """[SPEC-021 R-1] 분당 한도 대기도 남은 시간까지만이고, 끊기면 예약을 되돌린다."""
+    budget, limiter, invoke = MemoryBudget(), SlowLimiter(), Invoker()
+
+    result = await ModelGate(PRICED, MemoryCache(), budget, limiter).run(
+        replace(CALL, deadline=_deadline_in(0.3)), invoke
+    )
+
+    [waited] = limiter.timeouts
+    assert 0 < waited <= 0.3
+    assert isinstance(result.error, DeadlineExceededError)
+    assert result.error.sent is False
+    assert invoke.calls == 0
+    assert budget.spent["event-analyzer"] == 0
+
+
+async def test_spec021_r3_model_call_past_deadline_is_settled_as_sent() -> None:
+    """[SPEC-021 R-3] 모델 호출이 남은 시간 안에 끝나지 않으면 마감 초과다. 예약액으로 정산한다."""
+    budget = MemoryBudget()
+
+    async def slow() -> Produced[str]:
+        await asyncio.sleep(10)
+        return Produced("late", 1, 1, None)
+
+    result = await _gate(budget=budget).run(replace(CALL, deadline=_deadline_in(0.2)), slow)
+
+    assert isinstance(result.error, DeadlineExceededError)
+    assert result.error.sent is True
+    assert (result.reserved_usd, result.settled_usd) == (ESTIMATE, ESTIMATE)
+    assert budget.spent["event-analyzer"] == ESTIMATE
+
+
+async def test_spec021_r3_provider_timeout_before_deadline_stays_503() -> None:
+    """[SPEC-021 R-3] 마감이 남았는데 프로필 제한 시간이 먼저 끝났으면 지금처럼 공급자 오류다."""
+    invoke = Invoker(result=ProviderUnavailableError("timeout"))
+
+    result = await _gate().run(replace(CALL, deadline=_deadline_in(60)), invoke)
+
+    assert type(result.error) is ProviderUnavailableError

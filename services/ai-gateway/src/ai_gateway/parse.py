@@ -14,11 +14,13 @@ from uuid import UUID
 
 from ai_gateway.adapters.base import (
     Completion,
+    DeadlineExceededError,
     ProviderUnavailableError,
     VlmAdapter,
 )
 from ai_gateway.analyze import CallLogWriter
 from ai_gateway.call_log import CallLogEntry, CallStatus, new_call_id
+from ai_gateway.deadline import Deadline, cap
 from ai_gateway.errors import CallerForbiddenError, InvalidRequestError
 from ai_gateway.gate import GateCall, ModelGate, Produced, cache_key
 from ai_gateway.output import ParsedOutput, parse_output
@@ -44,6 +46,8 @@ class ParseCommand:
     caller: str
     query: str
     traceparent: str | None = None
+    # 호출자 마감(SPEC-021). 없으면 프로필 제한 시간만 쓴다(R-5).
+    deadline: Deadline | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -78,6 +82,8 @@ class _Parsed:
     cache_hit: bool | None = None
     reserved_usd: Decimal | None = None
     settled_usd: Decimal | None = None
+    # 호출 로그를 남긴 뒤 응답 대신 던질 오류(마감 초과, SPEC-021 R-3)
+    raise_after_log: Exception | None = None
 
 
 class ParseService:
@@ -130,6 +136,8 @@ class ParseService:
             canonical_query=self._canonical(route, parsed, prompt_version),
         )
         await self._record(call.entry(result, parsed, self._llm_values(parsed)))
+        if parsed.raise_after_log is not None:
+            raise parsed.raise_after_log
         return result
 
     async def _interpret(self, normalized: str, command: ParseCommand) -> _Parsed:
@@ -167,7 +175,8 @@ class ParseService:
                 message=prompt.render(variables),
                 images=[],
                 max_output_tokens=settings.max_output_tokens,
-                timeout_s=settings.timeout_s,
+                # 호출 직전의 남은 시간으로 줄인다(SPEC-021 R-1).
+                timeout_s=cap(command.deadline, settings.timeout_s),
                 max_retries=settings.max_retries,
                 traceparent=command.traceparent,
                 temperature=_TEMPERATURE,
@@ -192,6 +201,7 @@ class ParseService:
                 input_tokens=settings.estimated_input_tokens,
                 output_tokens=settings.max_output_tokens,
                 timeout_s=settings.timeout_s,
+                deadline=command.deadline,
             ),
             invoke,
         )
@@ -215,6 +225,9 @@ class ParseService:
                 cache_hit=False,
                 reserved_usd=reserved,
                 settled_usd=settled,
+                # 마감이 지나면 호출자가 이미 포기했으므로 대체 결과 대신 504로 알린다
+                # (SPEC-021 R-3).
+                raise_after_log=error if isinstance(error, DeadlineExceededError) else None,
             )
         if gated.value is None:
             raise RuntimeError("model gate returned no result")
@@ -375,6 +388,7 @@ def _fallback(
     cache_hit: bool | None = None,
     reserved_usd: Decimal | None = None,
     settled_usd: Decimal | None = None,
+    raise_after_log: Exception | None = None,
 ) -> _Parsed:
     return _Parsed(
         method="safe-fallback",
@@ -388,6 +402,7 @@ def _fallback(
         cache_hit=cache_hit,
         reserved_usd=reserved_usd,
         settled_usd=settled_usd,
+        raise_after_log=raise_after_log,
     )
 
 
