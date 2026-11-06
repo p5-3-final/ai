@@ -421,3 +421,29 @@ async def test_spec023_r15_publish_failure_is_raised_and_retry_uses_same_ids() -
     assert ids[0] == ids[1]
     assert len(ids) == 4
     assert ids[3] == manifest_event_id(message.execution_id)
+
+
+async def test_spec023_r17_stateful_repeats_within_interval_are_carried() -> None:
+    first, between, later = (detected(i, start_s=s) for i, s in ((1, 0), (2, 30), (3, 200)))
+
+    gateway, events, _ = await _run(detector_message(first, between, later))
+
+    assert len(gateway.requests) == 2
+    by_id = {e.candidate_id: e for e in events}
+    carried = by_id[between.candidate_id]
+    assert carried.judgment_method == "rule+carry"
+    assert carried.judgments == []
+    assert carried.carried_from_event_id == analyzed_event_id(first.candidate_id)
+    assert carried.analysis == by_id[first.candidate_id].analysis
+    assert by_id[later.candidate_id].judgment_method == "rule+vlm"
+
+
+async def test_spec023_r17_carry_copies_unknown_state_of_the_judged_candidate() -> None:
+    gateway = FakeGateway(reply=lambda r: gateway_error("AI_TIMEOUT", None, retryable=True))
+
+    _, [judged_event, carried], _ = await _run(
+        detector_message(detected(1, start_s=0), detected(2, start_s=30)), gateway
+    )
+
+    assert carried.analysis == judged_event.analysis == VLMAnalysis.unknown("ppe_missing")
+    assert carried.judgment_method == "rule+carry"

@@ -44,3 +44,11 @@ severity = "medium"
 # 애매 점수 구간(양 끝 포함). 점수가 이 안이면 재판정한다(SPEC-023 R-6). 동작 확인용 자리값
 [escalation.ppe_missing]
 ambiguous_score = [0.4, 0.6]
+
+# 상태형 유형의 재판정 간격(초). 간격 안의 반복 후보는 직전 판정을 복사한다(SPEC-023 R-17·R-18).
+# 원본은 이벤트 정의 목록의 rejudgeIntervalS이고 값은 아키텍처 v5.1 8.2절 기본값이다.
+[rejudge]
+fire_or_smoke = 60
+ppe_missing = 120
+barrier_not_restored = 300
+hazard_zone_access = 120

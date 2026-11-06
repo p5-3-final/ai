@@ -56,6 +56,9 @@ class EventAnalyzerProfile(Profile):
     rule_text: RuleTextProfile
     rules: dict[DetectableEventType, RuleTemplate]
     escalation: dict[DetectableEventType, EscalationProfile] = Field(default_factory=dict)
+    # 상태형 유형의 재판정 간격(초, SPEC-023 R-17). 원본은 이벤트 정의 목록의 rejudgeIntervalS이고
+    # 계약과 같이 0보다 커야 한다. 없는 유형은 사건형이라 구간 규칙(carry)이 없다.
+    rejudge: dict[DetectableEventType, Annotated[float, Field(gt=0)]] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def _every_type_has_a_rule(self) -> Self:
@@ -65,6 +68,10 @@ class EventAnalyzerProfile(Profile):
         if missing:
             raise ValueError(f"rules are missing for event types: {', '.join(missing)}")
         return self
+
+    def rejudge_interval_s(self, event_type: DetectableEventType) -> float | None:
+        """상태형 유형의 재판정 간격. 사건형이면 None이다."""
+        return self.rejudge.get(event_type)
 
     def is_ambiguous(self, event_type: DetectableEventType, score: float) -> bool:
         """탐지 점수가 그 유형의 애매 구간 안인지. 구간이 없는 유형은 False다."""

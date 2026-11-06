@@ -109,3 +109,46 @@ def test_spec023_r20_manifest_v51_counts_round_trip(load_schema: SchemaLoader) -
     parsed = _model("event.manifest").model_validate(manifest)
 
     assert parsed.model_dump(by_alias=True, mode="json") == manifest
+
+
+@pytest.mark.parametrize("topic", ["alert.candidate", "alert.raised"])
+def test_spec023_r21_alert_events_are_registered(topic: str) -> None:
+    assert _model(topic).model_fields["event_type"].default == topic
+
+
+def test_spec023_r21_alert_candidate_frames_must_be_in_its_execution_folder(
+    load_schema: SchemaLoader,
+) -> None:
+    message = _example(load_schema, "alert.candidate")
+    other = {**message, "executionId": "0192fb00-0000-7000-8000-0000000000ff"}
+    message["evidenceFrameKeys"] = [_prefix(other) + "blurred/x.jpg"]
+
+    with pytest.raises(ValidationError, match="execution folder"):
+        _model("alert.candidate").model_validate(message)
+
+
+def test_spec023_r21_confirmed_alert_needs_analysis(load_schema: SchemaLoader) -> None:
+    confirmed = _example(load_schema, "alert.raised", 1)
+    confirmed["analysis"] = None
+
+    with pytest.raises(ValidationError, match="analysis"):
+        _model("alert.raised").model_validate(confirmed)
+
+
+def test_spec023_r21_pending_alert_has_no_analysis(load_schema: SchemaLoader) -> None:
+    pending = _example(load_schema, "alert.raised")
+    pending["analysis"] = _example(load_schema, "alert.raised", 1)["analysis"]
+
+    with pytest.raises(ValidationError, match="analysis"):
+        _model("alert.raised").model_validate(pending)
+
+
+@pytest.mark.parametrize(("status", "reason"), [("dismissed", None), ("pending", "rejected")])
+def test_spec023_r23_dismiss_reason_only_and_always_for_dismissed(
+    load_schema: SchemaLoader, status: str, reason: str | None
+) -> None:
+    alert = _example(load_schema, "alert.raised")
+    alert.update(status=status, dismissReason=reason)
+
+    with pytest.raises(ValidationError, match="dismissReason"):
+        _model("alert.raised").model_validate(alert)

@@ -59,9 +59,9 @@ updated: 2026-11-07
 
 ## Phase 8: v5.1 추가(계약 묶음 4.0.0)
 
-- [ ] T026 [R-20] [R-21] 4.0.0 계약 모델: `AlertCandidate`, `AlertRaised`, `EventManifest` 계수 필드, `EventCandidate.job_type`, `EventAnalyzed`의 `rule+carry`·`unverified_reason`, 프로필 `[rejudge]`와 분류 체계 대조 — 테스트 `lc/tests/test_event_contracts.py`, `lc/tests/test_taxonomy_contracts.py`, `t/test_analyzer_profile.py`, 구현 `vlm_contracts/events.py`, `ea/profile.py`
-- [ ] T027 [R-17] `plan_carry`: 상태형 묶음·간격 규칙·carry 목록(순수 함수, 같은 입력 같은 결과) — 테스트 `t/test_analyzer_carry.py`, 구현 `ea/carry.py`
-- [ ] T028 [R-17] `handle_detector`가 판정 대상만 호출하고 carry는 결과 복사로 `rule+carry`·빈 호출 기록 발행 — 테스트 `t/test_analyzer_detector_service.py`, 구현 `ea/service.py`
+- [x] T026 [R-20] [R-21] 4.0.0 계약 모델: `AlertCandidate`, `AlertRaised`, `EventManifest` 계수 필드, `EventCandidate.job_type`, `EventAnalyzed`의 `rule+carry`·`unverified_reason`, 프로필 `[rejudge]`와 분류 체계 대조 — 테스트 `lc/tests/test_event_contracts.py`, `lc/tests/test_taxonomy_contracts.py`, `t/test_analyzer_profile.py`, 구현 `vlm_contracts/events.py`, `ea/profile.py`
+- [x] T027 [R-17] `plan_carry`: 상태형 묶음·간격 규칙·carry 목록(순수 함수, 같은 입력 같은 결과) — 테스트 `t/test_analyzer_carry.py`, 구현 `ea/carry.py`
+- [x] T028 [R-17] `handle_detector`가 판정 대상만 호출하고 carry는 결과 복사로 `rule+carry`·빈 호출 기록 발행 — 테스트 `t/test_analyzer_detector_service.py`, 구현 `ea/service.py`
 - [ ] T029 [R-19] `call_cap`과 순서 기반 상한, 넘는 후보는 `call_cap_reached`, 재판정은 남은 횟수 안에서만 — 테스트 `t/test_analyzer_cap.py`, `t/test_analyzer_detector_service.py`, 구현 `ea/cap.py`, `ea/service.py`, `ea/profile.py`
 - [ ] T030 [R-20] `event.manifest`에 `carriedCount`·`capReachedCount`·`budgetExceededCount`·`jobType` — 테스트 `t/test_analyzer_detector_service.py`, 구현 `ea/service.py`
 - [ ] T031 [R-18] `RejudgeState`(Redis 키 읽기·갱신·TTL, 미설정이면 판정), `STREAM`에서 창 넘김 carry — 테스트 `t/test_analyzer_rejudge_state.py`(integration), `t/test_analyzer_detector_service.py`, 구현 `ea/rejudge_state.py`, `ea/settings.py`, `ea/__main__.py`, `.env.example`

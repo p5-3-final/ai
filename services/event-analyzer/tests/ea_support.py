@@ -267,9 +267,14 @@ class _ContractSettings(BaseSettings):
     contracts_dir: Path = Field(default_factory=_default_contracts_dir)
 
 
+def contracts_dir() -> Path:
+    """docs 계약 원본 폴더."""
+    return _ContractSettings().contracts_dir
+
+
 @cache
 def _event_registry() -> tuple[Registry[Schema], str]:
-    path = _ContractSettings().contracts_dir
+    path = contracts_dir()
     # 원본이 없으면 계약 검증이 빠진 채 통과하므로 건너뛰지 않고 실패시킨다.
     assert (path / "events").is_dir(), f"계약을 찾을 수 없다: {path} (CONTRACTS_DIR 확인)"
     # 스키마는 서로를 상대 경로로 참조하므로 각자의 $id로 등록한다.

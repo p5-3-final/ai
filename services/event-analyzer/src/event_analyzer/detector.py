@@ -7,7 +7,7 @@
 
 import asyncio
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from uuid import UUID
 
@@ -26,6 +26,7 @@ from vlm_storage.storage import ObjectStorage
 from event_analyzer import ids
 from event_analyzer.calls import AnalyzeClient, EventPublisher, judge, publish
 from event_analyzer.candidates import load_candidates
+from event_analyzer.carry import plan_carry
 from event_analyzer.judgment import Decision, Outcome, Stage, decide, needs_escalation
 from event_analyzer.merge import Kept, merge_candidates
 from event_analyzer.profile import EventAnalyzerProfile
@@ -61,6 +62,8 @@ class _Result:
 
     kept: Kept
     decision: Decision
+    # rule+carry면 결과를 복사한 원본 event.analyzed의 eventId(SPEC-023 R-17)
+    carried_from: UUID | None = None
 
 
 class DetectorAnalyzerService:
@@ -97,12 +100,15 @@ class DetectorAnalyzerService:
                 for k in kept
                 if k.candidate.judgment == "rule"
             }
+            carry = plan_carry([k.candidate for k in kept], self._profile.rejudge)
             block.count = len(candidates)
-        vlm = [k for k in kept if k.candidate.judgment == "vlm"]
-        decisions |= await self._judge_all(message, vlm, ctx)
-        analyzed = [
-            self._analyzed(message, _Result(k, decisions[k.candidate.candidate_id])) for k in kept
+        targets = [
+            k
+            for k in kept
+            if k.candidate.judgment == "vlm" and k.candidate.candidate_id not in carry
         ]
+        decisions |= await self._judge_all(message, targets, ctx)
+        analyzed = [self._analyzed(message, _result(k, decisions, carry)) for k in kept]
         for event in analyzed:
             await asyncio.to_thread(self._publish, event, ctx.traceparent)
         manifest = self._manifest(message, len(candidates), analyzed)
@@ -194,6 +200,7 @@ class DetectorAnalyzerService:
             review_required=decision.review_required,
             review_reasons=decision.review_reasons,
             unverified_reason=decision.unverified_reason,
+            carried_from_event_id=result.carried_from,
         )
 
     def _manifest(
@@ -221,6 +228,24 @@ class DetectorAnalyzerService:
     def _publish(self, event: Event, traceparent: str | None) -> None:
         # AsyncAPI: 키는 sourceId다. 같은 영상의 이벤트가 한 파티션에서 순서를 지킨다.
         publish(self._publisher, event, self._clock, traceparent, key=str(event.source_id))
+
+
+def _result(kept: Kept, decisions: dict[UUID, Decision], carry: dict[UUID, UUID | None]) -> _Result:
+    candidate_id = kept.candidate.candidate_id
+    if candidate_id not in carry:
+        return _Result(kept, decisions[candidate_id])
+    source = carry[candidate_id]
+    if source is None:
+        raise RuntimeError("carry from a prior judgment needs rejudge state")
+    return _Result(kept, _carried(decisions[source]), ids.analyzed_event_id(source))
+
+
+def _carried(source: Decision) -> Decision:
+    """직전 판정 결과를 그대로 잇는다. 호출하지 않았으므로 호출 기록은 없다(SPEC-023 R-17).
+
+    직전 판정이 unverified·unknown이어도 같은 상태를 복사하고 다음 간격에서 다시 판정한다.
+    """
+    return replace(source, method="rule+carry", judgments=[])
 
 
 def _rule_decision(candidate: DetectorCandidate, profile: EventAnalyzerProfile) -> Decision:

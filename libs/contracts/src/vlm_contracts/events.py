@@ -641,6 +641,83 @@ class EventManifest(_Execution):
         return self
 
 
+AlertReason = Literal["severity_high", "active_risk_zone"]
+AlertStatus = Literal["pending", "confirmed", "dismissed"]
+DismissReason = Literal["rejected", "unverified", "unknown"]
+
+
+class AlertCandidate(_Execution):
+    """실시간 긴급 후보 하나. 발행: stream-ingestor(SPEC-037). 소비: event-analyzer(SPEC-023 R-21).
+
+    candidateId는 같은 후보가 창 종료 때 `event.candidate`로 나올 때와 같다.
+    """
+
+    event_type: Literal["alert.candidate"] = "alert.candidate"
+    schema_version: Literal[1] = 1
+    # 실시간 전용 이벤트라 계약이 STREAM으로 고정한다.
+    job_type: Literal["STREAM"] = "STREAM"
+    camera_id: UUID
+    candidate_id: UUID
+    candidate_event_type: DetectableEventType
+    reason: AlertReason
+    # 세션 trackId. 화재·연기처럼 트랙이 없으면 None이다.
+    track_id: UUID | None
+    zone_id: UUID | None
+    first_seen_ms: int = _MS
+    observed_ms: int = _MS
+    observations: int = Field(ge=1)
+    score: float = Field(ge=0, le=1)
+    evidence_frame_keys: list[Annotated[str, Field(pattern=_BLURRED_IMAGE)]] = Field(
+        min_length=1, max_length=4
+    )
+    detector_profile: str = Field(pattern=_DETECTOR_PROFILE)
+    taxonomy_version: Literal["v2"] = "v2"
+
+    @model_validator(mode="after")
+    def _inside_execution_folder(self) -> Self:
+        # event.candidate와 같은 이유(SPEC-023 D-10)로 다른 영상·실행의 프레임을 막는다.
+        blurred = self.execution_prefix() + "blurred/"
+        if any(not key.startswith(blurred) for key in self.evidence_frame_keys):
+            raise ValueError("evidence frame key is outside the execution folder of this message")
+        return self
+
+
+class AlertRaised(Event):
+    """실시간 긴급 알림. 후보마다 pending 1건, 판정 뒤 confirmed 또는 dismissed 1건.
+
+    발행: event-analyzer(SPEC-023 R-21~R-23). 이벤트 저장은 창 후보의 `event.analyzed`가 한다.
+    """
+
+    event_type: Literal["alert.raised"] = "alert.raised"
+    schema_version: Literal[1] = 1
+    job_id: UUID
+    camera_id: UUID
+    candidate_id: UUID
+    status: AlertStatus
+    candidate_event_type: DetectableEventType
+    reason: AlertReason
+    severity: Severity
+    track_id: UUID | None
+    zone_id: UUID | None
+    observed_ms: int = _MS
+    evidence_frame_keys: list[Annotated[str, Field(pattern=_BLURRED_IMAGE)]] = Field(
+        min_length=1, max_length=4
+    )
+    # confirmed면 판정 결과, pending·dismissed면 None이다.
+    analysis: VLMAnalysis | None
+    dismiss_reason: DismissReason | None
+    taxonomy_version: Literal["v2"] = "v2"
+
+    @model_validator(mode="after")
+    def _status_fields(self) -> Self:
+        # 계약의 if/then은 confirmed의 analysis만 강제한다. 나머지는 필드 설명의 규칙이다.
+        if (self.status == "confirmed") != (self.analysis is not None):
+            raise ValueError("analysis is required for confirmed and must be null otherwise")
+        if (self.status == "dismissed") != (self.dismiss_reason is not None):
+            raise ValueError("dismissReason is required for dismissed and must be null otherwise")
+        return self
+
+
 EVENT_MODELS: dict[str, type[Event]] = {
     "chunk.requested": ChunkRequested,
     "chunk.execution.finished": ChunkExecutionFinished,
@@ -654,5 +731,7 @@ EVENT_MODELS: dict[str, type[Event]] = {
     "event.analyzed": EventAnalyzed,
     "event.candidate": EventCandidate,
     "event.manifest": EventManifest,
+    "alert.candidate": AlertCandidate,
+    "alert.raised": AlertRaised,
 }
 """토픽 이름 → 이벤트 모델. 계약 테스트는 여기 등록된 모델을 모두 검증한다."""

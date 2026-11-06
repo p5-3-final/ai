@@ -1,15 +1,18 @@
 """event-analyzer 프로필 검증(SPEC-023 R-16). 틀린 프로필은 기동에 실패해야 한다."""
 
+import json
 import tomllib
 from pathlib import Path
 from typing import cast, get_args
 
 import pytest
+from ea_support import contracts_dir
 from event_analyzer.profile import EventAnalyzerProfile
 from vlm_common.profile import ProfileError, load_profile
 from vlm_contracts.events import DetectableEventType
 
 LOCAL = Path(__file__).resolve().parents[1] / "profiles" / "local.toml"
+CONTRACTS = contracts_dir()
 _TYPES: tuple[str, ...] = get_args(DetectableEventType.__value__)
 
 
@@ -125,4 +128,28 @@ def test_spec023_r16_d9_missing_zone_name_is_required(tmp_path: Path) -> None:
     del raw["rule_text"]
 
     with pytest.raises(ProfileError, match="rule_text"):
+        load_profile(_write(tmp_path, raw), EventAnalyzerProfile)
+
+
+def test_spec023_r17_rejudge_intervals_mark_stateful_types() -> None:
+    profile = load_profile(LOCAL, EventAnalyzerProfile)
+
+    # 아키텍처 v5.1 8.2절의 기본 간격. fall처럼 사건형은 간격이 없다.
+    assert profile.rejudge_interval_s("ppe_missing") == 120
+    assert profile.rejudge_interval_s("fall") is None
+
+
+@pytest.mark.parametrize("interval", [0, -5])
+def test_spec023_r17_rejudge_interval_follows_taxonomy_lower_bound(
+    tmp_path: Path, interval: float
+) -> None:
+    # 분류 체계 eventDefinition.rejudgeIntervalS는 exclusiveMinimum 0이다.
+    taxonomy = json.loads(
+        (CONTRACTS / "taxonomy/v2/taxonomy.schema.json").read_text(encoding="utf-8")
+    )
+    bound = taxonomy["$defs"]["eventDefinition"]["properties"]["rejudgeIntervalS"]
+    assert bound["exclusiveMinimum"] == 0
+    raw = _raw() | {"rejudge": {"ppe_missing": interval}}
+
+    with pytest.raises(ProfileError, match="rejudge"):
         load_profile(_write(tmp_path, raw), EventAnalyzerProfile)
