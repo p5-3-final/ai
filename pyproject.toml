@@ -122,6 +122,9 @@ mypy_path = [
     "$MYPY_CONFIG_FILE_DIR/services/embedding-worker/src",
     "$MYPY_CONFIG_FILE_DIR/services/grounding-worker/src",
     "$MYPY_CONFIG_FILE_DIR/services/aggregator/src",
+    # 폴더 이름에 하이픈이 없어 mypy가 tests를 `services.aggregator.tests` 패키지로 올려 잡는다.
+    # 테스트 도우미(agg_support)를 pytest pythonpath와 같은 이름으로 찾게 tests를 기준 폴더로 둔다.
+    "$MYPY_CONFIG_FILE_DIR/services/aggregator/tests",
 ]
 
 [tool.pytest.ini_options]

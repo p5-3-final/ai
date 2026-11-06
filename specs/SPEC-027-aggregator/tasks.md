@@ -23,7 +23,7 @@ updated: 2026-11-07
 - [x] T003 [P] [R-1] `AnalysisCompleted`·`SourceCompleted` 모델(세션 null·`previousSourceId` null, 개수, 예시 왕복) — 테스트 `libs/contracts/tests/test_event_contracts.py`, 구현 `vlm_contracts/events.py`
 - [x] T004 [P] [R-20] 결과 파일 `SourceResult` 모델(필드·필수·enum을 `aggregates/v1/source-result`와 비교, 예시 왕복) — 테스트 `libs/contracts/tests/test_aggregate_contracts.py`, 구현 `vlm_contracts/aggregates.py`
 - [x] T005 재시도·마감 도우미를 ai-client에서 `libs/common`으로 옮김(동작 변경 없는 리팩터링, 기존 ai-client 테스트 통과로 확인) — 구현 `libs/common/src/vlm_common/http_call.py`, `libs/ai-client/src/vlm_ai_client/client.py`
-- [ ] T006 `libs/analysis-client`·`services/aggregator` 패키지 뼈대(pyproject, 워크스페이스 등록, mypy·pytest 대상, `NotImplementedError` 인터페이스)
+- [x] T006 `libs/analysis-client`·`services/aggregator` 패키지 뼈대(pyproject, 워크스페이스 등록, mypy·pytest 대상, `NotImplementedError` 인터페이스)
 - [x] T007 [R-3] analysis-client 생성 모델과 생성 코드 비교 CI에 `analysis-service.yaml` 추가 — 테스트 CI 비교 단계, 구현 `ac/src/vlm_analysis_client/models.py`(생성), 생성 스크립트·`.github/workflows/checks.yml`
 
 ## Phase 1: analysis-api 읽기 클라이언트
@@ -34,29 +34,29 @@ updated: 2026-11-07
 
 ## Phase 2: US-2 병합 (P1)
 
-- [ ] T011 [R-21] 프로필 로딩과 버전 `<name>@<sha12>`, 기본값 — 테스트 `t/test_aggregator_profile.py`, 구현 `agg/profile.py`, `services/aggregator/profiles/aggregate-v1.toml`
-- [ ] T012 [R-6] 같은 유형·같은 트랙(없으면 구역)·다른 청크·간격 이하면 한 묶음, 연쇄 병합, 같은 청크·chunkId null은 잇지 않음 — 테스트 `t/test_aggregator_merge.py`, 구현 `agg/merge.py`
-- [ ] T013 [R-7] 대표 = 점수(null 최저) → startMs → eventId, 묶음 크기 2 이상만 출력 — 테스트 `t/test_aggregator_merge.py`
+- [x] T011 [R-21] 프로필 로딩과 버전 `<name>@<sha12>`, 기본값 — 테스트 `t/test_aggregator_profile.py`, 구현 `agg/profile.py`, `services/aggregator/profiles/aggregate-v1.toml`
+- [x] T012 [R-6] 같은 유형·같은 트랙(없으면 구역)·다른 청크·간격 이하면 한 묶음, 연쇄 병합, 같은 청크·chunkId null은 잇지 않음 — 테스트 `t/test_aggregator_merge.py`, 구현 `agg/merge.py`
+- [x] T013 [R-7] 대표 = 점수(null 최저) → startMs → eventId, 묶음 크기 2 이상만 출력 — 테스트 `t/test_aggregator_merge.py`
 
 ## Phase 3: US-1 상태·위험·노출·타임라인 (P1)
 
-- [ ] T014 [R-11] 확정 대표만, 이벤트 시각(evidenceEnd ms, 없으면 endMs)·eventId 순, 구역 없으면 `global` — 테스트 `t/test_aggregator_state.py`, 구현 `agg/state.py`
-- [ ] T015 [R-12] `afterState`가 있으면 스냅샷(이전 상태)과 구역 상태 변경 — 테스트 `t/test_aggregator_state.py`
-- [ ] T016 [R-13] 같은 구역·유형 활성 위험 갱신 또는 새 위험(`riskReason` 없으면 무시) — 테스트 `t/test_aggregator_state.py`
-- [ ] T017 [R-14] `riskDetected=false`면 해소, 활성 위험 없으면 변화 없음, 해소 뒤 재활성은 새 riskId — 테스트 `t/test_aggregator_state.py`
-- [ ] T018 [R-16] 활성 시간, 구역·`global` 사람 트랙 노출 수·시간(반올림) — 테스트 `t/test_aggregator_exposure.py`, 구현 `agg/exposure.py`
-- [ ] T019 [R-17] 타임라인 항목 종류·시각·`(atMs, refId)` 순서, 이어 온 위험은 활성 항목 없음 — 테스트 `t/test_aggregator_timeline.py`, 구현 `agg/timeline.py`
-- [ ] T020 [R-20] 결정적 ID(source.completed, 병합 묶음, 규칙 이벤트, 스냅샷, 위험) — 테스트 `t/test_aggregator_ids.py`, 구현 `agg/ids.py`
+- [x] T014 [R-11] 확정 대표만, 이벤트 시각(evidenceEnd ms, 없으면 endMs)·eventId 순, 구역 없으면 `global` — 테스트 `t/test_aggregator_state.py`, 구현 `agg/state.py`
+- [x] T015 [R-12] `afterState`가 있으면 스냅샷(이전 상태)과 구역 상태 변경 — 테스트 `t/test_aggregator_state.py`
+- [x] T016 [R-13] 같은 구역·유형 활성 위험 갱신 또는 새 위험(`riskReason` 없으면 무시) — 테스트 `t/test_aggregator_state.py`
+- [x] T017 [R-14] `riskDetected=false`면 해소, 활성 위험 없으면 변화 없음, 해소 뒤 재활성은 새 riskId — 테스트 `t/test_aggregator_state.py`
+- [x] T018 [R-16] 활성 시간, 구역·`global` 사람 트랙 노출 수·시간(반올림) — 테스트 `t/test_aggregator_exposure.py`, 구현 `agg/exposure.py`
+- [x] T019 [R-17] 타임라인 항목 종류·시각·`(atMs, refId)` 순서, 이어 온 위험은 활성 항목 없음 — 테스트 `t/test_aggregator_timeline.py`, 구현 `agg/timeline.py`
+- [x] T020 [R-20] 결정적 ID(source.completed, 병합 묶음, 규칙 이벤트, 스냅샷, 위험) — 테스트 `t/test_aggregator_ids.py`, 구현 `agg/ids.py`
 
 ## Phase 4: US-3 체류·배회 (P1)
 
-- [ ] T021 [R-8] `hazard` 구역 사람 트랙 머문 구간이 기준 이상이면 `dwell`(정확히 기준값 포함, 사람 아닌 클래스·`aisle` 제외) — 테스트 `t/test_aggregator_rules.py`, 구현 `agg/rules.py`
-- [ ] T022 [R-9] 창 안 진입 횟수 이상이면 `loiter` 하나, 마지막 진입 뒤부터 다음 창 — 테스트 `t/test_aggregator_rules.py`
-- [ ] T023 [R-10] 규칙 이벤트 필드(`confirmed`·`rule`·템플릿 설명), 활성 위험 구간과 겹치면 high, 상태에 영향 없음 — 테스트 `t/test_aggregator_rules.py`
+- [x] T021 [R-8] `hazard` 구역 사람 트랙 머문 구간이 기준 이상이면 `dwell`(정확히 기준값 포함, 사람 아닌 클래스·`aisle` 제외) — 테스트 `t/test_aggregator_rules.py`, 구현 `agg/rules.py`
+- [x] T022 [R-9] 창 안 진입 횟수 이상이면 `loiter` 하나, 마지막 진입 뒤부터 다음 창 — 테스트 `t/test_aggregator_rules.py`
+- [x] T023 [R-10] 규칙 이벤트 필드(`confirmed`·`rule`·템플릿 설명), 활성 위험 구간과 겹치면 high, 상태에 영향 없음 — 테스트 `t/test_aggregator_rules.py`
 
 ## Phase 5: US-4 세션 이어받기 (P2)
 
-- [ ] T024 [R-15] 초기 활성 위험을 원래 riskId·`firstSeenMs: 0`·`carriedOver: true`로 시작, 이 영상에서 해소 가능 — 테스트 `t/test_aggregator_state.py`
+- [x] T024 [R-15] 초기 활성 위험을 원래 riskId·`firstSeenMs: 0`·`carriedOver: true`로 시작, 이 영상에서 해소 가능 — 테스트 `t/test_aggregator_state.py`
 - [ ] T025 [R-5] `previousSourceId`면 `final-state`를 초기 상태로, 404 `ANALYSIS_NO_ACTIVE_VERSION`이면 빈 상태·`fromSourceId: null` — 테스트 `t/test_aggregator_reader.py`, 구현 `agg/reader.py`
 
 ## Phase 6: 핸들러 (P1)
