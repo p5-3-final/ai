@@ -15,3 +15,13 @@ def vectors_key(ready: SegmentReady) -> str:
 
 def embedded_event_id(execution_id: UUID) -> UUID:
     return uuid5(NAMESPACE_URL, f"vlm:segment.embedded:{execution_id}")
+
+
+def candidate_event_id(execution_id: UUID) -> UUID:
+    """후보는 실행마다 한 건으로 묶어 발행한다(SPEC-019 R-12)."""
+    return uuid5(NAMESPACE_URL, f"vlm:event.candidate.vector:{execution_id}")
+
+
+def candidate_id(execution_id: UUID, segment_id: UUID, event_type: str) -> UUID:
+    """(구간, 유형)마다 하나다. event-analyzer가 같은 후보를 다시 받아도 한 번만 판정한다."""
+    return uuid5(NAMESPACE_URL, f"vlm:candidate.vector:{execution_id}:{segment_id}:{event_type}")

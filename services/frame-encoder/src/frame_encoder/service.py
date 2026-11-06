@@ -6,7 +6,13 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Protocol
 
-from vlm_contracts.events import Event, SegmentEmbedded, SegmentReady
+from vlm_contracts.events import (
+    Event,
+    EventCandidateVector,
+    SegmentEmbedded,
+    SegmentReady,
+    VectorCandidate,
+)
 from vlm_contracts.vectors import CropVector, SegmentVector, VectorFile
 from vlm_encoders.base import ImageDecodeError, ImageTextEncoder, Vector
 from vlm_messaging.publisher import prepare_event
@@ -15,6 +21,7 @@ from vlm_messaging.worker import MessageContext, NonRetryableError
 from vlm_storage.storage import ObjectNotFoundError, ObjectStorage
 
 from frame_encoder import ids
+from frame_encoder.prototypes import Prototypes
 from frame_encoder.vectors import segment_vector
 
 # 계약상 구간 하나는 프레임 4장이다(segment.ready.schema.json).
@@ -36,13 +43,18 @@ class EncoderConfig:
     Attributes:
         batch_size: 인코더에 한 번에 넣는 이미지 수. 메시지 하나가 이미지 768장까지 담을 수 있어
             나눠 넣어 메모리를 묶는다.
+        prototypes: 기동할 때 만든 유형별 프로토타입. 프로필에 없으면 None이다.
     """
 
     batch_size: int
+    # 없으면 후보를 만들지 않는다(SPEC-019 R-13).
+    prototypes: Prototypes | None = None
 
 
 class FrameEncoderService:
     """구간·크롭 이미지를 인코딩해 벡터 파일로 저장하고 `segment.embedded`를 발행한다.
+
+    프로토타입이 있으면 임계값을 넘은 (구간, 유형)을 `event.candidate.vector` 한 건으로 발행한다.
 
     저장소·Kafka 장애는 예외를 그대로 던져 워커가 다시 시도하게 한다(SPEC-019 R-18).
     """
@@ -110,6 +122,47 @@ class FrameEncoderService:
             dimension=self._encoder.dimension,
         )
         self._publish(embedded, traceparent)
+        prototypes = self._config.prototypes
+        if prototypes is None:
+            return
+        candidates = self._candidates(ready, segments, prototypes)
+        if candidates:
+            self._publish(
+                EventCandidateVector(
+                    event_id=ids.candidate_event_id(ready.execution_id),
+                    occurred_at=self._clock(),
+                    source_id=ready.source_id,
+                    owner_id=ready.owner_id,
+                    job_id=ready.job_id,
+                    chunk_id=ready.chunk_id,
+                    execution_id=ready.execution_id,
+                    normalization_id=ready.normalization_id,
+                    embedding_model=self._encoder.model_id,
+                    prototype_version=prototypes.version,
+                    candidates=candidates,
+                ),
+                traceparent,
+            )
+
+    @staticmethod
+    def _candidates(
+        ready: SegmentReady, segments: list[SegmentVector], prototypes: Prototypes
+    ) -> list[VectorCandidate]:
+        """구간마다 임계값을 넘은 유형을 후보로 만든다(SPEC-019 R-11, R-14)."""
+        return [
+            VectorCandidate(
+                candidate_id=ids.candidate_id(ready.execution_id, s.segment_id, m.event_type),
+                segment_id=s.segment_id,
+                start_ms=s.start_ms,
+                end_ms=s.end_ms,
+                event_type=m.event_type,
+                score=m.score,
+                threshold=m.threshold,
+                frame_keys=[f.key for f in source.frames],
+            )
+            for s, source in zip(segments, ready.segments, strict=True)
+            for m in prototypes.match(s.vector)
+        ]
 
     def _segment_vectors(self, ready: SegmentReady) -> list[SegmentVector]:
         frames = self._encode([f.key for s in ready.segments for f in s.frames])

@@ -10,15 +10,18 @@ from fe_support import (
     RecordingPublisher,
     crop_key,
     encoder,
+    event_errors,
     frame_key,
     image_bytes,
     put_images,
     segment_ready,
     storage_with_images,
 )
+from frame_encoder.profile import PrototypesProfile, PrototypeType
+from frame_encoder.prototypes import Prototypes
 from frame_encoder.service import EncoderConfig, FrameEncoderService
-from frame_encoder.vectors import segment_vector
-from vlm_contracts.events import SegmentEmbedded, SegmentReady
+from frame_encoder.vectors import cosine, segment_vector
+from vlm_contracts.events import EventCandidateVector, SegmentEmbedded, SegmentReady
 from vlm_contracts.vectors import VectorFile
 from vlm_encoders.base import ImageDecodeError, Vector
 from vlm_messaging.timing import StageRecorder
@@ -283,3 +286,81 @@ async def test_spec_019_r19_failed_stage_is_recorded_as_error() -> None:
         ("encoder.segments", "ok"),
         ("encoder.crops", "error"),
     ]
+
+
+FALL_TEXTS = ["a worker lying on the floor"]
+
+
+def _prototypes(threshold: float) -> Prototypes:
+    profile = PrototypesProfile(
+        version="local-sample-v1",
+        types={"fall": PrototypeType(texts=FALL_TEXTS, threshold=threshold)},
+    )
+    return Prototypes.build(profile, encoder())
+
+
+def _with_prototypes(
+    storage: InMemoryStorage, publisher: RecordingPublisher, prototypes: Prototypes | None
+) -> FrameEncoderService:
+    return FrameEncoderService(
+        storage,
+        encoder(),
+        publisher,
+        EncoderConfig(batch_size=3, prototypes=prototypes),
+        clock=lambda: NOW,
+    )
+
+
+async def test_spec_019_r12_r14_candidates_follow_segment_embedded() -> None:
+    # 임계값 -0.99면 모든 구간이 후보다(mock 벡터는 의미가 없어 점수를 미리 알 수 없다).
+    ready = segment_ready(segments=3, crops=1)
+    storage = storage_with_images(ready)
+    publisher = RecordingPublisher()
+
+    await _with_prototypes(storage, publisher, _prototypes(-0.99)).handle(ready, CTX)
+
+    assert [t for t, _, _, _ in publisher.published] == [
+        "segment.embedded",
+        "event.candidate.vector",
+    ]
+    [event] = publisher.events("event.candidate.vector")
+    assert isinstance(event, EventCandidateVector)
+    assert event_errors(event) == []
+    assert event.embedding_model == MODEL_ID
+    assert (event.prototype_version, event.taxonomy_version) == ("local-sample-v1", "v2")
+    assert (event.job_id, event.chunk_id, event.execution_id) == (
+        ready.job_id,
+        ready.chunk_id,
+        ready.execution_id,
+    )
+    assert event.produced_at == NOW
+    stored = _vector_file(storage)
+    fall = _prototypes(-0.99).vector("fall")
+    for candidate, segment, vector in zip(
+        event.candidates, ready.segments, stored.segments, strict=True
+    ):
+        assert candidate.segment_id == segment.segment_id
+        assert (candidate.start_ms, candidate.end_ms) == (segment.start_ms, segment.end_ms)
+        assert candidate.event_type == "fall"
+        assert candidate.score == pytest.approx(cosine(vector.vector, fall))
+        assert candidate.threshold == -0.99
+        assert candidate.frame_keys == [f.key for f in segment.frames]
+
+
+async def test_spec_019_r5_r14_candidate_ids_are_deterministic() -> None:
+    ready = segment_ready(segments=2, crops=0)
+    storage = storage_with_images(ready)
+    publisher = RecordingPublisher()
+    service = _with_prototypes(storage, publisher, _prototypes(-0.99))
+
+    await service.handle(ready, CTX)
+    await service.handle(ready, CTX)
+
+    first, second = publisher.events("event.candidate.vector")
+    assert isinstance(first, EventCandidateVector)
+    assert isinstance(second, EventCandidateVector)
+    assert first.event_id == second.event_id
+    assert [c.candidate_id for c in first.candidates] == [c.candidate_id for c in second.candidates]
+    assert len({c.candidate_id for c in first.candidates}) == 2
+    embedded = publisher.events("segment.embedded")[0]
+    assert first.event_id != embedded.event_id
