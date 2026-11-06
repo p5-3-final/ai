@@ -54,7 +54,8 @@ class SessionState(_Stored):
         active_risks: 활성 위험. (firstSeenMs, riskId) 순이다.
         last_sequence: 처리한 마지막 창 순번(실시간). 업로드는 0이다.
         last_window_end_ms: 처리한 마지막 창 끝 시각(실시간).
-        source_id: 이 상태를 만든 영상. 다른 영상에서 이어받으면(R-5, 회전) 다르다.
+        source_id: 이 상태의 영상(세션).
+        from_source_id: 직전 영상(세션)에서 이어받았으면 그 영상(R-5, 실시간 회전).
     """
 
     zone_states: dict[str, str] = Field(default_factory=dict)
@@ -62,6 +63,7 @@ class SessionState(_Stored):
     last_sequence: int = 0
     last_window_end_ms: int = 0
     source_id: UUID | None = None
+    from_source_id: UUID | None = None
 
     @classmethod
     def from_initial(cls, initial: InitialState, source_id: UUID | None = None) -> "SessionState":
@@ -98,6 +100,7 @@ class SessionState(_Stored):
                 for r in self.active_risks
             ),
             source_id=source_id,
+            from_source_id=self.source_id,
         )
 
 

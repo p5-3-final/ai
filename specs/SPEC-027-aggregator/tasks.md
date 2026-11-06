@@ -93,8 +93,8 @@ updated: 2026-11-07
 - [x] T046 [R-26] 읽은 이벤트와 대기 집합 벡터 이벤트를 eventId로 합침 — 테스트 `t/test_aggregator_service.py`, 구현 `agg/reader.py`
 - [x] T047 [R-28] 결과 파일 `inputEventIds`·`revision`, `source.completed.revision`과 결정적 eventId — 테스트 `t/test_aggregator_ids.py`, `t/test_aggregator_service.py`, 구현 `agg/result.py`, `agg/ids.py`
 - [x] T048 [R-27] 발행 뒤 도착한 `vector*` `confirmed` 이벤트: 전체 재계산·같은 경로 저장·`revision + 1` 재발행, 미발행 job이거나 `confirmed`가 아니면 대기만 — 테스트 `t/test_aggregator_revision.py`, `t/test_aggregator_service.py`, 구현 `agg/revision.py`, `agg/service.py`
-- [ ] T049 [R-30] `fold`·`SessionState`·`FoldDelta` 추출(동작 불변, 기존 테스트 유지), 창 단위 누적 = 한 번 fold 테스트 — 테스트 `t/test_aggregator_fold.py`, 구현 `agg/fold.py`, `agg/compute.py`
-- [ ] T050 [R-30] 세션 상태 저장소: Redis → S3 스냅샷 → `previousSourceId` → 빈 상태 순서, 30창마다 스냅샷 — 테스트 `t/test_aggregator_session_state.py`(integration), 구현 `agg/session_state.py`
+- [x] T049 [R-30] `fold`·`SessionState`·`FoldDelta` 추출(동작 불변, 기존 테스트 유지), 창 단위 누적 = 한 번 fold 테스트 — 테스트 `t/test_aggregator_fold.py`, 구현 `agg/fold.py`, `agg/compute.py`
+- [x] T050 [R-30] 세션 상태 저장소: Redis → S3 스냅샷 → `previousSourceId` → 빈 상태 순서, 30창마다 스냅샷 — 테스트 `t/test_aggregator_session_state.py`(integration), 구현 `agg/session_state.py`
 - [ ] T051 [R-30] `analysis.completed(chunk)` 처리: 대조 → fold → `state.updated`(sequence·창 범위·gapMs·activeRiskZoneIds) → Redis·스냅샷·창 delta 저장, 같은 창 재수신은 재발행만 — 테스트 `t/test_aggregator_stream_service.py`, 구현 `agg/stream.py`, `agg/service.py`, `vlm_contracts/events.py`(`StateUpdated`)
 - [ ] T052 [R-33] `libs/stream-client` 생성 모델·`get_session_zones`, CI 생성 비교에 `stream-service.yaml`, 세션당 1회 Redis 캐시 — 테스트 `sc/tests/test_stream_client.py`, `t/test_aggregator_stream_service.py`, 구현 `sc/`, `agg/stream.py`, 루트 `pyproject.toml`, `.github/workflows/checks.yml`
 - [ ] T053 [R-31] `hazard_zone_access`와 활성 위험이 겹치면 대표 프레임으로 `event_judge`, `rule+vlm` 기록, Redis 계수로 세션당 상한(SPEC-028 T032와 같은 계수) — 테스트 `t/test_aggregator_stream_service.py`, `t/test_aggregator_judge_budget.py`(integration), 구현 `agg/stream.py`, `agg/judge_budget.py`
