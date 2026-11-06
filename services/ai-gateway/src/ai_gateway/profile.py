@@ -9,10 +9,9 @@ from typing import Literal, Self
 
 from pydantic import Field, HttpUrl, model_validator
 from vlm_common.profile import Profile, ProfileError
-from vlm_encoders.model_id import ModelId
+from vlm_encoders.loader import EncoderProfile
 
 AdapterKind = Literal["openai", "openai_compatible", "mock"]
-EncoderKind = Literal["open_clip", "mock"]
 
 # `/v1/parse`가 쓰는 Prompt Registry taskType. 설정은 [tasks]가 아니라 [parse]에 있다(SPEC-012).
 QUERY_PARSE_TASK = "query_parse"
@@ -78,32 +77,6 @@ class TaskProfile(Profile):
     def _both_or_none(self) -> Self:
         if (self.adapter is None) != (self.model is None):
             raise ValueError("adapter and model must be set together")
-        return self
-
-
-class EncoderProfile(Profile):
-    """이미지·질의 인코더.
-
-    없으면 `embed_visual_text`·`embed_image`가 모델 미설정이다(SPEC-011 R-14).
-    """
-
-    kind: EncoderKind
-    # frame-encoder와 같은 문자열이어야 같은 인덱스를 찾는다(SPEC-011 R-6).
-    model_id: str
-    dimension: int = Field(gt=0)
-    # 모델 버킷의 manifest 키와 manifest 파일 해시(docs ADR-0010 ②). 가중치 해시는 manifest가
-    # 고정한다. mock은 가중치가 없다.
-    manifest: str | None = Field(
-        default=None,
-        pattern=r"^models/[a-z0-9][a-z0-9_-]*/[A-Za-z0-9][A-Za-z0-9._-]*/manifest\.json$",
-    )
-    manifest_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-
-    @model_validator(mode="after")
-    def _weights(self) -> Self:
-        ModelId.parse(self.model_id)
-        if self.kind == "open_clip" and (self.manifest is None or self.manifest_sha256 is None):
-            raise ValueError("open_clip encoder requires manifest and manifest_sha256")
         return self
 
 

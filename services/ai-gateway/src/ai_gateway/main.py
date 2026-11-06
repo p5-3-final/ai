@@ -16,9 +16,7 @@ from vlm_common.health import HealthState
 from vlm_common.logging import configure_logging
 from vlm_common.profile import ProfileError, load_profile
 from vlm_encoders.base import ImageTextEncoder
-from vlm_encoders.mock import MockEncoder
-from vlm_encoders.open_clip import OpenClipEncoder
-from vlm_encoders.weights import fetch_encoder_weights
+from vlm_encoders.loader import load_encoder as load_shared_encoder
 from vlm_storage.s3 import S3Storage, StorageSettings
 from vlm_storage.storage import ObjectStorage
 
@@ -173,23 +171,9 @@ def load_encoder(
         EncoderLoadError: manifest·가중치를 받지 못했거나, 해시가 다르거나, manifest·로드한 모델이
             프로필과 맞지 않을 때(SPEC-011 R-16, R-17).
     """
-    encoder = profile.encoder
-    if encoder is None:
+    if profile.encoder is None:
         return None
-    if encoder.kind == "mock":
-        return MockEncoder(encoder.model_id, encoder.dimension)
-    # open_clip 프로필 검증에서 manifest 경로·해시가 있음을 확인했다.
-    if models is None or encoder.manifest is None or encoder.manifest_sha256 is None:
-        raise ProfileError("open_clip encoder requires the models bucket setting")
-    weights = fetch_encoder_weights(
-        models,
-        encoder.manifest,
-        encoder.manifest_sha256,
-        encoder.model_id,
-        encoder.dimension,
-        cache_dir,
-    )
-    return OpenClipEncoder.load(encoder.model_id, weights, encoder.dimension)
+    return load_shared_encoder(profile.encoder, models, cache_dir)
 
 
 def build_adapters(

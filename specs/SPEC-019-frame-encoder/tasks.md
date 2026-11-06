@@ -20,7 +20,7 @@ updated: 2026-11-06
 - [x] T001 계약 잠금 2.10.0, 단계 ID 6개 — 테스트 `libs/contracts/tests/test_stage_contracts.py`, 구현 `vlm_contracts/stages.py` (잠금을 올리며 드러난 media 계약 선택 필드 sessionId·role·retention도 모델에 맞춤)
 - [x] T002 [R-16] `SegmentReady`·`SegmentEmbedded`·`EventCandidateVector` 모델, 경로가 실행 폴더 `blurred/` 밖이면 거절 — 테스트 `libs/contracts/tests/test_event_contracts.py`, `test_segment_contracts.py`, 구현 `vlm_contracts/events.py`
 - [x] T003 [R-3] `VectorFile` 모델과 분류 체계 유형 목록이 계약과 일치 — 테스트 `libs/contracts/tests/test_vector_file_contract.py`, 구현 `vlm_contracts/{vectors,taxonomy}.py` (유형 목록은 T002에서 정의해 처음부터 통과)
-- [ ] T004 인코더 프로필·로드를 `libs/encoders/loader.py`로 옮김(리팩터링, ai-gateway 기존 테스트 통과)
+- [x] T004 인코더 프로필·로드를 `libs/encoders/loader.py`로 옮김(리팩터링, ai-gateway 기존 테스트 통과)
 - [ ] T005 frame-encoder 패키지 뼈대(pyproject, 워크스페이스 등록, mypy 대상)
 
 ## Phase 1: US-1·US-2 구간·크롭 벡터 (P1)
