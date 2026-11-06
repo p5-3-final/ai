@@ -61,7 +61,7 @@ updated: 2026-11-06
 | `gw/budget.py` | `Budget`: 하루(UTC)·범위(호출 서비스, 전체 `*`)별 조건부 갱신 예약, 정산, 되돌림 |
 | `gw/rate_limit.py` | `RateLimiter`: Adapter·모델별 분당 요청·토큰. Redis `INCR` 분 창, 끊기면 Pod별 메모리 창 |
 | `gw/gate.py` | `ModelGate.run`: 위 셋을 정해진 순서로 묶음. 결과 종류(`called`·`cached`·`budget_exceeded`)와 비용을 돌려줌 |
-| `gw/analyze.py`, `gw/parse.py`, `gw/embed.py` | 게이트 사용, 경로별 예산 초과 결과(R-11), 호출 로그 항목(R-19) |
+| `gw/analyze.py`, `gw/parse.py`, `gw/embed.py` | 게이트 사용, 경로별 예산 초과 결과(R-11), 호출 로그 항목(R-19). `embed_text`는 문장마다 캐시를 찾고 잠근 뒤(R-5, R-7) 남은 문장 묶음만 키 없이 게이트에 넘긴다 |
 | `gw/adapters/base.py`, `openai.py` | `ProviderUnavailableError.sent`(보내지 못한 연결 오류만 False, R-13·R-22) |
 | `gw/errors.py` | `BudgetExceededError`(503 `AI_BUDGET_EXCEEDED`), `RateLimitedError`(응답은 `AI_PROVIDER_UNAVAILABLE`, 로그 코드 `AI_RATE_LIMITED`) |
 | `gw/profile.py` | `[cache]`(보관 기간, 앞단 TTL), `[budget]`(전체·호출 서비스별 하루 한도 USD), `[prices.<adapter>.<model>]`(100만 토큰당 USD), `[rate_limits.<adapter>.<model>]`(rpm·tpm·Pod별), taskType별 예상 입력 토큰 |
