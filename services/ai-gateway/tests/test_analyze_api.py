@@ -1,5 +1,6 @@
 import json
 import logging
+from decimal import Decimal
 from pathlib import Path
 from unittest.mock import ANY
 
@@ -9,12 +10,15 @@ from ai_gateway.adapters.base import ProviderFailedError, ProviderUnavailableErr
 from ai_gateway.adapters.mock import MockAdapter
 from ai_gateway.profile import GatewayProfile, TaskProfile
 from ai_gateway.prompts import PromptRegistry
+from ai_gateway.rate_limit import RateLimitedError
 from gateway_support import (
     CALLER,
     CANDIDATE,
     IMAGE_KEYS,
     SOURCE,
     FakeAdapter,
+    MemoryBudget,
+    MemoryCache,
     analyze_body,
     gateway,
     output_example,
@@ -381,4 +385,126 @@ async def test_spec012_r10_query_parse_is_not_an_analyze_task(registry_dir: Path
         )
 
     _problem(response, 400, "AI_UNKNOWN_TASK_TYPE")
+    assert gw.adapter.calls == []
+
+
+PRICES = {"fake": {"fake-vlm": {"input_per_million_usd": 2, "output_per_million_usd": 8}}}
+
+
+class BusyLimiter:
+    """언제나 차례를 주지 않는 분당 한도."""
+
+    async def acquire(self, adapter: str, model: str, tokens: int, timeout_s: float) -> None:
+        raise RateLimitedError("busy")
+
+
+def _valid_reply(registry_dir: Path) -> str:
+    return json.dumps(output_example(registry_dir), ensure_ascii=False)
+
+
+async def test_spec016_r2_same_input_returns_cached_result(registry_dir: Path) -> None:
+    adapter = FakeAdapter(reply=_valid_reply(registry_dir))
+    async with gateway(registry_dir, adapter=adapter) as gw:
+        first = (await post_analyze(gw.client, analyze_body())).json()
+        second = (await post_analyze(gw.client, analyze_body())).json()
+
+    assert len(adapter.calls) == 1
+    assert first["callId"] != second["callId"]
+    assert {k: v for k, v in first.items() if k != "callId"} == {
+        k: v for k, v in second.items() if k != "callId"
+    }
+
+
+async def test_spec016_r19_cache_hit_is_logged_without_raw_output(registry_dir: Path) -> None:
+    adapter = FakeAdapter(reply=_valid_reply(registry_dir))
+    async with gateway(registry_dir, adapter=adapter) as gw:
+        await post_analyze(gw.client, analyze_body())
+        await post_analyze(gw.client, analyze_body())
+
+    called, cached = gw.call_log.entries
+    assert (called.cache_hit, called.status) == (False, "success")
+    assert (cached.cache_hit, cached.status) == (True, "success")
+    assert cached.raw_output is None
+    assert cached.output == called.output
+    assert (cached.reserved_cost_usd, cached.settled_cost_usd) == (Decimal(0), Decimal(0))
+
+
+async def test_spec016_r4_same_path_with_new_image_content_calls_model(registry_dir: Path) -> None:
+    adapter = FakeAdapter(reply=_valid_reply(registry_dir))
+    async with gateway(registry_dir, adapter=adapter) as gw:
+        await post_analyze(gw.client, analyze_body())
+        gw.storage.put_bytes(IMAGE_KEYS[0], b"jpeg-new", "image/jpeg")
+        await post_analyze(gw.client, analyze_body())
+
+    assert len(adapter.calls) == 2
+
+
+async def test_spec016_r2_other_variables_call_model(registry_dir: Path) -> None:
+    adapter = FakeAdapter(reply=_valid_reply(registry_dir))
+    async with gateway(registry_dir, adapter=adapter) as gw:
+        await post_analyze(gw.client, analyze_body())
+        await post_analyze(gw.client, analyze_body(variables={**CANDIDATE, "zoneName": "B동"}))
+
+    assert len(adapter.calls) == 2
+
+
+async def test_spec016_r2_model_change_calls_model(registry_dir: Path) -> None:
+    adapter = FakeAdapter(reply=_valid_reply(registry_dir))
+    shared = MemoryCache()
+    async with gateway(registry_dir, adapter=adapter, cache=shared) as gw:
+        await post_analyze(gw.client, analyze_body())
+    async with gateway(
+        registry_dir, profile(model="other-vlm"), adapter=adapter, cache=shared
+    ) as gw:
+        await post_analyze(gw.client, analyze_body())
+
+    assert len(adapter.calls) == 2
+
+
+async def test_spec016_r3_invalid_output_is_not_cached(registry_dir: Path) -> None:
+    adapter = FakeAdapter(reply="판단할 수 없음")
+    async with gateway(registry_dir, adapter=adapter) as gw:
+        await post_analyze(gw.client, analyze_body())
+        await post_analyze(gw.client, analyze_body())
+
+    assert len(adapter.calls) == 2
+
+
+async def test_spec016_r11_budget_exceeded_returns_unverified(registry_dir: Path) -> None:
+    adapter = FakeAdapter(reply=_valid_reply(registry_dir))
+    exhausted = MemoryBudget(limits={"*": Decimal(0)})
+    priced = profile(extra={"prices": PRICES})
+    async with gateway(registry_dir, priced, adapter=adapter, budget=exhausted) as gw:
+        response = await post_analyze(gw.client, analyze_body())
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["output"]["verificationStatus"] == "unverified"
+    assert body["modelId"] is None
+    assert adapter.calls == []
+    [entry] = gw.call_log.entries
+    assert entry.status == "budget_exceeded"
+
+
+async def test_spec016_r19_called_result_logs_costs(registry_dir: Path) -> None:
+    adapter = FakeAdapter(reply=_valid_reply(registry_dir))
+    priced = profile(extra={"prices": PRICES}, estimated_input_tokens=1000)
+    async with gateway(registry_dir, priced, adapter=adapter) as gw:
+        await post_analyze(gw.client, analyze_body())
+
+    [entry] = gw.call_log.entries
+    # 예상: (1000*2 + 800*8)/1e6, 실제(FakeAdapter 100·20토큰): (100*2 + 20*8)/1e6
+    assert entry.reserved_cost_usd == Decimal("0.0084")
+    assert entry.settled_cost_usd == Decimal("0.00036")
+    assert gw.budget.spent["event-analyzer"] == Decimal("0.00036")
+
+
+async def test_spec016_r16_rate_limited_is_unavailable(registry_dir: Path) -> None:
+    async with gateway(registry_dir, limiter=BusyLimiter()) as gw:
+        response = await post_analyze(gw.client, analyze_body())
+
+    assert response.status_code == 503
+    assert response.json()["code"] == "AI_PROVIDER_UNAVAILABLE"
+    [entry] = gw.call_log.entries
+    assert (entry.status, entry.error_code) == ("unavailable", "AI_RATE_LIMITED")
     assert gw.adapter.calls == []

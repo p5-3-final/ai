@@ -4,6 +4,7 @@
 """
 
 from dataclasses import asdict, dataclass
+from decimal import Decimal
 from typing import Literal
 from uuid import UUID, uuid4
 
@@ -13,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 from ai_gateway.db.tables import call_log
 
 type JsonObject = dict[str, object]
-type CallStatus = Literal["success", "unavailable", "failed", "invalid_output"]
+type CallStatus = Literal["success", "unavailable", "failed", "invalid_output", "budget_exceeded"]
 
 
 def new_call_id() -> UUID:
@@ -48,6 +49,10 @@ class CallLogEntry:
     output_tokens: int | None
     trace_id: str | None
     input_count: int | None = None
+    # 캐시·예산 대상 호출만 채운다(SPEC-016 R-19).
+    cache_hit: bool | None = None
+    reserved_cost_usd: Decimal | None = None
+    settled_cost_usd: Decimal | None = None
 
 
 class CallLog:

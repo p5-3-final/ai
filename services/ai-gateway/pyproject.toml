@@ -9,6 +9,7 @@ dependencies = [
     "fastapi>=0.162.0",
     "jsonschema>=4.26.0",
     "openai>=3.42.1",
+    "redis>=5",
     "sqlalchemy[asyncio]>=2.1.6",
     "uvicorn>=0.54.0",
     "vlm-common",

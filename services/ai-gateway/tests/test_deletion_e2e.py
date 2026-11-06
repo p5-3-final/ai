@@ -8,6 +8,7 @@ import pytest
 from ai_gateway.call_log import CallLog, CallLogEntry, new_call_id
 from ai_gateway.db.migrate import upgrade
 from ai_gateway.deletion import start_deletion_worker
+from ai_gateway.profile import CacheProfile
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 from vlm_common.health import HealthState
@@ -52,7 +53,9 @@ async def test_spec009_r20_consumes_video_deleted(database_url: str) -> None:
             bootstrap, ["video.deleted", f"video.deleted.{GROUP}.retry", f"{GROUP}.dlq"]
         )
         health = HealthState()
-        running = start_deletion_worker(bootstrap, GROUP, database_url, health)
+        running = start_deletion_worker(
+            bootstrap, GROUP, database_url, health, cache_settings=CacheProfile()
+        )
         try:
             KafkaPublisher(bootstrap=bootstrap, client_id="test").publish(
                 "video.deleted",

@@ -1,3 +1,4 @@
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
@@ -291,3 +292,94 @@ def test_spec012_r28_mock_parse_adapter_requires_allow_mock(tmp_path: Path) -> N
     with pytest.raises(ProfileError, match="mock"):
         check_profile(profile, allow_mock=False, has_openai_key=False)
     check_profile(profile, allow_mock=True, has_openai_key=False)
+
+
+GUARDS = """
+[cache]
+retention_days = 7
+front_ttl_s = 600
+
+[budget]
+daily_limit_usd = 20.0
+
+[budget.callers]
+event-analyzer = 5.0
+
+[prices.ollama."qwen3-vl:8b"]
+input_per_million_usd = 0.4
+output_per_million_usd = 1.6
+
+[rate_limits.ollama."qwen3-vl:8b"]
+rpm = 60
+tpm = 100000
+pod_rpm = 30
+"""
+
+
+def test_spec016_r20_guard_profile_loads(tmp_path: Path) -> None:
+    """[SPEC-016 R-20] 캐시·예산·단가·분당 한도를 프로필로 둔다."""
+    profile = _load(
+        tmp_path,
+        VALID.replace("max_retries = 2\n", "max_retries = 2\nestimated_input_tokens = 3000\n", 1)
+        + GUARDS,
+    )
+
+    check_profile(profile, allow_mock=False, has_openai_key=False)
+    assert (profile.cache.retention_days, profile.cache.front_ttl_s) == (7, 600)
+    assert profile.budget is not None
+    assert profile.budget.daily_limit_usd == Decimal("20.0")
+    assert profile.budget.callers == {"event-analyzer": Decimal("5.0")}
+    price = profile.price_of("ollama", "qwen3-vl:8b")
+    assert price is not None
+    assert price.input_per_million_usd == Decimal("0.4")
+    limit = profile.rate_limit_of("ollama", "qwen3-vl:8b")
+    assert limit is not None
+    assert (limit.rpm, limit.tpm, limit.pod_rpm, limit.pod_tpm) == (60, 100000, 30, 100000)
+    assert profile.tasks["event_judge"].estimated_input_tokens == 3000
+
+
+def test_spec016_r20_guards_are_optional(tmp_path: Path) -> None:
+    """[SPEC-016 R-20] 없으면 기본 보관 기간, 예산·단가·분당 한도 없음."""
+    profile = _load(tmp_path, VALID)
+
+    assert profile.budget is None
+    assert profile.price_of("ollama", "qwen3-vl:8b") is None
+    assert profile.rate_limit_of("ollama", "qwen3-vl:8b") is None
+    assert profile.cache.retention_days > 0
+    assert profile.tasks["event_judge"].estimated_input_tokens == 0
+
+
+@pytest.mark.parametrize(
+    ("name", "old", "new"),
+    [
+        ("모르는 Adapter의 단가", '[prices.ollama."qwen3-vl:8b"]', '[prices.nope."qwen3-vl:8b"]'),
+        ("쓰지 않는 모델의 단가", '[prices.ollama."qwen3-vl:8b"]', '[prices.ollama."other"]'),
+        (
+            "모르는 Adapter의 분당 한도",
+            '[rate_limits.ollama."qwen3-vl:8b"]',
+            '[rate_limits.nope."m"]',
+        ),
+        ("허용 목록 밖 호출 서비스 예산", "event-analyzer = 5.0", "stranger = 5.0"),
+        ("음수 한도", "daily_limit_usd = 20.0", "daily_limit_usd = -1.0"),
+        ("음수 단가", "input_per_million_usd = 0.4", "input_per_million_usd = -0.4"),
+        ("분당 한도 0", "rpm = 60", "rpm = 0"),
+        ("보관 기간 0", "retention_days = 7", "retention_days = 0"),
+        ("모르는 키", "front_ttl_s = 600", "front_ttl_s = 600\nttl = 3"),
+    ],
+)
+def test_spec016_r20_invalid_guard_profile_fails(
+    tmp_path: Path, name: str, old: str, new: str
+) -> None:
+    """[SPEC-016 R-20] 형식이 틀리거나 없는 Adapter·모델·호출 서비스를 가리키면 기동 실패."""
+    assert old in GUARDS, name
+    with pytest.raises(ProfileError):
+        _load(tmp_path, VALID + GUARDS.replace(old, new))
+
+
+def test_spec016_r21_caller_without_limit_uses_global_only(tmp_path: Path) -> None:
+    """[SPEC-016 R-21] 호출 서비스 한도가 없으면 전체 한도만 적용한다."""
+    profile = _load(tmp_path, VALID + GUARDS)
+
+    assert profile.budget is not None
+    assert profile.budget.limit_for("search-service") is None
+    assert profile.budget.limit_for("event-analyzer") == Decimal("5.0")

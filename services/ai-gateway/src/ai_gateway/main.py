@@ -27,16 +27,20 @@ from ai_gateway.adapters.mock import MockAdapter
 from ai_gateway.adapters.openai import OpenAiAdapter
 from ai_gateway.analyze import AnalyzeService, CallLogWriter
 from ai_gateway.api import router
+from ai_gateway.budget import Budget
 from ai_gateway.call_log import CallLog
 from ai_gateway.deletion import start_deletion_worker
 from ai_gateway.embed import EmbedService
+from ai_gateway.gate import BudgetStore, CacheStore, Limiter, ModelGate
 from ai_gateway.images import ImageReader
 from ai_gateway.parse import ParseService
 from ai_gateway.problems import install_problem_handlers
 from ai_gateway.profile import QUERY_PARSE_TASK, GatewayProfile, check_profile
 from ai_gateway.prompts import PromptRegistry
 from ai_gateway.query_dictionary import QueryDictionary
+from ai_gateway.rate_limit import RateLimiter
 from ai_gateway.registry_bundle import resolve_sources
+from ai_gateway.result_cache import ResultCache
 from ai_gateway.settings import GatewaySettings
 
 SERVICE_NAME = "ai-gateway"
@@ -57,6 +61,10 @@ class GatewayDeps:
     storage: ObjectStorage
     adapters: dict[str, VlmAdapter]
     call_log: CallLogWriter
+    # 외부 모델 호출을 감싸는 캐시·예산·분당 한도(SPEC-016)
+    cache: CacheStore
+    budget: BudgetStore
+    limiter: Limiter
     # 기동 검증·DB 확인이 끝나고 video.deleted 구독을 시작했는지(R-23).
     is_ready: Callable[[], bool]
     close: Callable[[], Awaitable[None]] = field(default=_nothing)
@@ -71,14 +79,26 @@ def create_app(build: Callable[[], Awaitable[GatewayDeps]]) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         deps = await build()
+        gate = ModelGate(deps.profile, deps.cache, deps.budget, deps.limiter)
         app.state.analyze = AnalyzeService(
-            deps.profile, deps.prompts, ImageReader(deps.storage), deps.adapters, deps.call_log
+            deps.profile,
+            deps.prompts,
+            ImageReader(deps.storage),
+            deps.adapters,
+            deps.call_log,
+            gate,
         )
         app.state.embed = EmbedService(
-            deps.profile, deps.encoder, ImageReader(deps.storage), deps.embedders, deps.call_log
+            deps.profile,
+            deps.encoder,
+            ImageReader(deps.storage),
+            deps.embedders,
+            deps.call_log,
+            gate,
+            deps.cache,
         )
         app.state.parse = ParseService(
-            deps.profile, deps.dictionary, deps.prompts, deps.adapters, deps.call_log
+            deps.profile, deps.dictionary, deps.prompts, deps.adapters, deps.call_log, gate
         )
         app.state.is_ready = deps.is_ready
         try:
@@ -214,17 +234,24 @@ async def build_production(settings: GatewaySettings) -> GatewayDeps:
     engine = create_async_engine(database_url)
     async with engine.connect() as conn:
         await conn.execute(text("SELECT 1"))
+    redis_url = settings.redis_url.get_secret_value() if settings.redis_url else None
+    cache = ResultCache(engine, profile.cache, redis_url)
+    limiter = RateLimiter(profile, redis_url)
     health = HealthState()
     worker = start_deletion_worker(
         settings.kafka_bootstrap,
         settings.group_id,
         database_url,
         health,
+        cache_settings=profile.cache,
+        redis_url=redis_url,
         publish_timing=settings.stage_timing_publish,
     )
 
     async def close() -> None:
         worker.stop()
+        await cache.close()
+        await limiter.close()
         await engine.dispose()
 
     adapters = build_adapters(profile, prompts, api_key)
@@ -235,6 +262,9 @@ async def build_production(settings: GatewaySettings) -> GatewayDeps:
         storage=S3Storage(StorageSettings()),
         adapters=dict[str, VlmAdapter](adapters),
         call_log=CallLog(engine),
+        cache=cache,
+        budget=Budget(engine, profile.budget),
+        limiter=limiter,
         is_ready=health.is_ready,
         close=close,
         encoder=encoder,

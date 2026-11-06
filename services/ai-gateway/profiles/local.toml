@@ -28,6 +28,8 @@ max_images = 12
 # 로컬 CPU 추론은 느리다
 timeout_s = 120
 max_retries = 1
+# 예산 예약용 입력 토큰 예상값: 프롬프트·스키마 약 1500 + 이미지 12장 × 약 300(SPEC-016)
+estimated_input_tokens = 5100
 
 # 이미지·질의 인코더(SPEC-011). frame-encoder와 같은 모델 ID여야 같은 인덱스를 찾는다.
 # 가중치: Hugging Face timm/MobileCLIP2-S0-OpenCLIP의 open_clip_model.safetensors(Apple AMLR, 비상용)를
@@ -73,3 +75,15 @@ max_output_tokens = 200
 # 검색 응답을 오래 붙잡지 않는다. 넘으면 safe-fallback(R-13)
 timeout_s = 20
 max_retries = 0
+# 프롬프트·스키마와 검색 문장 한 줄
+estimated_input_tokens = 900
+
+# 결과 캐시(SPEC-016). 외부 모델을 부르는 경로(event_judge, query_parse, embed_text)의 성공 결과를 재사용한다.
+[cache]
+retention_days = 30
+front_ttl_s = 3600
+
+# 하루 비용 한도(SPEC-016). 로컬 Ollama는 단가([prices])가 없어 비용 0이라 한도에 걸리지 않는다.
+# 유료 모델 프로필은 [prices.<adapter>."<model>"]에 100만 토큰당 USD를 적는다.
+[budget]
+daily_limit_usd = 1.0

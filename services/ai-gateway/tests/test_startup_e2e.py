@@ -4,6 +4,7 @@ import asyncio
 import shutil
 from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
+from uuid import UUID, uuid4
 
 import httpx
 import pytest
@@ -14,12 +15,15 @@ from ai_gateway.registry_bundle import build_bundle
 from fastapi import FastAPI
 from gateway_support import (
     CALLER,
+    CANDIDATE,
     ENCODER_MANIFEST_KEY,
     IMAGE_KEYS,
     analyze_body,
     put_encoder_model,
     random_weights,
 )
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import create_async_engine
 from vlm_common.profile import ProfileError
 from vlm_encoders.base import EncoderLoadError
 from vlm_storage.artifacts import ArtifactError
@@ -280,3 +284,57 @@ async def test_spec012_r24_broken_dictionary_fails_startup(
     with pytest.raises(QueryDictionaryError):
         async with app.router.lifespan_context(app):
             pass
+
+
+@pytest.mark.usefixtures("environment")
+async def test_spec016_r18_ready_without_redis(
+    database_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """[SPEC-016 R-17, R-18] Redis에 닿지 않아도 준비되고 분석한다."""
+    await upgrade(database_url)
+    monkeypatch.setenv("AI_GATEWAY_REDIS_URL", "redis://127.0.0.1:1/0")
+    app = production_app()
+
+    async with app.router.lifespan_context(app):
+        async for client in _ready_client(app):
+            ready = (await client.get("/ready")).status_code
+            response = await client.post(
+                "/v1/analyze", json=analyze_body(), headers={"X-Caller": CALLER}
+            )
+
+    assert ready == 200
+    assert response.status_code == 200
+
+
+@pytest.mark.usefixtures("environment")
+async def test_spec016_r2_production_app_reuses_result_across_pods(
+    database_url: str, monkeypatch: pytest.MonkeyPatch, redis_url: str
+) -> None:
+    """[SPEC-016 R-1, R-2] 한 앱이 저장한 결과를 다른 앱(Pod)이 캐시로 돌려준다."""
+    await upgrade(database_url)
+    monkeypatch.setenv("AI_GATEWAY_REDIS_URL", redis_url)
+    body = analyze_body(variables={**CANDIDATE, "zoneName": f"구역-{uuid4()}"})
+    outputs = []
+    for _ in range(2):
+        app = production_app()
+        async with app.router.lifespan_context(app):
+            async for client in _ready_client(app):
+                response = await client.post("/v1/analyze", json=body, headers={"X-Caller": CALLER})
+        assert response.status_code == 200
+        outputs.append(response.json())
+
+    assert outputs[0]["callId"] != outputs[1]["callId"]
+    assert outputs[0]["output"] == outputs[1]["output"]
+    engine = create_async_engine(database_url)
+    async with engine.connect() as conn:
+        hits = list(
+            await conn.scalars(
+                text(
+                    "SELECT cache_hit FROM ai.ai_call_log WHERE call_id = ANY(:ids)"
+                    " ORDER BY created_at"
+                ),
+                {"ids": [UUID(o["callId"]) for o in outputs]},
+            )
+        )
+    await engine.dispose()
+    assert hits == [False, True]

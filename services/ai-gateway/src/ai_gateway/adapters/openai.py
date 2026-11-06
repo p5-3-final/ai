@@ -136,7 +136,11 @@ def _provider_error(error: openai.APIError) -> ProviderUnavailableError | Provid
             return ProviderUnavailableError(f"provider returned {error.status_code}")
         return ProviderFailedError(f"provider rejected the request: {error.status_code}")
     # 시간 초과(APITimeoutError)도 연결 오류에 속한다.
-    return ProviderUnavailableError(f"provider is unreachable: {type(error).__name__}")
+    unavailable = ProviderUnavailableError(f"provider is unreachable: {type(error).__name__}")
+    # 연결조차 못 했으면 공급자가 받지 않았다. 시간 초과는 처리했을 수 있다(SPEC-016 R-13, R-22).
+    if not isinstance(error, openai.APITimeoutError):
+        unavailable.sent = False
+    return unavailable
 
 
 def _image_part(image: ImageInput) -> ChatCompletionContentPartImageParam:

@@ -4,6 +4,7 @@ import re
 import shutil
 import statistics
 import time
+from decimal import Decimal
 from pathlib import Path
 from uuid import UUID
 
@@ -11,10 +12,12 @@ import httpx
 import pytest
 from ai_gateway.adapters.base import ProviderFailedError, ProviderUnavailableError
 from ai_gateway.profile import GatewayProfile
+from ai_gateway.rate_limit import RateLimitedError
 from gateway_support import (
     CALLER,
     FakeAdapter,
     Gateway,
+    MemoryBudget,
     gateway,
     parse_settings,
     post_parse,
@@ -380,3 +383,70 @@ async def _timed(gw: Gateway, query: str) -> float:
     started = time.perf_counter()
     _ok(await post_parse(gw.client, query))
     return time.perf_counter() - started
+
+
+class BusyLimiter:
+    async def acquire(self, adapter: str, model: str, tokens: int, timeout_s: float) -> None:
+        raise RateLimitedError("busy")
+
+
+async def test_spec016_r2_llm_parse_is_cached_by_normalized_query(registry_dir: Path) -> None:
+    async with gateway(registry_dir, adapter=FakeAdapter(reply=LLM_REPLY)) as gw:
+        first = _ok(await post_parse(gw.client, OUT_OF_DICTIONARY))
+        second = _ok(await post_parse(gw.client, f"{OUT_OF_DICTIONARY} 찾아줘"))
+
+    assert len(gw.adapter.calls) == 1
+    assert _without_call_id(first) == _without_call_id(second)
+    called, cached = gw.call_log.entries
+    assert (called.cache_hit, cached.cache_hit) == (False, True)
+    assert cached.status == "success"
+    assert cached.prompt_version == first["promptVersion"]
+
+
+async def test_spec016_r3_invalid_llm_output_is_not_cached(registry_dir: Path) -> None:
+    async with gateway(registry_dir, adapter=FakeAdapter(reply="모름")) as gw:
+        await post_parse(gw.client, OUT_OF_DICTIONARY)
+        await post_parse(gw.client, OUT_OF_DICTIONARY)
+
+    assert len(gw.adapter.calls) == 2
+
+
+async def test_spec016_r11_budget_exceeded_falls_back(registry_dir: Path) -> None:
+    priced = profile(
+        extra={
+            "parse": parse_settings(),
+            "prices": {
+                "fake": {"fake-llm": {"input_per_million_usd": 1, "output_per_million_usd": 1}}
+            },
+        }
+    )
+    exhausted = MemoryBudget(limits={"*": Decimal(0)})
+    async with gateway(
+        registry_dir, priced, adapter=FakeAdapter(reply=LLM_REPLY), budget=exhausted
+    ) as gw:
+        body = _ok(await post_parse(gw.client, OUT_OF_DICTIONARY))
+
+    _assert_safe_fallback(body)
+    assert gw.adapter.calls == []
+    [entry] = gw.call_log.entries
+    assert entry.status == "budget_exceeded"
+
+
+async def test_spec016_r16_rate_limited_falls_back(registry_dir: Path) -> None:
+    async with gateway(
+        registry_dir, adapter=FakeAdapter(reply=LLM_REPLY), limiter=BusyLimiter()
+    ) as gw:
+        body = _ok(await post_parse(gw.client, OUT_OF_DICTIONARY))
+
+    _assert_safe_fallback(body)
+    [entry] = gw.call_log.entries
+    assert (entry.status, entry.error_code) == ("unavailable", "AI_RATE_LIMITED")
+
+
+async def test_spec016_r1_rule_parse_does_not_use_cache(registry_dir: Path) -> None:
+    async with gateway(registry_dir) as gw:
+        await post_parse(gw.client, RULE_QUERY)
+
+    assert gw.cache.values == {}
+    [entry] = gw.call_log.entries
+    assert entry.cache_hit is None

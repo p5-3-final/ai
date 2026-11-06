@@ -3,17 +3,22 @@ import io
 import logging
 import math
 import time
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
 from ai_gateway.adapters.base import ProviderFailedError, ProviderUnavailableError
 from ai_gateway.call_log import CallLogEntry
+from ai_gateway.profile import GatewayProfile
+from ai_gateway.rate_limit import RateLimitedError
 from gateway_support import (
     ENCODER_ID,
     QUERY_IMAGE,
     SOURCE,
     FakeAdapter,
     FakeEmbedder,
+    MemoryBudget,
+    MemoryCache,
     embed_settings,
     gateway,
     mock_encoder,
@@ -436,3 +441,99 @@ async def test_spec011_nfr5_logs_have_no_texts_or_vectors(
         rendered = f"{record.getMessage()} {vars(record)}"
         assert "비밀 검색어" not in rendered
         assert "0.123456789" not in rendered
+
+
+class BusyLimiter:
+    async def acquire(self, adapter: str, model: str, tokens: int, timeout_s: float) -> None:
+        raise RateLimitedError("busy")
+
+
+def _text_body(*texts: str) -> dict[str, object]:
+    return {"taskType": "embed_text", "texts": list(texts)}
+
+
+def _priced() -> GatewayProfile:
+    settings = embed_settings()
+    embed = settings["embed"]
+    assert isinstance(embed, dict)
+    embed["embed_text"] = {**embed["embed_text"], "estimated_tokens_per_text": 100}
+    return profile(
+        {**settings, "prices": {"fake": {"fake-embedding": {"input_per_million_usd": 1}}}}
+    )
+
+
+async def test_spec016_r5_only_uncached_texts_go_to_provider(registry_dir: Path) -> None:
+    embedder = FakeEmbedder()
+    async with gateway(registry_dir, profile(embed_settings()), embedders={"fake": embedder}) as gw:
+        first = (await post_embed(gw.client, _text_body("aa", "bbb"))).json()
+        second = (await post_embed(gw.client, _text_body("bbb", "c"))).json()
+
+    assert [c.texts for c in embedder.calls] == [["aa", "bbb"], ["c"]]
+    assert second["vectors"][0] == first["vectors"][1]
+    assert len(second["vectors"]) == 2
+
+
+async def test_spec016_r2_all_cached_texts_skip_provider(registry_dir: Path) -> None:
+    embedder = FakeEmbedder()
+    async with gateway(registry_dir, profile(embed_settings()), embedders={"fake": embedder}) as gw:
+        await post_embed(gw.client, _text_body("aa"))
+        response = await post_embed(gw.client, _text_body("aa"))
+
+    assert response.status_code == 200
+    assert len(embedder.calls) == 1
+    assert [e.cache_hit for e in gw.call_log.entries] == [False, True]
+
+
+async def test_spec016_r7_text_being_embedded_elsewhere_is_awaited(registry_dir: Path) -> None:
+    embedder = FakeEmbedder()
+    first = MemoryCache()
+    async with gateway(
+        registry_dir, profile(embed_settings()), embedders={"fake": embedder}, cache=first
+    ) as gw:
+        await post_embed(gw.client, _text_body("aa"))
+    stored = next(iter(first.values.values()))
+    other = MemoryCache(locks=set(first.values), awaited=stored)
+    async with gateway(
+        registry_dir, profile(embed_settings()), embedders={"fake": embedder}, cache=other
+    ) as gw:
+        response = await post_embed(gw.client, _text_body("aa"))
+
+    assert response.status_code == 200
+    assert len(embedder.calls) == 1
+
+
+async def test_spec016_r11_budget_exceeded_is_503(registry_dir: Path) -> None:
+    embedder = FakeEmbedder()
+    exhausted = MemoryBudget(limits={"*": Decimal(0)})
+    async with gateway(
+        registry_dir, _priced(), embedders={"fake": embedder}, budget=exhausted
+    ) as gw:
+        response = await post_embed(gw.client, _text_body("aa"))
+
+    assert response.status_code == 503
+    assert response.json()["code"] == "AI_BUDGET_EXCEEDED"
+    assert embedder.calls == []
+    [entry] = gw.call_log.entries
+    assert entry.status == "budget_exceeded"
+
+
+async def test_spec016_r16_rate_limited_is_unavailable(registry_dir: Path) -> None:
+    async with gateway(
+        registry_dir,
+        profile(embed_settings()),
+        embedders={"fake": FakeEmbedder()},
+        limiter=BusyLimiter(),
+    ) as gw:
+        response = await post_embed(gw.client, _text_body("aa"))
+
+    assert response.status_code == 503
+    assert response.json()["code"] == "AI_PROVIDER_UNAVAILABLE"
+    [entry] = gw.call_log.entries
+    assert entry.error_code == "AI_RATE_LIMITED"
+
+
+async def test_spec016_r1_encoder_tasks_are_not_cached(registry_dir: Path) -> None:
+    async with gateway(registry_dir, profile(embed_settings()), encoder=mock_encoder()) as gw:
+        await post_embed(gw.client, {"taskType": "embed_visual_text", "texts": ["a forklift"]})
+
+    assert gw.cache.values == {}

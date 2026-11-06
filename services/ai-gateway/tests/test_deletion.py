@@ -7,6 +7,8 @@ import pytest
 from ai_gateway.call_log import CallLog, CallLogEntry, new_call_id
 from ai_gateway.db.migrate import upgrade
 from ai_gateway.deletion import DeletionHandler
+from ai_gateway.profile import CacheProfile
+from ai_gateway.result_cache import FrontUnavailableError, ResultCache
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 from vlm_contracts.events import VideoDeleted
@@ -50,6 +52,10 @@ def _entry(source_id: UUID) -> CallLogEntry:
     )
 
 
+def _cache(engine: AsyncEngine, redis_url: str | None = None) -> ResultCache:
+    return ResultCache(engine, CacheProfile(), redis_url)
+
+
 def _deleted(source_id: UUID) -> VideoDeleted:
     return VideoDeleted(
         event_id=uuid4(),
@@ -73,7 +79,7 @@ async def test_spec009_r20_deleted_video_raw_output_is_cleared(engine: AsyncEngi
     for entry in (_entry(deleted), _entry(deleted), _entry(kept)):
         await log.save(entry)
 
-    await DeletionHandler(log).handle(_deleted(deleted), CTX)
+    await DeletionHandler(log, _cache(engine)).handle(_deleted(deleted), CTX)
 
     assert await _raw_outputs(engine, deleted) == [None, None]
     assert await _raw_outputs(engine, kept) == ["작업자가 넘어져 있다"]
@@ -83,7 +89,7 @@ async def test_spec009_r21_repeated_event_ends_the_same(engine: AsyncEngine) -> 
     source = uuid4()
     log = CallLog(engine)
     await log.save(_entry(source))
-    handler = DeletionHandler(log)
+    handler = DeletionHandler(log, _cache(engine))
 
     await handler.handle(_deleted(source), CTX)
     await handler.handle(_deleted(source), CTX)
@@ -99,7 +105,7 @@ async def test_spec009_r20_call_log_metadata_is_kept(engine: AsyncEngine) -> Non
     entry = replace(_entry(source), output={"verificationStatus": "rejected"})
     await log.save(entry)
 
-    await DeletionHandler(log).handle(_deleted(source), CTX)
+    await DeletionHandler(log, _cache(engine)).handle(_deleted(source), CTX)
 
     async with engine.connect() as conn:
         status = await conn.scalar(
@@ -107,3 +113,28 @@ async def test_spec009_r20_call_log_metadata_is_kept(engine: AsyncEngine) -> Non
         )
     # 사용량·장애 집계용 기록은 남기고 영상 내용이 담긴 원문만 지운다.
     assert status == "success"
+
+
+async def test_spec016_r9_deleted_video_cache_is_removed(
+    engine: AsyncEngine, redis_url: str
+) -> None:
+    deleted, kept = uuid4(), uuid4()
+    cache = _cache(engine, redis_url)
+    await cache.put(f"del-{deleted}", "event_judge", deleted, {"output": {}})
+    await cache.put(f"keep-{kept}", "event_judge", kept, {"output": {}})
+
+    await DeletionHandler(CallLog(engine), cache).handle(_deleted(deleted), CTX)
+
+    assert await cache.get(f"del-{deleted}") is None
+    assert await cache.get(f"keep-{kept}") == {"output": {}}
+    await cache.close()
+
+
+async def test_spec016_r9_front_failure_makes_event_retry(engine: AsyncEngine) -> None:
+    source = uuid4()
+    cache = _cache(engine, "redis://127.0.0.1:1/0")
+    await cache.put(f"del-{source}", "event_judge", source, {"output": {}})
+
+    with pytest.raises(FrontUnavailableError):
+        await DeletionHandler(CallLog(engine), cache).handle(_deleted(source), CTX)
+    await cache.close()

@@ -1,4 +1,7 @@
-"""영상 삭제 전파: `video.deleted`를 받아 그 영상의 모델 원문을 지운다(SPEC-009 R-20, R-21)."""
+"""영상 삭제 전파: `video.deleted`를 받아 그 영상의 모델 원문과 결과 캐시를 지운다.
+
+SPEC-009 R-20·R-21, SPEC-016 R-9.
+"""
 
 import logging
 import threading
@@ -12,22 +15,35 @@ from vlm_messaging.timing import KafkaTimingSink
 from vlm_messaging.worker import KafkaWorker, MessageContext, WorkerConfig, route
 
 from ai_gateway.call_log import CallLog
+from ai_gateway.profile import CacheProfile
+from ai_gateway.result_cache import ResultCache
 
 logger = logging.getLogger(__name__)
 
 
 class DeletionHandler:
-    """원문에는 영상 내용 묘사가 담겨 영상과 함께 지운다. 사용량 집계용 나머지 기록은 남긴다."""
+    """원문과 캐시된 판정 결과에는 영상 내용 묘사가 담겨 영상과 함께 지운다.
 
-    def __init__(self, call_log: CallLog) -> None:
+    사용량 집계용 나머지 기록은 남긴다.
+    """
+
+    def __init__(self, call_log: CallLog, cache: ResultCache) -> None:
         self._call_log = call_log
+        self._cache = cache
 
     async def handle(self, event: VideoDeleted, ctx: MessageContext) -> None:
         # 이미 지운 행은 건드리지 않으므로 같은 이벤트를 다시 받아도 결과가 같다(R-21).
         cleared = await self._call_log.clear_raw_output(event.source_id)
+        # 앞단 캐시를 지우지 못하면 예외로 끝나 재시도 토픽으로 다시 받는다(SPEC-016 R-9).
+        removed = await self._cache.delete_source(event.source_id)
         logger.info(
             "raw outputs cleared",
-            extra={"source_id": str(event.source_id), "cleared": cleared, "attempt": ctx.attempt},
+            extra={
+                "source_id": str(event.source_id),
+                "cleared": cleared,
+                "cache_removed": removed,
+                "attempt": ctx.attempt,
+            },
         )
 
 
@@ -50,6 +66,8 @@ def start_deletion_worker(
     database_url: str,
     health: HealthState,
     *,
+    cache_settings: CacheProfile,
+    redis_url: str | None = None,
     publish_timing: bool = False,
 ) -> RunningWorker:
     """`video.deleted` 소비자를 데몬 스레드로 띄운다.
@@ -62,11 +80,13 @@ def start_deletion_worker(
         group_id: 소비 그룹. 재시도·DLQ 토픽 이름에도 쓴다.
         database_url: ai_db 접속 URL.
         health: 구독을 시작하면 준비 상태로 표시된다(R-23).
+        cache_settings: 지울 결과 캐시의 설정(SPEC-016 R-9).
+        redis_url: 결과 캐시 앞단. HTTP 쪽과 같은 Redis다.
         publish_timing: 처리 시간 측정 묶음을 `stage.timing`에 발행할지. 끄면 JSON 로그로만 남긴다
             (SPEC-013 R-5).
     """
     engine = create_async_engine(database_url)
-    handler = DeletionHandler(CallLog(engine))
+    handler = DeletionHandler(CallLog(engine), ResultCache(engine, cache_settings, redis_url))
     publisher = KafkaPublisher(bootstrap=bootstrap, client_id=group_id)
     worker = KafkaWorker(
         # 단계 ID(`ai-gateway.handle` 등)는 소비 그룹 설정과 상관없이 서비스 이름으로 남긴다.

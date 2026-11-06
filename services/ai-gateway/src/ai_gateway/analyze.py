@@ -1,14 +1,15 @@
 """`/v1/analyze` 유스케이스(SPEC-009 R-1~R-11, R-17)."""
 
+import hashlib
 import logging
 import time
 from dataclasses import dataclass, field
+from decimal import Decimal
 from typing import Protocol
 from uuid import UUID
 
 from ai_gateway.adapters.base import (
     Completion,
-    ProviderFailedError,
     ProviderUnavailableError,
     VlmAdapter,
 )
@@ -19,8 +20,9 @@ from ai_gateway.errors import (
     TooManyImagesError,
     UnknownTaskTypeError,
 )
+from ai_gateway.gate import GateCall, ModelGate, Produced, cache_key
 from ai_gateway.images import ImagePolicy, ImageReader
-from ai_gateway.output import parse_output
+from ai_gateway.output import ParsedOutput, parse_output
 from ai_gateway.profile import GatewayProfile, TaskProfile
 from ai_gateway.prompts import PromptRegistry
 
@@ -61,6 +63,7 @@ class AnalyzeService:
         images: ImageReader,
         adapters: dict[str, VlmAdapter],
         call_log: CallLogWriter,
+        gate: ModelGate,
     ) -> None:
         self._profile = profile
         self._prompts = prompts
@@ -68,6 +71,7 @@ class AnalyzeService:
         self._image_policy = ImagePolicy(profile.images.allowed_patterns)
         self._adapters = adapters
         self._call_log = call_log
+        self._gate = gate
 
     async def analyze(self, command: AnalyzeCommand) -> AnalyzeResult:
         started = time.perf_counter()
@@ -97,9 +101,11 @@ class AnalyzeService:
             await self._record(call.entry("unavailable", output=output))
             return call.result(output)
 
-        try:
-            completion = await self._adapters[settings.adapter].complete(
-                model=settings.model,
+        adapter, model = settings.adapter, settings.model
+
+        async def invoke() -> Produced[tuple[Completion, ParsedOutput]]:
+            completion = await self._adapters[adapter].complete(
+                model=model,
                 message=task.render(command.variables),
                 images=images,
                 max_output_tokens=settings.max_output_tokens,
@@ -107,19 +113,85 @@ class AnalyzeService:
                 max_retries=settings.max_retries,
                 traceparent=command.traceparent,
             )
-        except (ProviderUnavailableError, ProviderFailedError) as e:
+            parsed = parse_output(task, completion.text, command.variables)
+            # 출력 검증을 통과한 결과만 저장한다(SPEC-016 R-3).
+            store: JsonObject | None = (
+                {
+                    "output": parsed.output,
+                    "modelId": model,
+                    "promptVersion": task.version,
+                    "taxonomyVersion": task.taxonomy_version,
+                }
+                if parsed.valid
+                else None
+            )
+            return Produced(
+                (completion, parsed), completion.input_tokens, completion.output_tokens, store
+            )
+
+        # 블러 사본을 다시 만들면 같은 경로라도 내용이 달라져 내용으로 비교한다(SPEC-016 R-4).
+        content = {
+            "images": [hashlib.sha256(i.data).hexdigest() for i in images],
+            "variables": command.variables,
+        }
+        gated = await self._gate.run(
+            GateCall(
+                caller=command.caller,
+                task_type=command.task_type,
+                adapter=adapter,
+                model=model,
+                cache_key=cache_key(command.task_type, adapter, model, task.version, content),
+                source_id=command.source_id,
+                input_tokens=settings.estimated_input_tokens,
+                output_tokens=settings.max_output_tokens,
+                timeout_s=settings.timeout_s,
+            ),
+            invoke,
+        )
+        costs = _Costs(gated.reserved_usd, gated.settled_usd)
+        if gated.kind == "cached" and gated.cached is not None:
+            cached = gated.cached
+            output = _object(cached["output"])
+            await self._record(call.entry("success", output=output, cache_hit=True, costs=costs))
+            return AnalyzeResult(
+                call_id=call.call_id,
+                task_type=command.task_type,
+                model_id=_text(cached.get("modelId")),
+                prompt_version=str(cached["promptVersion"]),
+                taxonomy_version=_text(cached.get("taxonomyVersion")),
+                output=output,
+            )
+        if gated.kind == "budget_exceeded":
+            # 예산을 넘으면 모델 미설정과 같은 결과다(SPEC-016 R-11). 호출자가 이미 처리하는 경로다.
+            output = task.fallback(command.variables, "unverified")
+            await self._record(call.entry("budget_exceeded", output=output, cache_hit=False))
+            return call.result(output, called_model=False)
+        if gated.kind == "failed" and gated.error is not None:
+            error = gated.error
             # 실패한 호출도 호출자·모델별 장애를 볼 수 있게 남긴다(SPEC-009 R-17~R-19).
             status: CallStatus = (
-                "unavailable" if isinstance(e, ProviderUnavailableError) else "failed"
+                "unavailable" if isinstance(error, ProviderUnavailableError) else "failed"
             )
-            await self._record(call.entry(status, output=None, error_code=e.code))
-            raise
-        parsed = parse_output(task, completion.text, command.variables)
+            await self._record(
+                call.entry(
+                    status,
+                    output=None,
+                    error_code=getattr(error, "log_code", None) or getattr(error, "code", None),
+                    cache_hit=False,
+                    costs=costs,
+                )
+            )
+            raise error
+        if gated.value is None:
+            raise RuntimeError("model gate returned no result")
+        completion, parsed = gated.value
         await self._record(
             call.entry(
                 "success" if parsed.valid else "invalid_output",
                 output=parsed.output,
                 completion=completion,
+                cache_hit=False,
+                costs=costs,
             )
         )
         return call.result(parsed.output)
@@ -167,6 +239,8 @@ class _Call:
         output: JsonObject | None,
         completion: Completion | None = None,
         error_code: str | None = None,
+        cache_hit: bool | None = None,
+        costs: "_Costs | None" = None,
     ) -> CallLogEntry:
         return CallLogEntry(
             call_id=self.call_id,
@@ -191,13 +265,17 @@ class _Call:
             input_tokens=completion.input_tokens if completion else None,
             output_tokens=completion.output_tokens if completion else None,
             trace_id=self.command.traceparent.split("-")[1] if self.command.traceparent else None,
+            cache_hit=cache_hit,
+            reserved_cost_usd=costs.reserved if costs else None,
+            settled_cost_usd=costs.settled if costs else None,
         )
 
-    def result(self, output: JsonObject) -> AnalyzeResult:
+    def result(self, output: JsonObject, *, called_model: bool = True) -> AnalyzeResult:
+        # 모델을 부르지 않은 결과(예산 초과)는 미설정과 같이 모델 ID가 없다(SPEC-016 R-11).
         return AnalyzeResult(
             call_id=self.call_id,
             task_type=self.command.task_type,
-            model_id=self.settings.model,
+            model_id=self.settings.model if called_model else None,
             prompt_version=self.prompt_version,
             taxonomy_version=self.taxonomy_version,
             output=output,
@@ -207,3 +285,20 @@ class _Call:
 def _field_error(prefix: str, error: str) -> tuple[str, str]:
     path, _, reason = error.partition(": ")
     return (prefix if path == "<root>" else f"{prefix}/{path}", reason)
+
+
+@dataclass(frozen=True, slots=True)
+class _Costs:
+    """호출 로그에 남길 예산 예약·정산 비용(SPEC-016 R-19)."""
+
+    reserved: Decimal | None
+    settled: Decimal | None
+
+
+def _object(value: object) -> JsonObject:
+    # 캐시에는 출력 스키마 검증을 통과한 객체만 저장한다(R-3).
+    return value if isinstance(value, dict) else {}
+
+
+def _text(value: object) -> str | None:
+    return value if isinstance(value, str) else None

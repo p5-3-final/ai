@@ -8,19 +8,20 @@
 import logging
 import time
 from dataclasses import dataclass, field
+from decimal import Decimal
 from typing import Literal
 from uuid import UUID
 
 from ai_gateway.adapters.base import (
     Completion,
-    ProviderFailedError,
     ProviderUnavailableError,
     VlmAdapter,
 )
 from ai_gateway.analyze import CallLogWriter
 from ai_gateway.call_log import CallLogEntry, CallStatus, new_call_id
 from ai_gateway.errors import CallerForbiddenError, InvalidRequestError
-from ai_gateway.output import parse_output
+from ai_gateway.gate import GateCall, ModelGate, Produced, cache_key
+from ai_gateway.output import ParsedOutput, parse_output
 from ai_gateway.profile import QUERY_PARSE_TASK, GatewayProfile
 from ai_gateway.prompts import PromptRegistry
 from ai_gateway.query_dictionary import QueryDictionary, Route
@@ -73,6 +74,10 @@ class _Parsed:
     llm_called: bool = False
     completion: Completion | None = None
     error_code: str | None = None
+    # LLM 경로만 채운다(SPEC-016 R-19).
+    cache_hit: bool | None = None
+    reserved_usd: Decimal | None = None
+    settled_usd: Decimal | None = None
 
 
 class ParseService:
@@ -83,8 +88,10 @@ class ParseService:
         prompts: PromptRegistry,
         adapters: dict[str, VlmAdapter],
         call_log: CallLogWriter,
+        gate: ModelGate,
     ) -> None:
         self._profile = profile
+        self._gate = gate
         self._settings = profile.parse
         self._dictionary = dictionary
         self._task = prompts.get(QUERY_PARSE_TASK)
@@ -106,7 +113,7 @@ class ParseService:
 
         # route는 해석 방법과 상관없이 사전으로만 정한다(R-15).
         route = self._dictionary.route(normalized)
-        parsed = await self._interpret(normalized, command.traceparent)
+        parsed = await self._interpret(normalized, command)
         call = _Call(command, started)
         prompt_version = self._prompt_version() if parsed.method == "llm" else None
         result = ParseResult(
@@ -125,7 +132,7 @@ class ParseService:
         await self._record(call.entry(result, parsed, self._llm_values(parsed)))
         return result
 
-    async def _interpret(self, normalized: str, traceparent: str | None) -> _Parsed:
+    async def _interpret(self, normalized: str, command: ParseCommand) -> _Parsed:
         # 사전 해석은 Adapter를 부르지 않아 공급자 상태와 상관없이 된다(R-26).
         found = self._dictionary.match(normalized)
         if found is not None:
@@ -145,46 +152,89 @@ class ParseService:
             )
         if phrase == "":
             return _fallback("영어 구문에 대상어가 없음")
-        return await self._ask_llm(normalized, traceparent)
+        return await self._ask_llm(normalized, command)
 
-    async def _ask_llm(self, normalized: str, traceparent: str | None) -> _Parsed:
+    async def _ask_llm(self, normalized: str, command: ParseCommand) -> _Parsed:
         settings, task = self._settings, self._task
         if settings.adapter is None or settings.model is None or task is None:
             return _fallback("query_parse 모델 미설정", status="unavailable")
+        adapter, model, prompt = settings.adapter, settings.model, task
         variables: JsonObject = {"query": normalized}
-        try:
-            completion = await self._adapters[settings.adapter].complete(
-                model=settings.model,
-                message=task.render(variables),
+
+        async def invoke() -> Produced[tuple[Completion, ParsedOutput]]:
+            completion = await self._adapters[adapter].complete(
+                model=model,
+                message=prompt.render(variables),
                 images=[],
                 max_output_tokens=settings.max_output_tokens,
                 timeout_s=settings.timeout_s,
                 max_retries=settings.max_retries,
-                traceparent=traceparent,
+                traceparent=command.traceparent,
                 temperature=_TEMPERATURE,
             )
-        except (ProviderUnavailableError, ProviderFailedError) as e:
+            parsed = parse_output(prompt, completion.text, variables)
+            return Produced(
+                (completion, parsed),
+                completion.input_tokens,
+                completion.output_tokens,
+                parsed.output if parsed.valid else None,
+            )
+
+        gated = await self._gate.run(
+            GateCall(
+                caller=command.caller,
+                task_type=QUERY_PARSE_TASK,
+                adapter=adapter,
+                model=model,
+                # 정규화 문장이 같으면 표현이 달라도 같은 키다(SPEC-016 R-2).
+                cache_key=cache_key(QUERY_PARSE_TASK, adapter, model, prompt.version, variables),
+                source_id=None,
+                input_tokens=settings.estimated_input_tokens,
+                output_tokens=settings.max_output_tokens,
+                timeout_s=settings.timeout_s,
+            ),
+            invoke,
+        )
+        reserved, settled = gated.reserved_usd, gated.settled_usd
+        if gated.kind == "cached" and gated.cached is not None:
+            return _llm(gated.cached, cache_hit=True, reserved_usd=reserved, settled_usd=settled)
+        if gated.kind == "budget_exceeded":
+            # 예산을 넘으면 모델 미설정과 같은 결과다(SPEC-016 R-11).
+            return _fallback("query_parse 예산 초과", status="budget_exceeded", cache_hit=False)
+        if gated.kind == "failed" and gated.error is not None:
+            error = gated.error
             # 일시 오류와 그 밖의 거부를 나눠 남긴다(R-13).
             status: CallStatus = (
-                "unavailable" if isinstance(e, ProviderUnavailableError) else "failed"
+                "unavailable" if isinstance(error, ProviderUnavailableError) else "failed"
             )
-            return _fallback("query_parse 공급자 오류", status, llm_called=True, error=e.code)
-        parsed = parse_output(task, completion.text, variables)
+            return _fallback(
+                "query_parse 공급자 오류",
+                status,
+                llm_called=True,
+                error=getattr(error, "log_code", None) or getattr(error, "code", None),
+                cache_hit=False,
+                reserved_usd=reserved,
+                settled_usd=settled,
+            )
+        if gated.value is None:
+            raise RuntimeError("model gate returned no result")
+        completion, parsed = gated.value
         if not parsed.valid:
             return _fallback(
                 "query_parse 출력 검증 실패",
                 status="invalid_output",
                 llm_called=True,
                 completion=completion,
+                cache_hit=False,
+                reserved_usd=reserved,
+                settled_usd=settled,
             )
-        return _Parsed(
-            method="llm",
-            targets=tuple(_strings(parsed.output["targets"])),
-            event_types=tuple(_strings(parsed.output["eventTypes"])),
-            # LLM 설명문은 넣지 않는다. 모델 원문이 응답으로 새지 않게 한다(R-17).
-            rationale="llm: query_parse 출력",
-            llm_called=True,
+        return _llm(
+            parsed.output,
             completion=completion,
+            cache_hit=False,
+            reserved_usd=reserved,
+            settled_usd=settled,
         )
 
     def _prompt_version(self) -> str | None:
@@ -287,7 +337,32 @@ class _Call:
             input_tokens=completion.input_tokens if completion else None,
             output_tokens=completion.output_tokens if completion else None,
             trace_id=self.command.traceparent.split("-")[1] if self.command.traceparent else None,
+            cache_hit=parsed.cache_hit,
+            reserved_cost_usd=parsed.reserved_usd,
+            settled_cost_usd=parsed.settled_usd,
         )
+
+
+def _llm(
+    output: JsonObject,
+    *,
+    completion: Completion | None = None,
+    cache_hit: bool,
+    reserved_usd: Decimal | None,
+    settled_usd: Decimal | None,
+) -> _Parsed:
+    return _Parsed(
+        method="llm",
+        targets=tuple(_strings(output["targets"])),
+        event_types=tuple(_strings(output["eventTypes"])),
+        # LLM 설명문은 넣지 않는다. 모델 원문이 응답으로 새지 않게 한다(R-17).
+        rationale="llm: query_parse 출력",
+        llm_called=True,
+        completion=completion,
+        cache_hit=cache_hit,
+        reserved_usd=reserved_usd,
+        settled_usd=settled_usd,
+    )
 
 
 def _fallback(
@@ -297,6 +372,9 @@ def _fallback(
     llm_called: bool = False,
     completion: Completion | None = None,
     error: str | None = None,
+    cache_hit: bool | None = None,
+    reserved_usd: Decimal | None = None,
+    settled_usd: Decimal | None = None,
 ) -> _Parsed:
     return _Parsed(
         method="safe-fallback",
@@ -307,6 +385,9 @@ def _fallback(
         llm_called=llm_called,
         completion=completion,
         error_code=error,
+        cache_hit=cache_hit,
+        reserved_usd=reserved_usd,
+        settled_usd=settled_usd,
     )
 
 

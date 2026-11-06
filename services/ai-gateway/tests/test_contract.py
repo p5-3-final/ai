@@ -3,6 +3,7 @@
 import io
 import json
 from collections.abc import Mapping
+from decimal import Decimal
 from pathlib import Path
 
 import httpx
@@ -13,6 +14,7 @@ from gateway_support import (
     CALLER,
     FakeAdapter,
     FakeEmbedder,
+    MemoryBudget,
     analyze_body,
     embed_settings,
     gateway,
@@ -322,4 +324,52 @@ async def test_spec012_contract_parse_errors_are_problem_details(
         response = await post_parse(gw.client, query, caller=caller)
 
     assert response.status_code == status
+    _assert_matches_contract(registry, response)
+
+
+async def test_spec016_contract_budget_exceeded_is_problem_detail(
+    registry_dir: Path, registry: Registry[Schema]
+) -> None:
+    """[SPEC-016 R-11] embed_text 예산 초과는 계약의 503 ProblemDetail이다."""
+    settings = embed_settings()
+    priced = profile(
+        {**settings, "prices": {"fake": {"fake-embedding": {"input_per_million_usd": 1}}}}
+    )
+    embed = priced.embed.embed_text
+    assert embed is not None
+    priced = priced.model_copy(
+        update={
+            "embed": priced.embed.model_copy(
+                update={"embed_text": embed.model_copy(update={"estimated_tokens_per_text": 10})}
+            )
+        }
+    )
+    async with gateway(
+        registry_dir,
+        priced,
+        embedders={"fake": FakeEmbedder()},
+        budget=MemoryBudget(limits={"*": Decimal(0)}),
+    ) as gw:
+        response = await post_embed(gw.client, {"taskType": "embed_text", "texts": ["a"]})
+
+    assert response.status_code == 503
+    assert response.json()["code"] == "AI_BUDGET_EXCEEDED"
+    _assert_matches_contract(registry, response)
+
+
+async def test_spec016_contract_budget_exceeded_analyze_matches_contract(
+    registry_dir: Path, registry: Registry[Schema]
+) -> None:
+    """[SPEC-016 R-11] analyze 예산 초과는 계약의 200 응답이다."""
+    priced = profile(
+        extra={
+            "prices": {
+                "fake": {"fake-vlm": {"input_per_million_usd": 1, "output_per_million_usd": 1}}
+            }
+        }
+    )
+    async with gateway(registry_dir, priced, budget=MemoryBudget(limits={"*": Decimal(0)})) as gw:
+        response = await post_analyze(gw.client, analyze_body())
+
+    assert response.status_code == 200
     _assert_matches_contract(registry, response)
