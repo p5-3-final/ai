@@ -51,12 +51,12 @@ class BudgetExceededError(GatewayRequestError):
     """호출 서비스나 전체의 하루 예산을 넘었다. 다음 날(UTC)이나 한도를 늘린 뒤 다시 보낸다.
 
     `/v1/analyze`·`/v1/parse`는 미설정과 같은 200 결과를 돌려주고, `embed_text`만 이 오류다
-    (SPEC-016 R-11).
+    (SPEC-016 R-11). 다시 보내도 같은 결과라 503 재시도 규칙에 걸리지 않게 429로 둔다.
     """
 
     code = "AI_BUDGET_EXCEEDED"
-    status = 503
-    title = "Service Unavailable"
+    status = 429
+    title = "Too Many Requests"
 
 
 class CallerForbiddenError(GatewayRequestError):

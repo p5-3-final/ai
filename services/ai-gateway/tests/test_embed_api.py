@@ -502,7 +502,7 @@ async def test_spec016_r7_text_being_embedded_elsewhere_is_awaited(registry_dir:
     assert len(embedder.calls) == 1
 
 
-async def test_spec016_r11_budget_exceeded_is_503(registry_dir: Path) -> None:
+async def test_spec016_r11_budget_exceeded_is_429(registry_dir: Path) -> None:
     embedder = FakeEmbedder()
     exhausted = MemoryBudget(limits={"*": Decimal(0)})
     async with gateway(
@@ -510,14 +510,14 @@ async def test_spec016_r11_budget_exceeded_is_503(registry_dir: Path) -> None:
     ) as gw:
         response = await post_embed(gw.client, _text_body("aa"))
 
-    assert response.status_code == 503
+    assert response.status_code == 429
     assert response.json()["code"] == "AI_BUDGET_EXCEEDED"
     assert embedder.calls == []
     [entry] = gw.call_log.entries
     assert entry.status == "budget_exceeded"
 
 
-async def test_spec016_r16_rate_limited_is_unavailable(registry_dir: Path) -> None:
+async def test_spec016_r16_rate_limited_is_429(registry_dir: Path) -> None:
     async with gateway(
         registry_dir,
         profile(embed_settings()),
@@ -526,8 +526,8 @@ async def test_spec016_r16_rate_limited_is_unavailable(registry_dir: Path) -> No
     ) as gw:
         response = await post_embed(gw.client, _text_body("aa"))
 
-    assert response.status_code == 503
-    assert response.json()["code"] == "AI_PROVIDER_UNAVAILABLE"
+    assert response.status_code == 429
+    assert response.json()["code"] == "AI_RATE_LIMITED"
     [entry] = gw.call_log.entries
     assert entry.error_code == "AI_RATE_LIMITED"
 

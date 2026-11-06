@@ -30,10 +30,14 @@ _WARN_EVERY_S = 30.0
 class RateLimitedError(ProviderUnavailableError):
     """제한 시간 안에 호출 차례를 얻지 못했다.
 
-    응답은 공급자 일시 오류와 같고(`AI_PROVIDER_UNAVAILABLE`), 호출 로그에는 `AI_RATE_LIMITED`를
-    남긴다(R-16). 공급자에 보내지 않았으므로 예약을 되돌린다(R-13).
+    공급자 장애(503)와 구분해 429 `AI_RATE_LIMITED`로 알린다(R-16). 503 재시도 규칙에 걸리지 않게
+    하려는 것이다. `/v1/parse`는 공급자 일시 오류처럼 safe-fallback으로 끝내려고 하위 클래스로 둔다.
+    공급자에 보내지 않았으므로 예약을 되돌린다(R-13).
     """
 
+    code = "AI_RATE_LIMITED"
+    status = 429
+    title = "Too Many Requests"
     log_code = "AI_RATE_LIMITED"
     sent = False
 

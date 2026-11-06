@@ -499,12 +499,12 @@ async def test_spec016_r19_called_result_logs_costs(registry_dir: Path) -> None:
     assert gw.budget.spent["event-analyzer"] == Decimal("0.00036")
 
 
-async def test_spec016_r16_rate_limited_is_unavailable(registry_dir: Path) -> None:
+async def test_spec016_r16_rate_limited_is_429(registry_dir: Path) -> None:
     async with gateway(registry_dir, limiter=BusyLimiter()) as gw:
         response = await post_analyze(gw.client, analyze_body())
 
-    assert response.status_code == 503
-    assert response.json()["code"] == "AI_PROVIDER_UNAVAILABLE"
+    assert response.status_code == 429
+    assert response.json()["code"] == "AI_RATE_LIMITED"
     [entry] = gw.call_log.entries
     assert (entry.status, entry.error_code) == ("unavailable", "AI_RATE_LIMITED")
     assert gw.adapter.calls == []
