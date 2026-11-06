@@ -24,27 +24,27 @@ ai-gateway의 인코더 프로필·로드 코드(`EncoderProfile`, `load_encoder
 
 | 요구사항 | 담당 모듈 / 컴포넌트 | 검증 테스트 |
 | --- | --- | --- |
-| R-1 | `fe/vectors.py` `segment_vector`, `fe/service.py` | `t/test_vectors.py`, `t/test_service.py` |
-| R-2 | `fe/service.py` | `t/test_service.py` |
-| R-3 | `fe/ids.py` `vectors_key`, `fe/service.py`, `vlm_contracts.vectors.VectorFile` | `t/test_service.py`(파일을 계약 모델로 읽음), `libs/contracts/tests/test_vector_file_contract.py` |
-| R-4 | `fe/service.py` | `t/test_service.py` |
-| R-5 | `fe/ids.py` | `t/test_service.py`(같은 메시지 두 번 → 같은 eventId·키) |
-| R-6 | `fe/service.py` | `t/test_service.py`(빈 메시지) |
-| R-7 | `fe/service.py` | `t/test_service.py` |
-| R-8 | `fe/service.py` | `t/test_service.py` |
-| R-9 | `vlm_encoders.loader.load_encoder`(SPEC-011 R-16과 같은 검증) | `libs/encoders/tests`(기존), `t/test_main.py` |
+| R-1 | `fe/vectors.py` `segment_vector`, `fe/service.py` | `t/test_vectors.py`, `t/test_encoding_service.py` |
+| R-2 | `fe/service.py` | `t/test_encoding_service.py` |
+| R-3 | `fe/ids.py` `vectors_key`, `fe/service.py`, `vlm_contracts.vectors.VectorFile` | `t/test_encoding_service.py`(파일을 계약 모델로 읽음), `libs/contracts/tests/test_vector_file_contract.py` |
+| R-4 | `fe/service.py` | `t/test_encoding_service.py` |
+| R-5 | `fe/ids.py` | `t/test_encoding_service.py`(같은 메시지 두 번 → 같은 eventId·키) |
+| R-6 | `fe/service.py` | `t/test_encoding_service.py`(빈 메시지) |
+| R-7 | `fe/service.py` | `t/test_encoding_service.py` |
+| R-8 | `fe/service.py` | `t/test_encoding_service.py` |
+| R-9 | `vlm_encoders.loader.load_encoder`(SPEC-011 R-16과 같은 검증) | `libs/encoders/tests`(기존), `t/test_encoder_main.py` |
 | R-10 | `fe/prototypes.py` `Prototypes.build` | `t/test_prototypes.py` |
 | R-11 | `fe/prototypes.py` `Prototypes.candidates` | `t/test_prototypes.py` |
-| R-12, R-13 | `fe/service.py` | `t/test_service.py` |
-| R-14 | `fe/service.py`, `fe/ids.py` | `t/test_service.py`(계약 스키마 통과) |
-| R-15 | `fe/profile.py` | `t/test_profile.py` |
-| R-16 | `vlm_contracts.events.SegmentReady` 검증 → 워커가 DLQ | `libs/contracts/tests`, `t/test_worker_e2e.py` |
-| R-17 | `fe/service.py`(`NonRetryableError`) | `t/test_service.py` |
-| R-18 | 워커 재시도(SPEC-013 공통) | `t/test_service.py`(저장소 오류는 그대로 던짐) |
-| R-19 | `fe/service.py` 단계 블록 | `t/test_service.py` |
-| NFR-1 | `KafkaWorker`(메시지를 하나씩 처리) | `t/test_worker_e2e.py` |
+| R-12, R-13 | `fe/service.py` | `t/test_encoding_service.py` |
+| R-14 | `fe/service.py`, `fe/ids.py` | `t/test_encoding_service.py`(계약 스키마 통과) |
+| R-15 | `fe/profile.py` | `t/test_prototype_profile.py` |
+| R-16 | `vlm_contracts.events.SegmentReady` 검증 → 워커가 DLQ | `libs/contracts/tests`, `t/test_encoder_worker_e2e.py` |
+| R-17 | `fe/service.py`(`NonRetryableError`) | `t/test_encoding_service.py` |
+| R-18 | 워커 재시도(SPEC-013 공통) | `t/test_encoding_service.py`(저장소 오류는 그대로 던짐) |
+| R-19 | `fe/service.py` 단계 블록 | `t/test_encoding_service.py` |
+| NFR-1 | `KafkaWorker`(메시지를 하나씩 처리) | `t/test_encoder_worker_e2e.py` |
 | NFR-2 | open_clip 인코더 | 로컬 compose 측정(PR에 기록) |
-| NFR-3 | 핸들러가 `asyncio.to_thread`로 인코딩, 워커는 기다리는 동안 poll을 이어 감 | `t/test_worker_e2e.py` |
+| NFR-3 | 핸들러가 `asyncio.to_thread`로 인코딩, 워커는 기다리는 동안 poll을 이어 감 | `t/test_encoder_worker_e2e.py` |
 
 ## 3. 원칙 점검
 
@@ -105,6 +105,7 @@ ai-gateway의 인코더 프로필·로드 코드(`EncoderProfile`, `load_encoder
 - 서비스: 메모리 저장소·가짜 발행기·`MockEncoder`로 핸들러 전체
 - 계약: 새 모델 3종·벡터 파일·유형 목록·단계 ID를 docs 원본과 비교
 - 워커 e2e: Kafka testcontainer로 정상 처리·잘못된 메시지 DLQ
+- 테스트 파일 이름은 `test_encoding_service.py`처럼 다른 서비스와 겹치지 않게 짓는다. 폴더 이름에 하이픈이 있는 서비스는 mypy가 테스트 모듈을 파일 이름만으로 구분해, chunk-processor의 `test_service.py`·ai-gateway의 `test_profile.py`와 겹치면 검사가 멈춘다.
 - 실제 모델(`-m model`): open_clip 프로필로 기동하고 구간 벡터 차원·길이 확인
 - 로컬 compose: 테스트용 `segment.ready`로 전체 흐름과 처리 시간(NFR-2)
 
