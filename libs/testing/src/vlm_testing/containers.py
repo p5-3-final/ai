@@ -1,4 +1,4 @@
-"""통합 테스트용 Kafka·SeaweedFS·PostgreSQL 컨테이너.
+"""통합 테스트용 Kafka·SeaweedFS·PostgreSQL·Redis 컨테이너.
 
 로컬 compose(docs `local/`)와 같은 이미지를 쓴다.
 """
@@ -26,6 +26,9 @@ SEAWEEDFS_IMAGE = (
 )
 POSTGRES_IMAGE = (
     "postgres:17.11-alpine@sha256:266d3c257594e195b309ae9d1805e54c788f1d7b375f56bf6c367aac6c917e7b"
+)
+REDIS_IMAGE = (
+    "redis:7.4.12-alpine@sha256:8da19c7399dca900c6822a1cf30f9d2285585e2c4b457ff4095b0f4500054d3f"
 )
 # 접근 키 설정 없이 띄운 SeaweedFS는 서명을 검사하지 않는다. 테스트 자격 증명은 아무 값이나 된다.
 TEST_ACCESS_KEY = "test"
@@ -124,3 +127,12 @@ def postgres() -> Iterator[str]:
     """PostgreSQL을 띄우고 SQLAlchemy asyncpg 접속 URL을 돌려준다."""
     with PostgresContainer(POSTGRES_IMAGE, driver="asyncpg") as container:
         yield container.get_connection_url()
+
+
+@contextmanager
+def redis() -> Iterator[str]:
+    """Redis를 띄우고 `redis://` 접속 URL을 돌려준다."""
+    container = DockerContainer(REDIS_IMAGE).with_exposed_ports(6379)
+    container.waiting_for(LogMessageWaitStrategy("Ready to accept connections"))
+    with container:
+        yield f"redis://{container.get_container_host_ip()}:{container.get_exposed_port(6379)}/0"
