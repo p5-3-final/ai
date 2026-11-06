@@ -150,7 +150,7 @@ async def test_spec022_r15_job_without_boundary_is_dropped_with_warning(
         assert env.sweeper().sweep_once() == 0
 
     assert env.publisher.published == []
-    assert [r.message for r in caplog.records] == ["job timed out without chunk boundary"]
+    assert [r.message for r in _ours(caplog)] == ["job timed out without chunk boundary"]
 
 
 async def test_spec022_r21_sweep_records_stage_timing_outside_handler(env: _Env) -> None:
@@ -190,7 +190,7 @@ async def test_spec022_r15_failed_job_is_retried_next_sweep(
 
     with caplog.at_level(logging.ERROR):
         assert env.sweeper().sweep_once() == 0
-    assert [r.message for r in caplog.records] == ["sweep finalize failed"]
+    assert [r.message for r in _ours(caplog)] == ["sweep finalize failed"]
     storage.broken = False
     env.clock.advance(1)
     assert env.sweeper().sweep_once() == 1
@@ -226,3 +226,8 @@ async def test_sweeper_run_stops_on_event(env: _Env) -> None:
     assert not thread.is_alive()
     assert len(env.publisher.manifests()) == 1
     assert json.loads(env.storage.get_bytes(MAPPING_KEY))["jobId"] == str(JOB)
+
+
+def _ours(caplog: pytest.LogCaptureFixture) -> list[logging.LogRecord]:
+    # 같은 프로세스의 다른 통합 테스트 워커 스레드가 남기는 로그를 빼고 이 서비스 로그만 본다.
+    return [r for r in caplog.records if r.name.startswith("track_stitcher")]

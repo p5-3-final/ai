@@ -163,13 +163,13 @@ async def test_spec022_r2_first_execution_is_kept(
     await h.boundary(first)
     with caplog.at_level(logging.WARNING):
         await h.boundary(first)
-        assert not caplog.records
+        assert not _ours(caplog)
         await h.boundary(retried)
 
     snapshot = h.store.snapshot(KEY)
     assert snapshot is not None
     assert [c.execution_id for c in snapshot.chunks] == [first.execution_id]
-    assert [r.message for r in caplog.records] == ["chunk already recorded with another execution"]
+    assert [r.message for r in _ours(caplog)] == ["chunk already recorded with another execution"]
 
 
 # R-3~R-6 -------------------------------------------------------------------
@@ -466,7 +466,7 @@ async def test_spec022_r17_input_after_manifest_is_ignored(
         await h.embedded(vector_file(files[0]))
 
     assert len(h.publisher.published) == published
-    assert [r.message for r in caplog.records] == [
+    assert [r.message for r in _ours(caplog)] == [
         "input after job finalized",
         "input after job finalized",
     ]
@@ -551,7 +551,7 @@ async def test_spec022_r23_stream_jobs_are_skipped_without_state(
     assert store.calls == 0
     assert h.publisher.published == []
     assert h.skipped.total() == 2
-    assert [r.message for r in caplog.records] == ["stitcher.skipped_stream"] * 2
+    assert [r.message for r in _ours(caplog)] == ["stitcher.skipped_stream"] * 2
 
 
 async def test_spec022_r23_missing_job_type_is_full(h: Harness) -> None:
@@ -583,10 +583,15 @@ async def test_spec022_nfr4_logs_have_no_coordinates_or_vectors(
         await _full(h, files)
         await h.boundary(retried)
 
-    assert caplog.records
-    for record in caplog.records:
+    assert _ours(caplog)
+    for record in _ours(caplog):
         text = json.dumps([record.getMessage(), *_extras(record)], default=str)
         assert "box" not in text.lower()
         assert "vector" not in record.getMessage().lower()
         for value in _extras(record):
             assert not isinstance(value, list | dict), (record.getMessage(), value)
+
+
+def _ours(caplog: pytest.LogCaptureFixture) -> list[logging.LogRecord]:
+    # 같은 프로세스의 다른 통합 테스트 워커 스레드가 남기는 로그를 빼고 이 서비스 로그만 본다.
+    return [r for r in caplog.records if r.name.startswith("track_stitcher")]
