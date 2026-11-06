@@ -22,6 +22,12 @@ type StageId = Literal[
     "normalize.store",
     "ai-gateway.queue_wait",
     "ai-gateway.handle",
+    "frame-encoder.queue_wait",
+    "frame-encoder.handle",
+    "encoder.segments",
+    "encoder.crops",
+    "encoder.store",
+    "encoder.prototype",
 ]
 STAGE_IDS: frozenset[str] = frozenset(get_args(StageId.__value__))
 

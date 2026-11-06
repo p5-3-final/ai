@@ -1,0 +1,23 @@
+[project]
+name = "frame-encoder"
+version = "0.1.0"
+description = "구간 프레임·크롭 벡터 저장, segment.embedded·event.candidate.vector 발행 (SPEC-019)"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "vlm-common",
+    "vlm-contracts",
+    "vlm-encoders",
+    "vlm-messaging",
+    "vlm-storage",
+]
+
+[tool.uv.sources]
+vlm-common = { workspace = true }
+vlm-contracts = { workspace = true }
+vlm-encoders = { workspace = true }
+vlm-messaging = { workspace = true }
+vlm-storage = { workspace = true }
+
+[build-system]
+requires = ["uv_build>=0.12,<0.13"]
+build-backend = "uv_build"

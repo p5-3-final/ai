@@ -1,0 +1,19 @@
+# 모델 없이 흐름만 확인하는 로컬 프로필. FRAME_ENCODER_ALLOW_MOCK=true일 때만 뜬다.
+# 벡터에 의미가 없으므로 검색 결과도 의미가 없다. ai-gateway의 local-mock 프로필과 모델 ID를 맞춘다.
+
+[encoder]
+kind = "mock"
+model_id = "mock:MobileCLIP2-S0:dfndr2b:mean-4"
+dimension = 512
+
+[encoding]
+batch_size = 16
+
+# mock 벡터는 점수를 미리 알 수 없어, 모든 구간이 후보가 되도록 임계값을 가장 낮게 둔다.
+# event.candidate.vector 발행 흐름만 확인하는 값이다.
+[prototypes]
+version = "local-mock-v1"
+
+[prototypes.types.fall]
+texts = ["a photo of a worker lying on the floor"]
+threshold = -0.99

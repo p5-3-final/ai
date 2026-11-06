@@ -97,10 +97,16 @@ class TestEventContract:
         schema = load_schema(_schema_name(topic, model))
         model_props = _properties(cast(JsonObject, model.model_json_schema(by_alias=True)))
 
+        required = _required(schema)
         for name, prop in _properties(schema).items():
             expected = _allowed_values(prop)
-            if expected is not None:
-                assert _allowed_values(model_props[name]) == expected, name
+            if expected is None:
+                continue
+            actual = _allowed_values(model_props[name])
+            # 계약에서 빠질 수 있는 필드는 모델이 None으로 나타내고 JSON에서는 뺀다.
+            if name not in required and actual is not None:
+                actual.discard(None)
+            assert actual == expected, name
 
 
 def test_unknown_fields_are_ignored_for_forward_compatibility(load_schema: SchemaLoader) -> None:

@@ -10,6 +10,7 @@ from decimal import Decimal
 from uuid import UUID
 
 from vlm_encoders.base import ImageDecodeError, ImageTextEncoder, Vector
+from vlm_encoders.loader import EncoderProfile
 
 from ai_gateway.adapters.base import (
     ProviderFailedError,
@@ -29,7 +30,7 @@ from ai_gateway.errors import (
 )
 from ai_gateway.gate import CacheStore, GateCall, ModelGate, Produced, cache_key
 from ai_gateway.images import ImageReader, QueryImagePolicy
-from ai_gateway.profile import EncoderProfile, GatewayProfile
+from ai_gateway.profile import GatewayProfile
 
 type JsonObject = dict[str, object]
 
