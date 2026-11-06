@@ -4,6 +4,7 @@
 """
 
 import re
+from decimal import Decimal
 from typing import Literal, Self
 
 from pydantic import Field, HttpUrl, model_validator
@@ -70,6 +71,8 @@ class TaskProfile(Profile):
     max_images: int = Field(gt=0)
     timeout_s: float = Field(gt=0)
     max_retries: int = Field(ge=0)
+    # 예산 예약에 쓰는 입력 토큰 예상값(이미지 포함). 정산은 공급자 토큰으로 한다(SPEC-016).
+    estimated_input_tokens: int = Field(default=0, ge=0)
 
     @model_validator(mode="after")
     def _both_or_none(self) -> Self:
@@ -136,6 +139,8 @@ class TextEmbeddingTask(Profile):
     max_text_chars: int = Field(gt=0)
     timeout_s: float = Field(gt=0)
     max_retries: int = Field(ge=0)
+    # 문장 하나의 입력 토큰 예상값(SPEC-016 R-10)
+    estimated_tokens_per_text: int = Field(default=0, ge=0)
 
     @model_validator(mode="after")
     def _all_or_none(self) -> Self:
@@ -162,11 +167,72 @@ class ParseProfile(Profile):
     max_output_tokens: int = Field(gt=0)
     timeout_s: float = Field(gt=0)
     max_retries: int = Field(ge=0)
+    # 예산 예약에 쓰는 입력 토큰 예상값(SPEC-016 R-10)
+    estimated_input_tokens: int = Field(default=0, ge=0)
 
     @model_validator(mode="after")
     def _both_or_none(self) -> Self:
         if (self.adapter is None) != (self.model is None):
             raise ValueError("adapter and model must be set together")
+        return self
+
+
+class CacheProfile(Profile):
+    """결과 캐시(SPEC-016 R-1, R-2). 영속 저장 결과는 보관 기간이 지나면 쓰지 않는다."""
+
+    retention_days: int = Field(default=30, gt=0)
+    # 앞단 캐시(Redis) 유지 시간
+    front_ttl_s: int = Field(default=3600, gt=0)
+
+
+class BudgetProfile(Profile):
+    """하루(UTC) 외부 모델 비용 한도(USD). 사용자 상한이 아니라 사고를 막는 안전장치다(SPEC-016)."""
+
+    daily_limit_usd: Decimal = Field(ge=0)
+    # 호출 서비스(X-Caller)별 한도. 없는 서비스는 전체 한도만 적용한다(R-21).
+    callers: dict[str, Decimal] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _non_negative(self) -> Self:
+        for name, limit in self.callers.items():
+            if limit < 0:
+                raise ValueError(f"budget for {name} must not be negative")
+        return self
+
+    def limit_for(self, caller: str) -> Decimal | None:
+        return self.callers.get(caller)
+
+
+class ModelPrice(Profile):
+    """100만 토큰당 USD. 단가가 없는 모델은 비용 0이다(SPEC-016 R-14)."""
+
+    input_per_million_usd: Decimal = Field(ge=0)
+    output_per_million_usd: Decimal = Field(default=Decimal(0), ge=0)
+
+
+class RateLimitProfile(Profile):
+    """모든 Pod를 합친 분당 한도(SPEC-016 R-15). Pod별 값은 Redis가 끊겼을 때 쓴다(R-17).
+
+    Pod별 값이 없으면 전체 값을 쓴다.
+    """
+
+    rpm: int | None = Field(default=None, gt=0)
+    tpm: int | None = Field(default=None, gt=0)
+    pod_rpm: int | None = Field(default=None, gt=0)
+    pod_tpm: int | None = Field(default=None, gt=0)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _pod_defaults(cls, data: object) -> object:
+        # 프로필은 frozen이라 검증 뒤에 채울 수 없어 입력 단계에서 채운다.
+        if isinstance(data, dict):
+            data = {"pod_rpm": data.get("rpm"), "pod_tpm": data.get("tpm")} | data
+        return data
+
+    @model_validator(mode="after")
+    def _some_limit(self) -> Self:
+        if self.rpm is None and self.tpm is None:
+            raise ValueError("rate limit needs rpm or tpm")
         return self
 
 
@@ -178,6 +244,12 @@ class GatewayProfile(Profile):
     encoder: EncoderProfile | None = None
     embed: EmbedProfile = Field(default_factory=EmbedProfile)
     parse: ParseProfile
+    cache: CacheProfile = Field(default_factory=CacheProfile)
+    # 없으면 예산 한도가 없다. 비용은 그래도 호출 로그에 남긴다.
+    budget: BudgetProfile | None = None
+    # [prices.<adapter>.<model>], [rate_limits.<adapter>.<model>]
+    prices: dict[str, dict[str, ModelPrice]] = Field(default_factory=dict)
+    rate_limits: dict[str, dict[str, RateLimitProfile]] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def _adapter_refs(self) -> Self:
@@ -188,7 +260,37 @@ class GatewayProfile(Profile):
         for name, adapter in refs:
             if adapter is not None and adapter not in self.adapters:
                 raise ValueError(f"task {name} refers to unknown adapter {adapter!r}")
+        self._check_guards()
         return self
+
+    def _check_guards(self) -> None:
+        """단가·분당 한도·예산이 쓰는 Adapter·모델·호출 서비스를 가리키는지(SPEC-016 R-20)."""
+        used = self.model_pairs()
+        for section, table in (("prices", self.prices), ("rate_limits", self.rate_limits)):
+            for adapter, models in table.items():
+                for model in models:
+                    if (adapter, model) not in used:
+                        raise ValueError(f"{section} refers to unused model {adapter}/{model}")
+        if self.budget is not None:
+            unknown = sorted(set(self.budget.callers) - set(self.callers.allowed))
+            if unknown:
+                raise ValueError(f"budget refers to unknown callers {unknown}")
+
+    def model_pairs(self) -> set[tuple[str, str]]:
+        """프로필이 외부 모델로 부르는 (Adapter, 모델) 목록."""
+        pairs = {(t.adapter, t.model) for t in self.tasks.values() if t.adapter and t.model}
+        text = self.embed.embed_text
+        if text is not None and text.adapter and text.model:
+            pairs.add((text.adapter, text.model))
+        if self.parse.adapter and self.parse.model:
+            pairs.add((self.parse.adapter, self.parse.model))
+        return pairs
+
+    def price_of(self, adapter: str, model: str) -> ModelPrice | None:
+        return self.prices.get(adapter, {}).get(model)
+
+    def rate_limit_of(self, adapter: str, model: str) -> RateLimitProfile | None:
+        return self.rate_limits.get(adapter, {}).get(model)
 
 
 def check_profile(profile: GatewayProfile, *, allow_mock: bool, has_openai_key: bool) -> None:
