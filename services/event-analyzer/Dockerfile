@@ -36,6 +36,9 @@ FROM base AS runtime
 RUN groupadd --system --gid 10001 app \
     && useradd --system --uid 10001 --gid app --no-create-home app
 COPY --from=build /opt/venv /opt/venv
+# 판정 규칙 프로필(SPEC-023 R-16). 다른 프로필은 EVENT_ANALYZER_PROFILE_PATH로 가리킨다.
+COPY services/event-analyzer/profiles /app/profiles
+ENV EVENT_ANALYZER_PROFILE_PATH=/app/profiles/local.toml
 USER 10001:10001
 # health 전용 포트(docs 서비스 카탈로그 "포트 규칙")
 EXPOSE 8000

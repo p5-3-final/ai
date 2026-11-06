@@ -1,5 +1,7 @@
 """event-analyzer 설정. 값은 환경변수에서만 읽는다(로컬은 compose, 운영은 ConfigMap)."""
 
+from pathlib import Path
+
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from vlm_common.settings import ServiceSettings
@@ -34,3 +36,7 @@ class EventAnalyzerSettings(BaseSettings):
     retry_base_delay_s: float = Field(default=1.0, ge=0)
     # 한 메시지 안의 동시 판정 수(SPEC-020 R-18)
     concurrency: int = Field(default=4, ge=1)
+    # 판정 규칙 프로필(TOML, SPEC-023 R-16). 이미지에는 /app/profiles에 들어 있다.
+    profile_path: Path = Path("/app/profiles/local.toml")
+    # 실시간 재판정 간격 상태(SPEC-023 R-18). 비우면 창마다 판정한다.
+    redis_url: str | None = None
