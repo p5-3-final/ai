@@ -41,6 +41,28 @@ class VideoUploaded(Event):
     # 업로드 상한 5GiB (SPEC-003)
     size_bytes: int = Field(ge=1, le=5_368_709_120)
     content_type: Literal["video/mp4", "video/quicktime", "video/x-matroska", "video/x-msvideo"]
+    # 작업 세션에 속한 영상만 둘 다 있다(media SPEC-017 R-11, R-12). 없으면 JSON에서 뺀다.
+    session_id: UUID | None = Field(default=None, exclude_if=lambda v: v is None)
+    role: Literal["BEFORE", "DURING", "AFTER"] | None = Field(
+        default=None, exclude_if=lambda v: v is None
+    )
+
+    @model_validator(mode="after")
+    def _session_complete(self) -> Self:
+        if (self.session_id is None) != (self.role is None):
+            raise ValueError("sessionId and role must be given together")
+        return self
+
+
+class Retention(BaseModel):
+    """삭제한 영상의 학습용 보존 정보(media SPEC-018 R-8, ADR-0011)."""
+
+    model_config = ConfigDict(
+        alias_generator=to_camel, populate_by_name=True, frozen=True, extra="forbid"
+    )
+
+    retention_key: str = Field(pattern=r"^[0-9a-f]{64}$")
+    retain_until: AwareDatetime
 
 
 class VideoDeleted(Event):
@@ -48,6 +70,9 @@ class VideoDeleted(Event):
 
     event_type: Literal["video.deleted"] = "video.deleted"
     schema_version: Literal[1] = 1
+    # 보존에 동의한 영상에만 있다. ai의 서비스 데이터(호출 로그·결과 캐시·벡터 파일)는 모두
+    # 즉시 삭제 등급이라 이 값과 상관없이 지운다(ADR-0011 (a)).
+    retention: Retention | None = Field(default=None, exclude_if=lambda v: v is None)
 
 
 class VideoNormalizing(Event):
