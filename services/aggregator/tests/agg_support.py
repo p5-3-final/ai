@@ -743,3 +743,9 @@ class StreamHarness(Harness):
             clock=lambda: T0,
             now=lambda: NOW,
         )
+
+
+FALL_STREAM = analysis(
+    "fall", risk=True, risk_type="fall", risk_reason="쓰러진 작업자", evidence_end=12.0
+)
+UP_STREAM = analysis("fall", risk=False, risk_type="fall", evidence_end=33.0, after_state="일어남")

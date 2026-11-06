@@ -79,8 +79,8 @@ updated: 2026-11-07
 
 ## Phase 8: 워커와 배포
 
-- [ ] T038 기동 조립: 설정, 두 클라이언트, 저장소, 워커 — 테스트 `t/test_aggregator_main.py`, 구현 `agg/{__main__,settings}.py`
-- [ ] T039 [NFR-4] [R-23] 워커 e2e: 정상 발행 뒤 커밋, 잘못된 메시지·400 DLQ, 503 소진 재시도 토픽 — 테스트 `t/test_aggregator_worker_e2e.py`
+- [x] T038 기동 조립: 설정, 두 클라이언트, 저장소, 워커 — 테스트 `t/test_aggregator_main.py`, 구현 `agg/{__main__,settings}.py`
+- [x] T039 [NFR-4] [R-23] 워커 e2e: 정상 발행 뒤 커밋, 잘못된 메시지·400 DLQ, 503 소진 재시도 토픽 — 테스트 `t/test_aggregator_worker_e2e.py`
 - [x] T040 [NFR-3] 로그에 요약 문장·이벤트 설명 원문이 없음 — 테스트 `t/test_aggregator_service.py`
 - [ ] T041 [NFR-1] 생성 입력(이벤트 2,000·트랙 5,000·머문 구간 20,000)으로 `compute` p95 5초 — 테스트 `t/test_aggregator_performance.py`
 - [ ] T042 Dockerfile, README(환경변수 표), CI `service-images`에 aggregator runtime 빌드
@@ -89,7 +89,7 @@ updated: 2026-11-07
 ## Phase 9: v5.1 추가(계약 묶음 4.0.0)
 
 - [x] T044 [R-4] `rule*` 이벤트 수·트랙 수만 대조, 재시도 상한 뒤 `partial`·`missingCounts`로 발행 — 테스트 `t/test_aggregator_reader.py`, `t/test_aggregator_service.py`, 구현 `agg/reader.py`, `agg/service.py`, `vlm_contracts/events.py`(`SourceCompleted`·`AnalysisCompleted` 4.0.0 필드)
-- [ ] T045 [R-25] [R-29] 대기 집합 저장소(`pending-vector:<jobId>` 7일, `pending:<sourceId>:<chunkId>` 1시간, HSET 멱등)와 워커 경로 `event.analyzed`·`track.detected` — 테스트 `t/test_aggregator_pending.py`(integration), `t/test_aggregator_service.py`, 구현 `agg/pending.py`, `agg/service.py`, `agg/__main__.py`, `agg/settings.py`(`AGGREGATOR_REDIS_URL`)
+- [x] T045 [R-25] [R-29] 대기 집합 저장소(`pending-vector:<jobId>` 7일, `pending:<sourceId>:<chunkId>` 1시간, HSET 멱등)와 워커 경로 `event.analyzed`·`track.detected` — 테스트 `t/test_aggregator_pending.py`(integration), `t/test_aggregator_service.py`, 구현 `agg/pending.py`, `agg/service.py`, `agg/__main__.py`, `agg/settings.py`(`AGGREGATOR_REDIS_URL`)
 - [x] T046 [R-26] 읽은 이벤트와 대기 집합 벡터 이벤트를 eventId로 합침 — 테스트 `t/test_aggregator_service.py`, 구현 `agg/reader.py`
 - [x] T047 [R-28] 결과 파일 `inputEventIds`·`revision`, `source.completed.revision`과 결정적 eventId — 테스트 `t/test_aggregator_ids.py`, `t/test_aggregator_service.py`, 구현 `agg/result.py`, `agg/ids.py`
 - [x] T048 [R-27] 발행 뒤 도착한 `vector*` `confirmed` 이벤트: 전체 재계산·같은 경로 저장·`revision + 1` 재발행, 미발행 job이거나 `confirmed`가 아니면 대기만 — 테스트 `t/test_aggregator_revision.py`, `t/test_aggregator_service.py`, 구현 `agg/revision.py`, `agg/service.py`
@@ -99,7 +99,7 @@ updated: 2026-11-07
 - [x] T052 [R-33] `libs/stream-client` 생성 모델·`get_session_zones`, CI 생성 비교에 `stream-service.yaml`, 세션당 1회 Redis 캐시 — 테스트 `sc/tests/test_stream_client.py`, `t/test_aggregator_stream_service.py`, 구현 `sc/`, `agg/stream.py`, 루트 `pyproject.toml`, `.github/workflows/checks.yml`
 - [x] T053 [R-31] `hazard_zone_access`와 활성 위험이 겹치면 대표 프레임으로 `event_judge`, `rule+vlm` 기록, Redis 계수로 세션당 상한(SPEC-028 T032와 같은 계수) — 테스트 `t/test_aggregator_stream_service.py`, `t/test_aggregator_judge_budget.py`(integration), 구현 `agg/stream.py`, `agg/judge_budget.py`
 - [x] T054 [R-32] `analysis.completed(job, STREAM)`: 세션 상태 + 창 delta 전체로 노출·타임라인·요약 → 결과 파일 → `source.completed(revision 1)` — 테스트 `t/test_aggregator_stream_service.py`, 구현 `agg/stream.py`, `agg/result.py`
-- [ ] T055 [R-34] 단계 `aggregate.fold`와 STREAM e2e(창 2개 → `state.updated` 2건, job → `source.completed` 1건, 계약 통과) — 테스트 `t/test_aggregator_stream_service.py`, `t/test_aggregator_worker_e2e.py`, `libs/contracts/tests/test_stage_contracts.py`, 구현 `agg/stream.py`, `vlm_contracts/stages.py`
+- [x] T055 [R-34] 단계 `aggregate.fold`와 STREAM e2e(창 2개 → `state.updated` 2건, job → `source.completed` 1건, 계약 통과) — 테스트 `t/test_aggregator_stream_service.py`, `t/test_aggregator_worker_e2e.py`, `libs/contracts/tests/test_stage_contracts.py`, 구현 `agg/stream.py`, `vlm_contracts/stages.py`
 - [ ] T056 README(대기 집합·revision·STREAM·Redis 키 표), `.env.example`, 로컬 compose 토픽 `state.updated`·소비 그룹(docs PR), 창 처리 p95 측정(목표 2초). 측정 기록에 남긴다
 
 ## 측정 기록
