@@ -125,7 +125,9 @@ class FrameEncoderService:
         prototypes = self._config.prototypes
         if prototypes is None:
             return
-        candidates = self._candidates(ready, segments, prototypes)
+        with timing.stage("encoder.prototype", unit="segments") as block:
+            candidates = self._candidates(ready, segments, prototypes)
+            block.count = len(segments)
         if candidates:
             self._publish(
                 EventCandidateVector(

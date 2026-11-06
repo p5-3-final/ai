@@ -383,3 +383,30 @@ async def test_spec_019_r13_zero_candidates_publishes_only_segment_embedded() ->
     await _with_prototypes(storage, publisher, _prototypes(1.0)).handle(ready, CTX)
 
     assert [t for t, _, _, _ in publisher.published] == ["segment.embedded"]
+
+
+async def test_spec_019_r19_records_prototype_stage_after_store() -> None:
+    ready = segment_ready(segments=2, crops=1)
+    storage = storage_with_images(ready)
+    ctx = _timed_ctx()
+
+    await _with_prototypes(storage, RecordingPublisher(), _prototypes(-0.99)).handle(ready, ctx)
+
+    timings = ctx.timing.timings
+    assert [t.stage_id for t in timings] == [
+        "encoder.segments",
+        "encoder.crops",
+        "encoder.store",
+        "encoder.prototype",
+    ]
+    # 구간 2개를 프로토타입과 비교했다.
+    assert (timings[-1].count, timings[-1].unit, timings[-1].status) == (2, "segments", "ok")
+
+
+async def test_spec_019_r19_no_prototype_stage_without_prototypes() -> None:
+    ready = segment_ready()
+    ctx = _timed_ctx()
+
+    await _service(storage_with_images(ready), RecordingPublisher()).handle(ready, ctx)
+
+    assert "encoder.prototype" not in [t.stage_id for t in ctx.timing.timings]
