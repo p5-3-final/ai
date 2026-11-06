@@ -1,5 +1,6 @@
 """API 테스트 공통 준비물: 가짜 Adapter·호출 로그와 앱 조립."""
 
+import asyncio
 import functools
 import hashlib
 import json
@@ -142,6 +143,8 @@ class FakeAdapter:
 
     reply: str | Exception = ""
     calls: list[AdapterCall] = field(default_factory=list)
+    # 응답 전에 기다리는 시간. 마감이 지나는 상황을 만든다(SPEC-021).
+    delay_s: float = 0.0
 
     async def complete(
         self,
@@ -160,6 +163,7 @@ class FakeAdapter:
                 model, message, images, max_output_tokens, traceparent, timeout_s, temperature
             )
         )
+        await asyncio.sleep(self.delay_s)
         if isinstance(self.reply, Exception):
             raise self.reply
         return Completion(text=self.reply, input_tokens=100, output_tokens=20)
@@ -170,6 +174,7 @@ class EmbedCall:
     model: str
     texts: list[str]
     traceparent: str | None
+    timeout_s: float = 0
 
 
 @dataclass
@@ -178,6 +183,7 @@ class FakeEmbedder:
 
     reply: list[list[float]] | Exception | None = None
     calls: list[EmbedCall] = field(default_factory=list)
+    delay_s: float = 0.0
 
     async def embed(
         self,
@@ -188,7 +194,8 @@ class FakeEmbedder:
         max_retries: int,
         traceparent: str | None,
     ) -> Embeddings:
-        self.calls.append(EmbedCall(model, texts, traceparent))
+        self.calls.append(EmbedCall(model, texts, traceparent, timeout_s))
+        await asyncio.sleep(self.delay_s)
         if isinstance(self.reply, Exception):
             raise self.reply
         if self.reply is not None:
@@ -204,12 +211,24 @@ class RecordingCallLog:
         self.entries.append(entry)
 
 
+class CountingStorage(InMemoryStorage):
+    """읽은 횟수를 세는 메모리 저장소. 저장소를 부르지 않았는지 확인한다(SPEC-021 R-2)."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.reads = 0
+
+    def get_bytes(self, key: str) -> bytes:
+        self.reads += 1
+        return super().get_bytes(key)
+
+
 @dataclass
 class Gateway:
     client: httpx.AsyncClient
     adapter: FakeAdapter
     call_log: RecordingCallLog
-    storage: InMemoryStorage
+    storage: CountingStorage
     cache: "MemoryCache"
     budget: "MemoryBudget"
 
@@ -219,7 +238,7 @@ async def gateway(
     registry_dir: Path,
     gateway_profile: GatewayProfile | None = None,
     adapter: FakeAdapter | None = None,
-    prepare: Callable[[InMemoryStorage], None] | None = None,
+    prepare: Callable[[CountingStorage], None] | None = None,
     ready: Callable[[], bool] = lambda: True,
     adapters: dict[str, VlmAdapter] | None = None,
     call_log: CallLogWriter | None = None,
@@ -230,7 +249,7 @@ async def gateway(
     limiter: Limiter | None = None,
 ) -> AsyncIterator[Gateway]:
     """가짜 Adapter·메모리 저장소·기록용 호출 로그로 앱을 띄운다."""
-    storage = InMemoryStorage()
+    storage = CountingStorage()
     for i, key in enumerate(IMAGE_KEYS):
         storage.put_bytes(key, f"jpeg-{i}".encode(), "image/jpeg")
     if prepare is not None:
@@ -276,10 +295,13 @@ def analyze_body(**changes: object) -> dict[str, object]:
 
 
 async def post_analyze(
-    client: httpx.AsyncClient, body: dict[str, object], caller: str | None = CALLER
+    client: httpx.AsyncClient,
+    body: dict[str, object],
+    caller: str | None = CALLER,
+    headers: dict[str, str] | None = None,
 ) -> httpx.Response:
-    headers = {"X-Caller": caller} if caller is not None else {}
-    return await client.post("/v1/analyze", json=body, headers=headers)
+    sent = {"X-Caller": caller} if caller is not None else {}
+    return await client.post("/v1/analyze", json=body, headers={**sent, **(headers or {})})
 
 
 def mock_encoder() -> MockEncoder:
@@ -287,10 +309,13 @@ def mock_encoder() -> MockEncoder:
 
 
 async def post_embed(
-    client: httpx.AsyncClient, body: dict[str, object], caller: str | None = CALLER
+    client: httpx.AsyncClient,
+    body: dict[str, object],
+    caller: str | None = CALLER,
+    headers: dict[str, str] | None = None,
 ) -> httpx.Response:
-    headers = {"X-Caller": caller} if caller is not None else {}
-    return await client.post("/v1/embed", json=body, headers=headers)
+    sent = {"X-Caller": caller} if caller is not None else {}
+    return await client.post("/v1/embed", json=body, headers={**sent, **(headers or {})})
 
 
 @functools.cache
@@ -330,10 +355,15 @@ def put_encoder_model(models: ObjectStorage, weights: bytes, dimension: int = 51
 
 
 async def post_parse(
-    client: httpx.AsyncClient, query: object, caller: str | None = CALLER
+    client: httpx.AsyncClient,
+    query: object,
+    caller: str | None = CALLER,
+    headers: dict[str, str] | None = None,
 ) -> httpx.Response:
-    headers = {"X-Caller": caller} if caller is not None else {}
-    return await client.post("/v1/parse", json={"query": query}, headers=headers)
+    sent = {"X-Caller": caller} if caller is not None else {}
+    return await client.post(
+        "/v1/parse", json={"query": query}, headers={**sent, **(headers or {})}
+    )
 
 
 @dataclass
@@ -346,8 +376,13 @@ class MemoryCache:
     front: bool = True
     # 다른 요청이 잠근 호출을 기다리면 이 값을 받는다(None이면 그 호출이 실패한 것).
     awaited: dict[str, object] | None = None
+    # wait_for가 결과를 돌려주기 전에 기다리는 시간(동시 호출 합치기 대기, SPEC-021 R-1)
+    wait_s: float = 0.0
+    # get·try_lock·wait_for를 부른 횟수(SPEC-021 R-2)
+    calls: int = 0
 
     async def get(self, key: str) -> dict[str, object] | None:
+        self.calls += 1
         return self.values.get(key)
 
     async def put(
@@ -357,6 +392,7 @@ class MemoryCache:
         self.sources[key] = source_id
 
     async def try_lock(self, key: str, ttl_s: float) -> bool | None:
+        self.calls += 1
         if not self.front:
             return None
         if key in self.locks:
@@ -368,7 +404,10 @@ class MemoryCache:
         self.locks.discard(key)
 
     async def wait_for(self, key: str, timeout_s: float) -> dict[str, object] | None:
-        return self.awaited
+        self.calls += 1
+        # 실제 구현처럼 제한 시간이 지나면 결과 없이 돌아온다.
+        await asyncio.sleep(min(self.wait_s, timeout_s))
+        return self.awaited if self.wait_s <= timeout_s else None
 
     async def delete_source(self, source_id: UUID) -> int:
         keys = [k for k, s in self.sources.items() if s == source_id]
@@ -384,8 +423,11 @@ class MemoryBudget:
 
     limits: dict[str, Decimal] = field(default_factory=dict)
     spent: dict[str, Decimal] = field(default_factory=dict)
+    # reserve를 부른 횟수(SPEC-021 R-2)
+    reserves: int = 0
 
     async def reserve(self, caller: str, cost: Decimal) -> Reservation | None:
+        self.reserves += 1
         scopes = (caller, "*")
         for scope in scopes:
             limit = self.limits.get(scope)

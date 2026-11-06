@@ -10,6 +10,8 @@ from uuid import UUID
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 from pydantic.alias_generators import to_camel
 
+from vlm_contracts.models import ClassName
+
 
 class Event(BaseModel):
     """모든 이벤트가 담는 envelope(`_envelope.schema.json`).
@@ -283,9 +285,16 @@ class ReadyCrop(_Part):
     key: str = Field(pattern=_BLURRED_IMAGE)
 
 
+# Job 유형(v5.1, ADR-0015). 메시지에 없으면 FULL이다. 계약 테스트가 JSON Schema enum을 비교하도록
+# `type` 문($ref가 됨) 대신 일반 별칭으로 둔다(아래 판정 방식·unverified 사유도 같다).
+JobType = Literal["FULL", "REANALYZE", "REEMBED", "STREAM"]
+
+
 class _Execution(Event):
     """청크 실행 하나에 묶인 이벤트의 식별자."""
 
+    # 없으면 FULL이다. 받은 메시지 모양을 바꾸지 않도록 None이면 JSON에서 뺀다.
+    job_type: JobType | None = Field(default=None, exclude_if=lambda v: v is None)
     job_id: UUID
     chunk_id: UUID
     execution_id: UUID
@@ -352,6 +361,8 @@ class EventCandidateVector(_Execution):
     prototype_version: str = Field(pattern=_PROTOTYPE_VERSION)
     taxonomy_version: Literal["v2"] = "v2"
     candidates: list[VectorCandidate] = Field(min_length=1, max_length=512)
+    # 실행당 유형별 상한으로 잘린 후보 수(v5.1, SPEC-019 R-21)
+    dropped_count: int | None = Field(default=None, ge=0, exclude_if=lambda v: v is None)
 
 
 class VLMAnalysis(_Part):
@@ -412,6 +423,35 @@ class VectorEvidence(_Part):
     embedding_model: str = Field(pattern=_MODEL_ID)
 
 
+class DetectorEvidence(_Part):
+    """탐지기·규칙 후보의 근거(`event.analyzed`의 `detectorCandidate`, SPEC-023 R-10)."""
+
+    chunk_id: UUID
+    execution_id: UUID
+    trigger_class: ClassName
+    score: float = Field(ge=0, le=1)
+    observation_count: int = Field(ge=1)
+    track_local_id: str | None = Field(pattern=r"^[A-Za-z0-9_-]{1,64}$")
+    zone_id: UUID | None
+    zone_name: str | None = Field(max_length=100)
+    detector_profile: str = Field(pattern=_PROTOTYPE_VERSION)
+    merged_candidate_ids: list[UUID]
+
+    @model_validator(mode="after")
+    def _unique_merged(self) -> Self:
+        if len(set(self.merged_candidate_ids)) != len(self.merged_candidate_ids):
+            raise ValueError("mergedCandidateIds must be unique")
+        return self
+
+
+JudgmentMethod = Literal[
+    "rule", "rule+carry", "rule+vlm", "rule+vlm+escalate", "vector+vlm", "vector+vlm+escalate"
+]
+# VLM을 부르지 않는 판정 방식. 판정 호출 기록이 없다.
+_NO_CALL_METHODS: frozenset[str] = frozenset({"rule", "rule+carry"})
+UnverifiedReason = Literal["budget_exceeded", "model_unavailable", "call_cap_reached"]
+
+
 class Judgment(_Part):
     """판정 호출 하나의 기록."""
 
@@ -437,19 +477,35 @@ class EventAnalyzed(_Execution):
     evidence_frame_keys: list[Annotated[str, Field(pattern=_BLURRED_IMAGE)]] = Field(
         min_length=1, max_length=12
     )
-    judgment_method: Literal["vector+vlm", "vector+vlm+escalate"]
-    # 벡터 방식(지금은 전부)이면 있다. 탐지기 후보 방식이 생기면 그때 None이 된다.
+    judgment_method: JudgmentMethod
+    # 벡터 후보(vector…)면 있다(SPEC-020).
     vector_candidate: VectorEvidence | None = Field(default=None, exclude_if=lambda v: v is None)
+    # 탐지기·규칙 후보(rule…)면 있다(SPEC-023).
+    detector_candidate: DetectorEvidence | None = Field(
+        default=None, exclude_if=lambda v: v is None
+    )
     analysis: VLMAnalysis
-    judgments: list[Judgment] = Field(min_length=1, max_length=2)
+    judgments: list[Judgment] = Field(max_length=2)
     review_required: bool
     review_reasons: list[Literal["judgment_disagreement"]]
+    # analysis가 unverified인 이유(v5.1, ADR-0016). 계약은 null과 없음을 같게 보므로 None이면 뺀다.
+    unverified_reason: UnverifiedReason | None = Field(default=None, exclude_if=lambda v: v is None)
+    # rule+carry일 때 결과를 복사한 원본 event.analyzed의 eventId(v5.1, SPEC-023 R-17·R-18)
+    carried_from_event_id: UUID | None = Field(default=None, exclude_if=lambda v: v is None)
     taxonomy_version: Literal["v2"] = "v2"
 
     @model_validator(mode="after")
-    def _vector_evidence(self) -> Self:
+    def _method_evidence(self) -> Self:
+        # 계약 allOf의 if/then 네 개: 판정 방식에 따라 근거와 판정 호출 기록 개수가 정해진다.
         if self.judgment_method.startswith("vector") and self.vector_candidate is None:
             raise ValueError("vectorCandidate is required for vector judgment methods")
+        if self.judgment_method.startswith("rule") and self.detector_candidate is None:
+            raise ValueError("detectorCandidate is required for rule judgment methods")
+        no_call = self.judgment_method in _NO_CALL_METHODS
+        if no_call and self.judgments:
+            raise ValueError("judgments must be empty for rule and rule+carry")
+        if not no_call and not self.judgments:
+            raise ValueError("judgments needs at least one call for VLM judgment methods")
         if len(set(self.review_reasons)) != len(self.review_reasons):
             raise ValueError("reviewReasons must be unique")
         return self

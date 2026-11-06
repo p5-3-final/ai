@@ -47,6 +47,24 @@ class ProviderUnavailableError(GatewayRequestError):
     sent = True
 
 
+class DeadlineExceededError(ProviderUnavailableError):
+    """호출자 마감(`X-Request-Deadline`)이 지났다(SPEC-021 R-2, R-3).
+
+    공급자 시간 초과의 하위 클래스라 게이트·호출 로그·예산 정산이 같은 경로로 처리하고 코드만 원인을
+    나눈다. `sent`는 공급자에 보냈을 수 있는지다. 받을 때나 게이트 대기 중에 지났으면 False라 예산
+    예약을 되돌린다.
+    """
+
+    code = "AI_DEADLINE_EXCEEDED"
+    status = 504
+    title = "Gateway Timeout"
+    log_code = "AI_DEADLINE_EXCEEDED"
+
+    def __init__(self, detail: str, *, sent: bool) -> None:
+        super().__init__(detail)
+        self.sent = sent
+
+
 class ProviderFailedError(GatewayRequestError):
     """공급자가 요청 자체를 거부했다(429 외 4xx). 다시 보내도 같을 가능성이 높다(R-19)."""
 

@@ -19,6 +19,7 @@ from ai_gateway.adapters.base import (
 )
 from ai_gateway.analyze import CallLogWriter
 from ai_gateway.call_log import CallLogEntry, CallStatus, new_call_id
+from ai_gateway.deadline import Deadline, cap
 from ai_gateway.errors import (
     BudgetExceededError,
     CallerForbiddenError,
@@ -47,6 +48,8 @@ class EmbedCommand:
     texts: list[str] | None
     image_keys: list[str] | None
     traceparent: str | None = None
+    # 호출자 마감(SPEC-021). 없으면 프로필 제한 시간만 쓴다(R-5).
+    deadline: Deadline | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -160,7 +163,9 @@ class EmbedService:
         timeout_s = settings.timeout_s if settings else 0.0
         locked: list[str] = []
         try:
-            mine = await self._claim(missing, keys, vectors, locked, timeout_s)
+            mine = await self._claim(
+                missing, keys, vectors, locked, cap(command.deadline, timeout_s)
+            )
             if not mine:
                 await self._record(call.entry("success", plan, cache_hit=True, costs=_Costs.free()))
                 return _result(call, command, plan, vectors)
@@ -183,6 +188,7 @@ class EmbedService:
                     input_tokens=per_text * len(texts),
                     output_tokens=0,
                     timeout_s=timeout_s,
+                    deadline=command.deadline,
                 ),
                 invoke,
             )
@@ -275,7 +281,8 @@ class EmbedService:
                 result = await adapter.embed(
                     model=model,
                     texts=texts,
-                    timeout_s=text.timeout_s,
+                    # 호출 직전의 남은 시간으로 줄인다(SPEC-021 R-1).
+                    timeout_s=cap(command.deadline, text.timeout_s),
                     max_retries=text.max_retries,
                     traceparent=command.traceparent,
                 )

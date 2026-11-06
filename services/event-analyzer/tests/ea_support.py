@@ -14,7 +14,8 @@ from pydantic import Field
 from pydantic_settings import BaseSettings
 from referencing import Registry, Resource
 from referencing.jsonschema import DRAFT202012, Schema
-from vlm_ai_client.client import AiGatewayError, AnalyzeRequest, AnalyzeResponse
+from vlm_ai_client.client import AiGatewayError
+from vlm_ai_client.models import AnalyzeRequest, AnalyzeResponse
 from vlm_contracts.events import (
     DetectableEventType,
     Event,

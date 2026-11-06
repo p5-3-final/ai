@@ -1,0 +1,21 @@
+[project]
+name = "track-analyzer"
+version = "0.1.0"
+description = "트랙 속성 분석·객체 질문, track.analyzed 발행 (SPEC-024)"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "vlm-ai-client",
+    "vlm-common",
+    "vlm-contracts",
+    "vlm-messaging",
+]
+
+[tool.uv.sources]
+vlm-ai-client = { workspace = true }
+vlm-common = { workspace = true }
+vlm-contracts = { workspace = true }
+vlm-messaging = { workspace = true }
+
+[build-system]
+requires = ["uv_build>=0.12,<0.13"]
+build-backend = "uv_build"

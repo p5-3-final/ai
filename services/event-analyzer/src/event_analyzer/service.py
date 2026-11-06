@@ -8,7 +8,8 @@ from datetime import UTC, datetime
 from typing import Protocol
 
 from pydantic import ValidationError
-from vlm_ai_client.client import AiGatewayError, AnalyzeImage, AnalyzeRequest, AnalyzeResponse
+from vlm_ai_client.client import AiGatewayError
+from vlm_ai_client.models import AnalyzeRequest, AnalyzeResponse, ImageRef
 from vlm_contracts.events import (
     Event,
     EventAnalyzed,
@@ -188,7 +189,7 @@ def _request(
     return AnalyzeRequest(
         task_type=task_type,
         source_id=message.source_id,
-        images=[AnalyzeImage(storage_key=key) for key in candidate.frame_keys],
+        images=[ImageRef(storage_key=key) for key in candidate.frame_keys],
         variables={
             "eventType": candidate.event_type,
             "startSec": candidate.start_ms / 1000,

@@ -104,7 +104,8 @@ class TestEventContract:
                 continue
             actual = _allowed_values(model_props[name])
             # 계약에서 빠질 수 있는 필드는 모델이 None으로 나타내고 JSON에서는 뺀다.
-            if name not in required and actual is not None:
+            # 계약이 null을 값으로 허용하는 필드(`unverifiedReason`)는 None도 비교한다.
+            if name not in required and actual is not None and None not in expected:
                 actual.discard(None)
             assert actual == expected, name
 
@@ -185,3 +186,47 @@ def test_normalization_version_pattern_is_enforced(load_schema: SchemaLoader) ->
 
     with pytest.raises(ValidationError, match="normalizationVersion"):
         model.model_validate({**ready, "normalizationVersion": "bad version!"})
+
+
+def _analyzed_examples(load_schema: SchemaLoader) -> tuple[JsonObject, JsonObject]:
+    vector, rule = cast(list[JsonObject], load_schema("event.analyzed")["examples"])
+    return vector, rule
+
+
+def test_rule_method_requires_detector_candidate(load_schema: SchemaLoader) -> None:
+    _, rule = _analyzed_examples(load_schema)
+    without = {k: v for k, v in rule.items() if k != "detectorCandidate"}
+
+    with pytest.raises(ValidationError, match="detectorCandidate"):
+        EVENT_MODELS["event.analyzed"].model_validate(without)
+
+
+@pytest.mark.parametrize("method", ["rule", "rule+carry"])
+def test_rule_methods_without_vlm_have_no_judgments(load_schema: SchemaLoader, method: str) -> None:
+    vector, rule = _analyzed_examples(load_schema)
+    judgments = cast(list[JsonObject], vector["judgments"])
+
+    with pytest.raises(ValidationError, match="judgments"):
+        EVENT_MODELS["event.analyzed"].model_validate(
+            {**rule, "judgmentMethod": method, "judgments": judgments[:1]}
+        )
+
+
+@pytest.mark.parametrize("method", ["rule+vlm", "vector+vlm"])
+def test_vlm_methods_require_a_judgment(load_schema: SchemaLoader, method: str) -> None:
+    vector, rule = _analyzed_examples(load_schema)
+    base = rule if method.startswith("rule") else vector
+
+    with pytest.raises(ValidationError, match="judgments"):
+        EVENT_MODELS["event.analyzed"].model_validate(
+            {**base, "judgmentMethod": method, "judgments": []}
+        )
+
+
+def test_unverified_reason_and_job_type_round_trip(load_schema: SchemaLoader) -> None:
+    vector, _ = _analyzed_examples(load_schema)
+    message = {**vector, "jobType": "STREAM", "unverifiedReason": "call_cap_reached"}
+
+    parsed = EVENT_MODELS["event.analyzed"].model_validate(message)
+
+    assert json.loads(parsed.model_dump_json(by_alias=True)) == message

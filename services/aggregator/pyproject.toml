@@ -1,0 +1,28 @@
+[project]
+name = "aggregator"
+version = "0.1.0"
+description = "영상 단위 병합·위험 상태 전이·요약, source.completed·state.updated 발행 (SPEC-027, SPEC-028)"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "redis>=5",
+    "vlm-ai-client",
+    "vlm-analysis-client",
+    "vlm-common",
+    "vlm-contracts",
+    "vlm-messaging",
+    "vlm-storage",
+    "vlm-stream-client",
+]
+
+[tool.uv.sources]
+vlm-ai-client = { workspace = true }
+vlm-analysis-client = { workspace = true }
+vlm-common = { workspace = true }
+vlm-contracts = { workspace = true }
+vlm-messaging = { workspace = true }
+vlm-storage = { workspace = true }
+vlm-stream-client = { workspace = true }
+
+[build-system]
+requires = ["uv_build>=0.12,<0.13"]
+build-backend = "uv_build"

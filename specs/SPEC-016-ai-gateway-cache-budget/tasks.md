@@ -47,7 +47,7 @@ updated: 2026-11-07
 
 ## Phase 7: v5.1 추가(계약 묶음 4.0.0)
 
-- [ ] T016 [R-23] `unverified` 응답에 `unverifiedReason`(`model_unavailable`·`budget_exceeded`), 그 밖에는 싣지 않음 — 테스트 `t/test_analyze_api.py`, `t/test_contract.py`, 구현 `gw/analyze.py`, `gw/api.py`
+- [x] T016 [R-23] `unverified` 응답에 `unverifiedReason`(`model_unavailable`·`budget_exceeded`), 그 밖에는 싣지 않음 — 테스트 `t/test_analyze_api.py`, `t/test_contract.py`, 구현 `gw/analyze.py`, `gw/api.py`
 
 ## 완료 조건 (Definition of Done)
 

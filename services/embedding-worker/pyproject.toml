@@ -1,0 +1,23 @@
+[project]
+name = "embedding-worker"
+version = "0.1.0"
+description = "텍스트 임베딩, embedding.ready 발행 (SPEC-025)"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "vlm-ai-client",
+    "vlm-common",
+    "vlm-contracts",
+    "vlm-messaging",
+    "vlm-storage",
+]
+
+[tool.uv.sources]
+vlm-ai-client = { workspace = true }
+vlm-common = { workspace = true }
+vlm-contracts = { workspace = true }
+vlm-messaging = { workspace = true }
+vlm-storage = { workspace = true }
+
+[build-system]
+requires = ["uv_build>=0.12,<0.13"]
+build-backend = "uv_build"

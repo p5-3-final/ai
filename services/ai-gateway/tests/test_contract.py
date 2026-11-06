@@ -373,3 +373,46 @@ async def test_spec016_contract_budget_exceeded_analyze_matches_contract(
 
     assert response.status_code == 200
     _assert_matches_contract(registry, response)
+
+
+def _deadline_example(contracts_dir: Path) -> Mapping[str, object]:
+    example = _at(
+        _load(contracts_dir, "ai-gateway.yaml"),
+        "components",
+        "responses",
+        "DeadlineExceeded",
+        "content",
+        "application/problem+json",
+        "example",
+    )
+    assert isinstance(example, Mapping)
+    return example
+
+
+@pytest.mark.parametrize("path", ["/v1/analyze", "/v1/embed", "/v1/parse"])
+async def test_spec021_r2_deadline_exceeded_matches_contract(
+    contracts_dir: Path, registry_dir: Path, registry: Registry[Schema], path: str
+) -> None:
+    """[SPEC-021 R-2] 지난 마감의 504는 계약 ProblemDetail이고 DeadlineExceeded 예시와 같다."""
+    example = _deadline_example(contracts_dir)
+    _assert_valid(registry, PROBLEM, example)
+    bodies: dict[str, object] = {
+        "/v1/analyze": analyze_body(),
+        "/v1/embed": {"taskType": "embed_text", "texts": ["a"]},
+        "/v1/parse": {"query": "지게차"},
+    }
+
+    async with gateway(registry_dir, profile(embed_settings())) as gw:
+        response = await gw.client.post(
+            path,
+            json=bodies[path],
+            headers={"X-Caller": CALLER, "X-Request-Deadline": "1"},
+        )
+
+    assert response.status_code == 504
+    _assert_matches_contract(registry, response)
+    body = response.json()
+    assert {k: body[k] for k in ("type", "title", "status", "code")} == {
+        k: example[k] for k in ("type", "title", "status", "code")
+    }
+    assert body["instance"] == path

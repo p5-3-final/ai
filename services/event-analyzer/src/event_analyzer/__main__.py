@@ -3,8 +3,9 @@
 from collections.abc import Mapping
 
 import httpx
-from vlm_ai_client.client import AiGatewayClient, CallRetry
+from vlm_ai_client.client import AiGatewayClient
 from vlm_common.health import HealthState, serve_health
+from vlm_common.http_call import CallRetry
 from vlm_common.logging import configure_logging
 from vlm_contracts.events import EventCandidateVector
 from vlm_messaging.publisher import KafkaPublisher

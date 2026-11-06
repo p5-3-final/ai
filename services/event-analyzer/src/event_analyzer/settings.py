@@ -24,10 +24,12 @@ class EventAnalyzerSettings(BaseSettings):
     group_id: str = "event-analyzer"
     # ai-gateway 주소(예: http://ai-gateway:8000)
     ai_gateway_url: str = Field(min_length=1)
-    # 호출 한 번의 제한 시간. ai-gateway 프로필의 모델 제한 시간(로컬 CPU 120초)보다 길어야
-    # ai-gateway가 돌려주는 unknown·오류를 받는다.
+    # 호출 한 번(재시도 포함)의 제한 시간. 첫 시도 시각 + 이 값이 X-Request-Deadline이다
+    # (SPEC-021 R-8). ai-gateway 프로필의 모델 제한 시간(로컬 CPU 120초)보다 길어야 ai-gateway가
+    # 돌려주는 unknown·오류를 받는다.
     call_timeout_s: float = Field(default=180, gt=0)
-    # 502·503·시간 초과·연결 실패의 재시도 횟수와 첫 대기(SPEC-020 R-11)
+    # 요청이 닿지 않은 연결 실패의 재시도 횟수와 첫 대기. 502·503·504·시간 초과는 VLM 비용이 두 번
+    # 들 수 있어 다시 부르지 않는다(SPEC-020 R-11, SPEC-021 R-9).
     max_retries: int = Field(default=2, ge=0)
     retry_base_delay_s: float = Field(default=1.0, ge=0)
     # 한 메시지 안의 동시 판정 수(SPEC-020 R-18)

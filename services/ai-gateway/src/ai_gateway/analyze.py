@@ -5,7 +5,7 @@ import logging
 import time
 from dataclasses import dataclass, field
 from decimal import Decimal
-from typing import Protocol
+from typing import Literal, Protocol
 from uuid import UUID
 
 from ai_gateway.adapters.base import (
@@ -14,6 +14,7 @@ from ai_gateway.adapters.base import (
     VlmAdapter,
 )
 from ai_gateway.call_log import CallLogEntry, CallStatus, new_call_id
+from ai_gateway.deadline import Deadline, cap
 from ai_gateway.errors import (
     CallerForbiddenError,
     InvalidRequestError,
@@ -27,6 +28,8 @@ from ai_gateway.profile import GatewayProfile, TaskProfile
 from ai_gateway.prompts import PromptRegistry
 
 type JsonObject = dict[str, object]
+# 결과가 unverified인 이유(SPEC-016 R-23). 호출자가 재판정 큐를 사유로 나눈다.
+type UnverifiedReason = Literal["model_unavailable", "budget_exceeded"]
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +46,8 @@ class AnalyzeCommand:
     image_keys: list[str]
     variables: JsonObject
     traceparent: str | None = None
+    # 호출자 마감(SPEC-021). 없으면 프로필 제한 시간만 쓴다(R-5).
+    deadline: Deadline | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -53,6 +58,7 @@ class AnalyzeResult:
     prompt_version: str
     taxonomy_version: str | None
     output: JsonObject
+    unverified_reason: UnverifiedReason | None = None
 
 
 class AnalyzeService:
@@ -99,7 +105,7 @@ class AnalyzeService:
             # SPEC-009 R-8: 모델이 없으면 결과를 지어내지 않고 unverified로 돌려준다.
             output = task.fallback(command.variables, "unverified")
             await self._record(call.entry("unavailable", output=output))
-            return call.result(output)
+            return call.result(output, unverified_reason="model_unavailable")
 
         adapter, model = settings.adapter, settings.model
 
@@ -109,7 +115,8 @@ class AnalyzeService:
                 message=task.render(command.variables),
                 images=images,
                 max_output_tokens=settings.max_output_tokens,
-                timeout_s=settings.timeout_s,
+                # 호출 직전의 남은 시간으로 줄인다(SPEC-021 R-1).
+                timeout_s=cap(command.deadline, settings.timeout_s),
                 max_retries=settings.max_retries,
                 traceparent=command.traceparent,
             )
@@ -145,6 +152,7 @@ class AnalyzeService:
                 input_tokens=settings.estimated_input_tokens,
                 output_tokens=settings.max_output_tokens,
                 timeout_s=settings.timeout_s,
+                deadline=command.deadline,
             ),
             invoke,
         )
@@ -165,7 +173,7 @@ class AnalyzeService:
             # 예산을 넘으면 모델 미설정과 같은 결과다(SPEC-016 R-11). 호출자가 이미 처리하는 경로다.
             output = task.fallback(command.variables, "unverified")
             await self._record(call.entry("budget_exceeded", output=output, cache_hit=False))
-            return call.result(output, called_model=False)
+            return call.result(output, called_model=False, unverified_reason="budget_exceeded")
         if gated.kind == "failed" and gated.error is not None:
             error = gated.error
             # 실패한 호출도 호출자·모델별 장애를 볼 수 있게 남긴다(SPEC-009 R-17~R-19).
@@ -270,7 +278,13 @@ class _Call:
             settled_cost_usd=costs.settled if costs else None,
         )
 
-    def result(self, output: JsonObject, *, called_model: bool = True) -> AnalyzeResult:
+    def result(
+        self,
+        output: JsonObject,
+        *,
+        called_model: bool = True,
+        unverified_reason: UnverifiedReason | None = None,
+    ) -> AnalyzeResult:
         # 모델을 부르지 않은 결과(예산 초과)는 미설정과 같이 모델 ID가 없다(SPEC-016 R-11).
         return AnalyzeResult(
             call_id=self.call_id,
@@ -279,6 +293,7 @@ class _Call:
             prompt_version=self.prompt_version,
             taxonomy_version=self.taxonomy_version,
             output=output,
+            unverified_reason=unverified_reason,
         )
 
 
