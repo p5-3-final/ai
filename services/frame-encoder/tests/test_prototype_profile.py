@@ -78,3 +78,13 @@ def test_threshold_of_one_is_allowed(tmp_path: Path) -> None:
 
     assert profile.prototypes is not None
     assert profile.prototypes.types["fall"].threshold == 1.0
+
+
+@pytest.mark.parametrize("name", ["local.toml", "local-mock.toml"])
+def test_shipped_profiles_are_valid(name: str) -> None:
+    # 이미지에 넣는 프로필이 틀리면 기동에 실패하므로 미리 확인한다.
+    profiles = Path(__file__).resolve().parents[1] / "profiles"
+
+    profile = load_profile(profiles / name, FrameEncoderProfile)
+
+    assert profile.prototypes is not None

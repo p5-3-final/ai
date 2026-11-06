@@ -105,6 +105,8 @@ jobs:
           CONTRACTS_DIR: ${{ github.workspace }}/.service-contracts/service-contracts
       - name: chunk processor runtime image
         run: docker build -f services/chunk-processor/Dockerfile --target runtime -t vlm/chunk-processor .
+      - name: frame encoder runtime image
+        run: docker build -f services/frame-encoder/Dockerfile --target runtime -t vlm/frame-encoder .
       # 분류 체계는 잠금 버전의 계약을 이름 있는 빌드 컨텍스트로 넘긴다(docs ADR-0012·0013).
       - name: ai-gateway runtime image
         run: >-

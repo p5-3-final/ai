@@ -1,0 +1,34 @@
+# 로컬 compose 프로필. 모델을 바꿀 때는 이 파일만 바꾼다. 코드는 바꾸지 않는다.
+
+# 이미지 인코더(SPEC-019 R-8, R-9). ai-gateway 프로필의 [encoder]와 같은 모델 ID·가중치여야 질의 벡터와
+# 같은 공간이 되어 검색이 맞는다. 가중치 준비 절차는 docs local/README.md와 ai-gateway 프로필 주석을 따른다.
+[encoder]
+kind = "open_clip"
+model_id = "open_clip:MobileCLIP2-S0:dfndr2b:mean-4"
+dimension = 512
+manifest = "models/mobileclip2-s0/dfndr2b/manifest.json"
+manifest_sha256 = "569e79292c638ca67fbe5318adb212c3e26c73fbacfc6453268abf95c9266131"
+
+[encoding]
+# CPU 한 코어 기준으로 메모리를 묶는다. 메시지 하나는 이미지 최대 768장이다.
+batch_size = 16
+
+# 텍스트 프로토타입 후보(SPEC-019 R-10~R-15).
+# 아래 문장과 임계값은 event.candidate.vector 흐름을 로컬에서 확인하려는 예시다. 실제 영상으로 잰
+# 값이 아니며, 운영 값은 모델 담당이 평가(evals)로 정하고 version을 올린다.
+[prototypes]
+version = "local-sample-v1"
+
+[prototypes.types.fall]
+texts = [
+  "a photo of a worker lying on the floor",
+  "a photo of a person who has fallen down at a construction site",
+]
+threshold = 0.25
+
+[prototypes.types.fire_or_smoke]
+texts = [
+  "a photo of fire in a factory",
+  "a photo of thick smoke rising indoors",
+]
+threshold = 0.25
