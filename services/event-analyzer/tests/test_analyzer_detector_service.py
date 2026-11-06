@@ -2,28 +2,41 @@
 
 from dataclasses import replace
 
+import pytest
 from ea_support import (
     DETECTOR_PROFILE,
     NOW,
+    PREFIX,
     PROFILE_PATH,
     SOURCE,
     TRACEPARENT,
     FakeGateway,
     RecordingPublisher,
+    candidate_file,
     detected,
     detector_message,
     event_errors,
+    file_message,
+    gateway_error,
     judged,
 )
 from event_analyzer.detector import DetectorAnalyzerService
 from event_analyzer.ids import analyzed_event_id, manifest_event_id
 from event_analyzer.profile import EventAnalyzerProfile
 from event_analyzer.service import AnalyzerConfig
+from vlm_ai_client.client import AiGatewayError
 from vlm_ai_client.models import AnalyzeRequest
 from vlm_common.profile import load_profile
-from vlm_contracts.events import Event, EventAnalyzed, EventCandidate, EventManifest
+from vlm_contracts.events import (
+    Event,
+    EventAnalyzed,
+    EventCandidate,
+    EventManifest,
+    VLMAnalysis,
+)
+from vlm_messaging.publisher import PublishError
 from vlm_messaging.timing import StageRecorder
-from vlm_messaging.worker import MessageContext
+from vlm_messaging.worker import MessageContext, NonRetryableError
 from vlm_storage.memory import InMemoryStorage
 
 PROFILE = load_profile(PROFILE_PATH, EventAnalyzerProfile)
@@ -308,3 +321,103 @@ async def test_spec023_r13_rule_only_or_empty_message_records_only_merge() -> No
         await _run(message, ctx=ctx)
 
         assert [t.stage_id for t in ctx.timing.timings] == ["analyzer.merge"]
+
+
+async def test_spec023_r1_us4_file_candidates_are_handled_like_inline() -> None:
+    candidates = [detected(1), detected(2, "hazard_zone_access", judgment="rule", track="t2")]
+    storage = InMemoryStorage()
+    storage.put_bytes(f"{PREFIX}candidates.json", candidate_file(*candidates), "application/json")
+
+    _, events, [manifest] = await _run(file_message(*candidates), storage=storage)
+
+    assert [e.candidate_id for e in events] == [c.candidate_id for c in candidates]
+    assert [e.judgment_method for e in events] == ["rule+vlm", "rule"]
+    assert manifest.candidate_count == 2
+
+
+async def test_spec023_r2_us4_missing_file_publishes_nothing() -> None:
+    publisher = RecordingPublisher()
+
+    with pytest.raises(NonRetryableError):
+        await _service(FakeGateway(), publisher).handle(file_message(detected(1)), CTX)
+
+    assert publisher.published == []
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        gateway_error("AI_PROVIDER_UNAVAILABLE", 503, retryable=True),
+        gateway_error("AI_TIMEOUT", None, retryable=True),
+        gateway_error("AI_DEADLINE_EXCEEDED", 504),
+        gateway_error("AI_IMAGE_NOT_FOUND", 404),
+        gateway_error("AI_RATE_LIMITED", 429),
+    ],
+)
+async def test_spec023_r7_failed_first_call_is_unknown(error: AiGatewayError) -> None:
+    gateway = FakeGateway(reply=lambda r: error)
+
+    _, [event], [manifest] = await _run(detector_message(detected(1, "fall")), gateway)
+
+    assert event.analysis == VLMAnalysis.unknown("fall")
+    assert event.judgment_method == "rule+vlm"
+    [judgment] = event.judgments
+    assert (judgment.error_code, judgment.call_id) == (error.code, None)
+    assert manifest.analyzed_count == 1
+
+
+async def test_spec023_r7_failed_escalation_keeps_first_result() -> None:
+    def reply(request: AnalyzeRequest) -> dict[str, object] | AiGatewayError:
+        if request.task_type == "event_judge_escalate":
+            return gateway_error("AI_PROVIDER_FAILED", 502, retryable=True)
+        return judged("fall", severity="high")
+
+    _, [event], _ = await _run(detector_message(detected(1, "fall")), FakeGateway(reply=reply))
+
+    assert event.analysis.model_dump(by_alias=True) == judged("fall", severity="high")
+    assert event.judgment_method == "rule+vlm+escalate"
+    assert event.judgments[1].error_code == "AI_PROVIDER_FAILED"
+
+
+async def test_spec023_r7_other_client_error_publishes_neither_analysis_nor_manifest() -> None:
+    publisher = RecordingPublisher()
+    gateway = FakeGateway(reply=lambda r: gateway_error("AI_CALLER_FORBIDDEN", 403))
+    message = detector_message(detected(1), detected(2, "hazard_zone_access", judgment="rule"))
+
+    with pytest.raises(NonRetryableError):
+        await _service(gateway, publisher).handle(message, CTX)
+
+    assert publisher.published == []
+
+
+class _FlakyPublisher(RecordingPublisher):
+    """처음 `fail_after`건 뒤에 한 번 실패하는 발행기."""
+
+    def __init__(self, fail_after: int) -> None:
+        super().__init__()
+        self._fail_after = fail_after
+        self._failed = False
+
+    def publish(
+        self, topic: str, event: Event, *, key: str | None = None, traceparent: str | None = None
+    ) -> None:
+        if not self._failed and len(self.published) == self._fail_after:
+            self._failed = True
+            raise PublishError("broker down")
+        super().publish(topic, event, key=key, traceparent=traceparent)
+
+
+async def test_spec023_r15_publish_failure_is_raised_and_retry_uses_same_ids() -> None:
+    message = detector_message(detected(1), detected(2, start_s=50))
+    publisher = _FlakyPublisher(fail_after=1)
+    service = _service(FakeGateway(), publisher)
+
+    with pytest.raises(PublishError):
+        await service.handle(message, CTX)
+    await service.handle(message, CTX)
+
+    ids = [e.event_id for _, e, _, _ in publisher.published]
+    # 첫 시도의 1건 + 다시 처리한 분석 2건과 manifest
+    assert ids[0] == ids[1]
+    assert len(ids) == 4
+    assert ids[3] == manifest_event_id(message.execution_id)

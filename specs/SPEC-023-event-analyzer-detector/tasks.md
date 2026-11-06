@@ -45,10 +45,10 @@ updated: 2026-11-07
 
 ## Phase 3: 큰 묶음·실패 (US-4, P2)
 
-- [ ] T018 [R-1] `candidatesKey` 파일의 후보를 메시지 후보와 같이 처리(메모리 저장소) — 테스트 `t/test_analyzer_candidates.py`, 구현 `ea/candidates.py`
-- [ ] T019 [R-2] 파일 없음·잘못된 JSON·계약 불일치·후보 수 불일치·식별자 불일치면 아무것도 발행하지 않고 `NonRetryableError`. 그 밖의 저장소 오류는 그대로 던짐 — 테스트 `t/test_analyzer_candidates.py`, `t/test_analyzer_detector_service.py`
-- [ ] T020 [R-7] VLM 후보 실패 처리: 1차 실패 `unknown`과 실패 코드, 재판정 실패면 1차 결과, `AI_IMAGE_NOT_FOUND`·504·시간 초과 기록, 그 밖의 4xx면 분석·manifest 모두 발행 없이 `NonRetryableError` — 테스트 `t/test_analyzer_detector_service.py`
-- [ ] T021 [R-15] 발행 오류는 그대로 던지고, 다시 처리하면 같은 eventId로 분석·manifest 발행 — 테스트 `t/test_analyzer_detector_service.py`
+- [x] T018 [R-1] `candidatesKey` 파일의 후보를 메시지 후보와 같이 처리(메모리 저장소) — 테스트 `t/test_analyzer_candidates.py`, 구현 `ea/candidates.py`
+- [x] T019 [R-2] 파일 없음·잘못된 JSON·계약 불일치·후보 수 불일치·식별자 불일치면 아무것도 발행하지 않고 `NonRetryableError`. 그 밖의 저장소 오류는 그대로 던짐 — 테스트 `t/test_analyzer_candidates.py`, `t/test_analyzer_detector_service.py`
+- [x] T020 [R-7] VLM 후보 실패 처리: 1차 실패 `unknown`과 실패 코드, 재판정 실패면 1차 결과, `AI_IMAGE_NOT_FOUND`·504·시간 초과 기록, 그 밖의 4xx면 분석·manifest 모두 발행 없이 `NonRetryableError` — 테스트 `t/test_analyzer_detector_service.py`
+- [x] T021 [R-15] 발행 오류는 그대로 던지고, 다시 처리하면 같은 eventId로 분석·manifest 발행 — 테스트 `t/test_analyzer_detector_service.py`
 
 ## Phase 4: 워커와 배포
 

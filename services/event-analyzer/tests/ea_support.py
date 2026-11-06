@@ -126,6 +126,31 @@ def detector_message(
     )
 
 
+def file_message(*candidates: DetectorCandidate, count: int | None = None) -> EventCandidate:
+    """후보를 `candidates.json` 파일에 둔 `event.candidate`. 파일은 `candidate_file`로 만든다."""
+    inline = detector_message()
+    return inline.model_copy(
+        update={
+            "candidates": None,
+            "candidates_key": f"{PREFIX}candidates.json",
+            "candidate_count": len(candidates) if count is None else count,
+        }
+    )
+
+
+def candidate_file(*candidates: DetectorCandidate, **ids: UUID) -> bytes:
+    """계약 형식의 후보 파일 내용. 식별자는 기본값이 메시지와 같고 `ids`로 바꾼다."""
+    body = {
+        "schemaVersion": 1,
+        "sourceId": str(ids.get("source_id", SOURCE)),
+        "jobId": str(ids.get("job_id", JOB)),
+        "chunkId": str(ids.get("chunk_id", CHUNK)),
+        "executionId": str(ids.get("execution_id", EXECUTION)),
+        "candidates": [c.model_dump(mode="json", by_alias=True) for c in candidates],
+    }
+    return json.dumps(body).encode()
+
+
 def candidates_message(*candidates: VectorCandidate) -> EventCandidateVector:
     return EventCandidateVector(
         event_id=MESSAGE_ID,

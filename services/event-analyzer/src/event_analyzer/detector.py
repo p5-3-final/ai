@@ -25,6 +25,7 @@ from vlm_storage.storage import ObjectStorage
 
 from event_analyzer import ids
 from event_analyzer.calls import AnalyzeClient, EventPublisher, judge, publish
+from event_analyzer.candidates import load_candidates
 from event_analyzer.judgment import Decision, Outcome, Stage, decide, needs_escalation
 from event_analyzer.merge import Kept, merge_candidates
 from event_analyzer.profile import EventAnalyzerProfile
@@ -87,7 +88,7 @@ class DetectorAnalyzerService:
 
     async def handle(self, message: EventCandidate, ctx: MessageContext) -> None:
         """워커 경로 핸들러."""
-        candidates = message.candidates or []
+        candidates = await asyncio.to_thread(load_candidates, message, self._storage)
         # 후보가 0개여도 블록을 남겨 처리한 메시지 수가 단계 측정에 드러나게 한다.
         with ctx.timing.stage("analyzer.merge", unit="candidates") as block:
             kept = merge_candidates(candidates, self._profile.merge.cooldown_s)
