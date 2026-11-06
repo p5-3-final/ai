@@ -27,8 +27,8 @@ updated: 2026-11-06
 
 - [x] T006 [R-1] 구간 벡터 = 4장 정규화 평균을 다시 정규화 — 테스트 `t/test_vectors.py`, 구현 `fe/vectors.py`
 - [x] T007 [R-1] [R-2] [R-3] [R-4] [R-7] [R-8] 핸들러: 벡터 파일 저장과 `segment.embedded` — 테스트 `t/test_encoding_service.py`, 구현 `fe/{service,ids}.py`
-- [ ] T008 [R-5] 같은 메시지를 다시 처리하면 같은 eventId·키 — 테스트 `t/test_encoding_service.py`, 구현 `fe/ids.py`
-- [ ] T009 [R-6] 구간·크롭이 없으면 빈 파일과 이벤트 — 테스트 `t/test_encoding_service.py`
+- [x] T008 [R-5] 같은 메시지를 다시 처리하면 같은 eventId·키 — 테스트 `t/test_encoding_service.py`, 구현 `fe/ids.py`
+- [x] T009 [R-6] 구간·크롭이 없으면 빈 파일과 이벤트 — 테스트 `t/test_encoding_service.py`
 - [ ] T010 [R-17] 이미지가 없거나 디코딩할 수 없으면 `NonRetryableError`, 출력 없음 — 테스트 `t/test_encoding_service.py`
 - [ ] T011 [R-18] 저장소 일시 오류는 그대로 던짐 — 테스트 `t/test_encoding_service.py`
 - [ ] T012 [R-19] 단계 블록 `encoder.segments`·`crops`·`store` — 테스트 `t/test_encoding_service.py`

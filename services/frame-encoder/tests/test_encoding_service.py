@@ -1,3 +1,5 @@
+from uuid import UUID
+
 from fe_support import (
     DIMENSION,
     MODEL_ID,
@@ -106,3 +108,47 @@ async def test_spec_019_r4_publishes_segment_embedded_after_storing() -> None:
     assert key is None
     assert traceparent == CTX.traceparent
     assert storage.exists(event.vectors_key)
+
+
+async def test_spec_019_r5_reprocessing_uses_same_event_id_and_key() -> None:
+    ready = segment_ready()
+    storage = storage_with_images(ready)
+    publisher = RecordingPublisher()
+    service = _service(storage, publisher)
+
+    await service.handle(ready, CTX)
+    first = storage.get_bytes(VECTORS_KEY)
+    await service.handle(ready, CTX)
+
+    [a, b] = publisher.events("segment.embedded")
+    assert isinstance(a, SegmentEmbedded)
+    assert isinstance(b, SegmentEmbedded)
+    assert a.event_id == b.event_id
+    assert a.vectors_key == b.vectors_key == VECTORS_KEY
+    assert storage.get_bytes(VECTORS_KEY) == first
+
+
+async def test_spec_019_r5_other_execution_gets_other_event_id() -> None:
+    # 이미지 경로는 실행 폴더에 묶이므로, 실행 ID만 다른 메시지는 구간·크롭 없이 만든다.
+    ready = segment_ready(segments=0, crops=0)
+    other = ready.model_copy(update={"execution_id": UUID(int=0x9999)})
+
+    _, publisher = await _run(ready)
+    other_publisher = RecordingPublisher()
+    await _service(InMemoryStorage(), other_publisher).handle(other, CTX)
+
+    [a] = publisher.events("segment.embedded")
+    [b] = other_publisher.events("segment.embedded")
+    assert a.event_id != b.event_id
+
+
+async def test_spec_019_r6_empty_message_stores_empty_file_and_publishes() -> None:
+    ready = segment_ready(segments=0, crops=0)
+
+    storage, publisher = await _run(ready)
+
+    stored = _vector_file(storage)
+    assert (stored.segments, stored.crops) == ([], [])
+    [event] = publisher.events("segment.embedded")
+    assert isinstance(event, SegmentEmbedded)
+    assert (event.segment_count, event.crop_count) == (0, 0)
