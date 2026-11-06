@@ -34,14 +34,14 @@ updated: 2026-11-07
 
 ## Phase 2: 핸들러 (US-1·US-2·US-3, P1)
 
-- [ ] T010 [R-8] `handle_detector`: 메시지 후보로 병합 → 규칙 확정 → VLM 판정 → 남은 후보마다 `event.analyzed`(계약 스키마 통과, eventId는 candidateId). 판정·실패 처리 코드를 벡터 경로와 공유하도록 정리(Refactor, 기존 테스트 유지) — 테스트 `t/test_analyzer_detector_service.py`, 구현 `ea/service.py`
-- [ ] T011 [R-9] `detectorCandidate`(메시지 chunkId·executionId·`detectorProfile`, 후보 근거, `mergedCandidateIds`)와 `vectorCandidate` 없음 — 테스트 `t/test_analyzer_detector_service.py`
-- [ ] T012 [R-5] `event_judge` 요청: 근거 프레임 순서, 변수 `eventType`·`startSec`·`endSec`·`zoneName`·`evidence`(path `detector`, triggerClass, score, observationCount, detectorProfile) — 테스트 `t/test_analyzer_detector_service.py`
-- [ ] T013 [R-6] 1차 severity high, 애매 구간 점수면 같은 입력으로 `event_judge_escalate` — 테스트 `t/test_analyzer_detector_service.py`
-- [ ] T014 [R-10] 분석 발행 뒤 `event.manifest` 한 건(받은 수·합쳐진 수·발행 수·eventId 목록·`unsupportedEvents`·`detectorProfile`, eventId는 executionId) — 테스트 `t/test_analyzer_detector_service.py`, 구현 `ea/{service,ids}.py`
-- [ ] T015 [R-11] 후보 0개면 `event.analyzed` 없이 `candidateCount: 0`인 manifest만 — 테스트 `t/test_analyzer_detector_service.py`
-- [ ] T016 [R-12] 동시 판정 수 상한 — 테스트 `t/test_analyzer_detector_service.py`
-- [ ] T017 [R-13] 단계 블록 `analyzer.merge`(받은 후보 수), `analyzer.judge`(VLM 후보 수, 없으면 블록 없음), `analyzer.escalate` — 테스트 `t/test_analyzer_detector_service.py`
+- [x] T010 [R-8] `handle_detector`: 메시지 후보로 병합 → 규칙 확정 → VLM 판정 → 남은 후보마다 `event.analyzed`(계약 스키마 통과, eventId는 candidateId). 판정·실패 처리 코드를 벡터 경로와 공유하도록 정리(Refactor, 기존 테스트 유지) — 테스트 `t/test_analyzer_detector_service.py`, 구현 `ea/service.py`
+- [x] T011 [R-9] `detectorCandidate`(메시지 chunkId·executionId·`detectorProfile`, 후보 근거, `mergedCandidateIds`)와 `vectorCandidate` 없음 — 테스트 `t/test_analyzer_detector_service.py`
+- [x] T012 [R-5] `event_judge` 요청: 근거 프레임 순서, 변수 `eventType`·`startSec`·`endSec`·`zoneName`·`evidence`(path `detector`, triggerClass, score, observationCount, detectorProfile) — 테스트 `t/test_analyzer_detector_service.py`
+- [x] T013 [R-6] 1차 severity high, 애매 구간 점수면 같은 입력으로 `event_judge_escalate` — 테스트 `t/test_analyzer_detector_service.py`
+- [x] T014 [R-10] 분석 발행 뒤 `event.manifest` 한 건(받은 수·합쳐진 수·발행 수·eventId 목록·`unsupportedEvents`·`detectorProfile`, eventId는 executionId) — 테스트 `t/test_analyzer_detector_service.py`, 구현 `ea/{service,ids}.py`
+- [x] T015 [R-11] 후보 0개면 `event.analyzed` 없이 `candidateCount: 0`인 manifest만 — 테스트 `t/test_analyzer_detector_service.py`
+- [x] T016 [R-12] 동시 판정 수 상한 — 테스트 `t/test_analyzer_detector_service.py`
+- [x] T017 [R-13] 단계 블록 `analyzer.merge`(받은 후보 수), `analyzer.judge`(VLM 후보 수, 없으면 블록 없음), `analyzer.escalate` — 테스트 `t/test_analyzer_detector_service.py`
 
 ## Phase 3: 큰 묶음·실패 (US-4, P2)
 

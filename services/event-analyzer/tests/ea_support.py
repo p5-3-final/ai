@@ -32,6 +32,7 @@ from vlm_contracts.events import (
     VerificationStatus,
 )
 
+PROFILE_PATH = Path(__file__).resolve().parents[1] / "profiles" / "local.toml"
 SOURCE = UUID("0192f0d2-1a2b-7c3d-8e4f-5a6b7c8d9e0f")
 OWNER = UUID("0192f0c4-6d1e-7a3b-9c2d-1e2f3a4b5c6d")
 JOB = UUID("0192f100-0000-7000-8000-000000000001")

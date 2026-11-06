@@ -7,12 +7,19 @@ from dataclasses import dataclass
 from typing import Literal
 from uuid import UUID
 
-from vlm_contracts.events import DetectableEventType, Judgment, UnverifiedReason, VLMAnalysis
+from vlm_contracts.events import (
+    DetectableEventType,
+    Judgment,
+    JudgmentMethod,
+    UnverifiedReason,
+    VLMAnalysis,
+)
 
 type Stage = Literal["judge", "escalate"]
 # 후보가 어느 경로에서 왔는지. 판정 방식의 접두가 된다(벡터 SPEC-020, 탐지기·규칙 SPEC-023).
 type Path = Literal["vector", "rule"]
 type Method = Literal["vector+vlm", "vector+vlm+escalate", "rule+vlm", "rule+vlm+escalate"]
+# Decision이 담는 판정 방식. VLM을 부르지 않는 rule·rule+carry도 같은 결과 형식으로 발행한다.
 type ReviewReason = Literal["judgment_disagreement"]
 
 _TASK_TYPES: dict[Stage, Literal["event_judge", "event_judge_escalate"]] = {
@@ -88,7 +95,7 @@ class Decision:
     """후보 하나의 최종 판정."""
 
     analysis: VLMAnalysis
-    method: Method
+    method: JudgmentMethod
     judgments: list[Judgment]
     review_required: bool
     review_reasons: list[ReviewReason]
