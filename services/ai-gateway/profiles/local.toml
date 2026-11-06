@@ -42,6 +42,31 @@ timeout_s = 120
 max_retries = 1
 estimated_input_tokens = 5100
 
+# 트랙 속성 분석(SPEC-024 R-11). 모델·문안은 AI 담당자가 정한다. 로컬은 개발 머신에 모델 하나만 올리도록
+# event_judge와 같은 모델·한도를 쓴다.
+[tasks.track_attribute]
+adapter = "ollama"
+model = "qwen3-vl:4b-instruct"
+max_output_tokens = 800
+# 트랙 대표 크롭 1~3장
+max_images = 3
+timeout_s = 120
+max_retries = 1
+# 프롬프트·스키마 약 1500 + 크롭 3장 × 약 300
+estimated_input_tokens = 2400
+
+# 객체 자유 질문(SPEC-024 R-12)
+[tasks.object_question]
+adapter = "ollama"
+model = "qwen3-vl:4b-instruct"
+max_output_tokens = 800
+# 크롭 1~3장 + 장면 프레임 0~8장
+max_images = 11
+timeout_s = 120
+max_retries = 1
+# 프롬프트·스키마 약 1500 + 이미지 11장 × 약 300
+estimated_input_tokens = 4800
+
 # 이미지·질의 인코더(SPEC-011). frame-encoder와 같은 모델 ID여야 같은 인덱스를 찾는다.
 # 가중치: Hugging Face timm/MobileCLIP2-S0-OpenCLIP의 open_clip_model.safetensors(Apple AMLR, 비상용)를
 # manifest와 함께 모델 버킷(AI_GATEWAY_MODELS_BUCKET)의 아래 경로에 올려 둔다. 절차는 docs local/README.md,

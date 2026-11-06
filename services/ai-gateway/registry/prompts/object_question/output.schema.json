@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vlm.example/contracts/prompts/object_question/output.schema.json",
+  "title": "ObjectQuestionOutput",
+  "description": "object_question 결과. 형식의 원본은 서비스 간 계약 events/_object-answer.schema.json(ObjectAnswer)이고 track.analyzed로 다른 레포에 전달된다(SPEC-024). 예시는 mock Adapter 응답이다.",
+  "$ref": "../../events/_object-answer.schema.json",
+  "examples": [
+    {
+      "verificationStatus": "confirmed",
+      "answerable": true,
+      "answer": "오른손에 무전기를 들고 있습니다."
+    }
+  ]
+}

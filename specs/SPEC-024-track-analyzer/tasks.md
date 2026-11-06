@@ -28,10 +28,10 @@ updated: 2026-11-07
 
 ## Phase 1: ai-gateway (US-1·US-2·US-3, P1)
 
-- [ ] T007 [P] [R-11] `track_attribute` 등록: 입력 `className`, 출력 `_track-attribute` 참조, 자리 표시 프롬프트, `fallback.json`, 두 로컬 프로필(`max_images` 3), 테스트 registry 배치·`gateway_support.profile()`·Dockerfile COPY — 테스트 `gw/tests/test_prompts.py`, `gw/tests/test_analyze_api.py`, 구현 `gw/registry/prompts/track_attribute/`, `gw/profiles/*.toml`, `gw/tests/{conftest,gateway_support}.py`, `gw/Dockerfile`
-- [ ] T008 [P] [R-12] `object_question` 등록: 입력 `className`·`question`(1~500자), 출력 `_object-answer` 참조, `max_images` 11 — 테스트 `gw/tests/test_prompts.py`, `gw/tests/test_analyze_api.py`, 구현 `gw/registry/prompts/object_question/`, 프로필, 같은 배치 파일
+- [x] T007 [P] [R-11] `track_attribute` 등록: 입력 `className`, 출력 `_track-attribute` 참조, 자리 표시 프롬프트, `fallback.json`, 두 로컬 프로필(`max_images` 3), 테스트 registry 배치·`gateway_support.profile()`·Dockerfile COPY — 테스트 `gw/tests/test_prompts.py`, `gw/tests/test_analyze_api.py`, 구현 `gw/registry/prompts/track_attribute/`, `gw/profiles/*.toml`, `gw/tests/{conftest,gateway_support}.py`, `gw/Dockerfile`
+- [x] T008 [P] [R-12] `object_question` 등록: 입력 `className`·`question`(1~500자), 출력 `_object-answer` 참조, `max_images` 11 — 테스트 `gw/tests/test_prompts.py`, `gw/tests/test_analyze_api.py`, 구현 `gw/registry/prompts/object_question/`, 프로필, 같은 배치 파일
 - [ ] T009 [R-11] [R-12] (사용자 확인 뒤) 이미지 하한: `TaskProfile.min_images`(기본 0), 두 taskType 1, 모자라면 400 `AI_INVALID_REQUEST` — 테스트 `gw/tests/test_profile.py`, `gw/tests/test_analyze_api.py`, 구현 `gw/src/ai_gateway/{profile,analyze}.py`
-- [ ] T010 [R-13] 두 taskType의 모델 미설정·예산 초과 → `unverified`, 출력 검증 실패 → `unknown`(판정 필드 null, `equipment` 빈 배열). 기존 대체 결과 경로로 통과하면 Red 없음으로 기록 — 테스트 `gw/tests/test_analyze_api.py`
+- [x] T010 [R-13] (기존 대체 결과 경로로 통과, Red 없음) 두 taskType의 모델 미설정·예산 초과 → `unverified`, 출력 검증 실패 → `unknown`(판정 필드 null, `equipment` 빈 배열). 기존 대체 결과 경로로 통과하면 Red 없음으로 기록 — 테스트 `gw/tests/test_analyze_api.py`
 
 ## Phase 2: US-1·US-2 속성과 질문 (P1)
 
