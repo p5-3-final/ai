@@ -24,7 +24,7 @@ updated: 2026-11-07
 - [x] T003 [R-7] `AttributeRequested`(`question`이면 질문 필수, 아니면 질문 null·장면 프레임 없음), `EVENT_MODELS` 등록 — 테스트 `lc/tests/test_event_contracts.py`, `lc/tests/test_track_attribute_contracts.py`
 - [x] T004 [R-6] 크롭·장면 프레임 경로가 `sources/<sourceId>/` 밖이거나 `.`·`..`·빈 조각이 있으면 검증 실패 — 테스트 `lc/tests/test_track_attribute_contracts.py`, 구현 `vlm_contracts/events.py`
 - [ ] T005 [P] (보류: SPEC-022 작업자가 `vlm_contracts/tracks.py`를 만드는 중이라 SPEC-022가 4.1.0 계약대로 넣는다) 트랙 요약 파일 모델에 `representativeCrops`. SPEC-022 모델이 아직 없으면 건너뛰고 SPEC-022가 4.0.0 계약대로 넣는다 — 테스트 SPEC-022의 트랙 파일 계약 테스트, 구현 `vlm_contracts/tracks.py`
-- [ ] T006 `services/track-analyzer` 패키지 뼈대(pyproject, `.gitkeep` 삭제, 루트 `members`·mypy `files`·`mypy_path`·pytest `pythonpath` 등록, `ta_support.py`)
+- [x] T006 `services/track-analyzer` 패키지 뼈대(pyproject, `.gitkeep` 삭제, 루트 `members`·mypy `files`·`mypy_path`·pytest `pythonpath` 등록, `ta_support.py`)
 
 ## Phase 1: ai-gateway (US-1·US-2·US-3, P1)
 
@@ -35,11 +35,11 @@ updated: 2026-11-07
 
 ## Phase 2: US-1·US-2 속성과 질문 (P1)
 
-- [ ] T011 [R-1] `event`·`click` → `track_attribute`: sourceId, 크롭 순서와 `ptsSec`, 변수 `className` — 테스트 `t/test_track_service.py`, 구현 `ta/service.py`
-- [ ] T012 [R-2] `question` → `object_question`: 크롭 다음 장면 프레임, 변수 `className`·`question` — 테스트 `t/test_track_service.py`
-- [ ] T013 [R-3] READY 발행: reason별 `attributes`·`answer`, 호출 ID·모델·프롬프트 버전·분류 체계 버전, `unverified`·`unknown`도 READY, 계약 스키마 통과 — 테스트 `t/test_track_service.py`
-- [ ] T014 [R-5] eventId = requestId 기반 결정적 ID, 같은 요청 → 같은 eventId — 테스트 `t/test_track_service.py`, 구현 `ta/ids.py`
-- [ ] T015 [R-10] 단계 블록 `attribute.call`(count = 보낸 이미지 수) — 테스트 `t/test_track_service.py`
+- [x] T011 [R-1] `event`·`click` → `track_attribute`: sourceId, 크롭 순서와 `ptsSec`, 변수 `className` — 테스트 `t/test_track_service.py`, 구현 `ta/service.py`
+- [x] T012 [R-2] `question` → `object_question`: 크롭 다음 장면 프레임, 변수 `className`·`question` — 테스트 `t/test_track_service.py`
+- [x] T013 [R-3] READY 발행: reason별 `attributes`·`answer`, 호출 ID·모델·프롬프트 버전·분류 체계 버전, `unverified`·`unknown`도 READY, 계약 스키마 통과 — 테스트 `t/test_track_service.py`
+- [x] T014 [R-5] eventId = requestId 기반 결정적 ID, 같은 요청 → 같은 eventId — 테스트 `t/test_track_service.py`, 구현 `ta/ids.py`
+- [x] T015 [R-10] 단계 블록 `attribute.call`(count = 보낸 이미지 수) — 테스트 `t/test_track_service.py`
 
 ## Phase 3: US-3·US-4 실패 (P1·P2)
 
