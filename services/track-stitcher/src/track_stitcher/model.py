@@ -1,5 +1,6 @@
 """연결 계산이 쓰는 내부 값 객체."""
 
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from uuid import UUID
 
@@ -48,3 +49,28 @@ def local_tracks(file: ChunkTracks) -> list[LocalTrack]:
         )
         for t in file.tracks
     ]
+
+
+def connected(
+    tracks: Sequence[LocalTrack], edges: Iterable[tuple[TrackRef, TrackRef]]
+) -> list[tuple[LocalTrack, ...]]:
+    """연결로 묶인 트랙 묶음(union-find). 묶음 안과 묶음 사이 모두 R-14 순서라 결정적이다.
+
+    `tracks`에 없는 트랙을 가리키는 연결은 무시한다.
+    """
+    parent = {t.ref: t.ref for t in tracks}
+
+    def root(ref: TrackRef) -> TrackRef:
+        while parent[ref] != ref:
+            parent[ref] = parent[parent[ref]]
+            ref = parent[ref]
+        return ref
+
+    for a, b in edges:
+        if a in parent and b in parent:
+            parent[root(a)] = root(b)
+    groups: dict[TrackRef, list[LocalTrack]] = {}
+    for t in tracks:
+        groups.setdefault(root(t.ref), []).append(t)
+    ordered = [tuple(sorted(g, key=LocalTrack.order_key)) for g in groups.values()]
+    return sorted(ordered, key=lambda g: g[0].order_key())
