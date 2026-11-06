@@ -49,7 +49,7 @@ ai-gateway에는 두 taskType의 Registry 폴더(입력·출력 스키마, 자�
 | 원칙 | 준수 | 비고 |
 | --- | --- | --- |
 | I 스펙 우선 | ☑ | SPEC-024 Approved (docs #119) |
-| II 계약 우선 | ☑ | docs #119 머지. 잠금은 첫 태스크에서 3.14.0으로 올린다 |
+| II 계약 우선 | ☑ | docs #119 머지. 잠금은 SPEC-021(ai #44)이 4.1.0으로 올렸다 |
 | III 테스트 우선 | ☑ | R-1~R-13, NFR-2·NFR-3 테스트 매핑. NFR-1은 로컬 측정 |
 | IV 서비스 자율성 | ☑ | 저장소·DB 없음. 이미지는 ai-gateway가 읽는다. analysis-api·notification 코드는 건드리지 않는다 |
 | V 단순성 | ☑ | 새 외부 패키지 없음. event-analyzer와 같은 워커 구조, 설정은 환경변수만(유형별 기준값이 없어 프로필 파일 없음) |
@@ -182,3 +182,12 @@ sequenceDiagram
 ## 9. v5.1 추가 설계(계약 묶음 4.0.0, 2026-11-07)
 
 바뀐 요구사항이 없다. 잠금을 4.0.0으로 올리면 깨지는 계약 테스트(`StageId` 목록, `EventAnalyzed`)는 T001에서 SPEC-023 T001과 같은 방식으로 맞춘다.
+
+## 10. 구현 기록(2026-11-07)
+
+- 잠금은 SPEC-021(ai #44)이 이미 4.1.0으로 올렸고 `StageId`·`EventAnalyzed`도 맞춰 두어 T001은 확인만 했다.
+- T005(`representativeCrops`)는 SPEC-022가 `vlm_contracts/tracks.py`를 만들면서 4.1.0 계약대로 넣는다. 이 PR은 하지 않았다.
+- 이미지 하한은 D-11 기본안(`min_images`, 기본 0)으로 구현했다.
+- 응답의 `taxonomyVersion`이 `v2`·null이 아니면 `track.analyzed` 계약을 어기므로 결과 형식 불일치와 같이 `AI_INVALID_RESPONSE`로 FAILED다.
+- 단계 `attribute.call`은 호출이 예외로 끝나면 `error`, 응답을 받으면(결과 형식 검사 전) `ok`다.
+- ai-gateway 테스트에서 "등록되지 않은 taskType" 예시로 쓰던 `track_attribute`를 `not_registered_task`로 바꿨다(`test_analyze_api`·`test_prompts`·`test_startup`).
