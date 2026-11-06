@@ -1,6 +1,7 @@
 """`X-Request-Deadline` 처리(SPEC-021 R-1~R-5). 세 operation 모두 같은 규칙이다."""
 
 import json
+import logging
 import time
 from collections.abc import Awaitable, Callable
 from decimal import Decimal
@@ -221,3 +222,18 @@ async def test_spec021_r1_cached_analyze_within_deadline_is_200(registry_dir: Pa
 
     assert response.status_code == 200
     assert len(adapter.calls) == 1
+
+
+async def test_spec021_r2_rejection_is_logged_with_code(
+    registry_dir: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """[SPEC-021 R-2] 지난 마감 거절은 호출 로그 대신 JSON 로그에 코드와 호출자로 남는다."""
+    caplog.set_level(logging.INFO, logger="ai_gateway.api")
+    async with gateway(registry_dir) as gw:
+        await _analyze(gw, _in(-2))
+
+    [record] = [r for r in caplog.records if r.getMessage() == "request rejected"]
+    assert record.__dict__["code"] == "AI_DEADLINE_EXCEEDED"
+    assert record.__dict__["caller"] == "event-analyzer"
+    assert record.__dict__["path"] == "/v1/analyze"
+    assert record.__dict__["deadline_lag_ms"] >= 1000

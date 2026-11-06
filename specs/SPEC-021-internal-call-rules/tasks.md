@@ -59,8 +59,8 @@ updated: 2026-11-06
 ## Phase 5: 마무리
 
 - [ ] T027 계약과 구현 일치 확인: ai-gateway 응답 계약 테스트, 생성 모델 비교 테스트를 `CONTRACTS_DIR`(잠금 3.14.0)로 실행
-- [ ] T028 로그 확인: 504가 JSON 로그·호출 로그에 `AI_DEADLINE_EXCEEDED`로, 클라이언트 재시도 로그에 시도 번호·남은 시간
-- [ ] T029 README 갱신(`services/ai-gateway/README.md` 마감 헤더, `services/event-analyzer/README.md` 재시도 규칙, `libs/ai-client/pyproject.toml` description에 embed·parse·생성 방법). 환경변수 추가 없음
+- [x] T028 로그 확인: 504가 JSON 로그·호출 로그에 `AI_DEADLINE_EXCEEDED`로, 클라이언트 재시도 로그에 시도 번호·남은 시간
+- [x] T029 README 갱신(`services/ai-gateway/README.md` 마감 헤더, `services/event-analyzer/README.md` 재시도 규칙, `libs/ai-client/pyproject.toml` description에 embed·parse·생성 방법). 환경변수 추가 없음
 - [ ] T030 로컬 compose 확인(성공 지표): 지난 마감으로 `/v1/analyze`를 부르면 504이고 호출 로그에 모델 호출이 없음. 결과를 아래 "측정 기록"에 남긴다
 
 ## 완료 조건 (Definition of Done)

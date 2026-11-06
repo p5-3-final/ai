@@ -127,3 +127,31 @@ async def test_spec021_r11_stops_when_next_wait_reaches_deadline() -> None:
 def test_retry_settings_must_not_be_negative() -> None:
     with pytest.raises(ValueError, match="negative"):
         CallRetry(max_retries=-1)
+
+
+async def test_spec021_retry_log_has_attempt_and_remaining_time(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    clock = _Clock()
+    calls = 0
+
+    async def attempt(timeout_s: float) -> str:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise CallFailedError(Failure("status", 503), "unavailable")
+        return "ok"
+
+    await call_with_retry(
+        attempt,
+        deadline=Deadline.start(10, clock),
+        timeout_s=10,
+        rule=READ_ONLY,
+        retry=CallRetry(max_retries=1, base_delay_s=1),
+        sleep=clock.sleep,
+        clock=clock,
+    )
+
+    [record] = [r for r in caplog.records if r.getMessage() == "internal call failed, retrying"]
+    assert (record.__dict__["attempt"], record.__dict__["status"]) == (2, 503)
+    assert record.__dict__["remaining_s"] == pytest.approx(10)
