@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, Header, Request
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
 
-from ai_gateway.analyze import AnalyzeCommand, AnalyzeService
+from ai_gateway.analyze import AnalyzeCommand, AnalyzeService, UnverifiedReason
 from ai_gateway.embed import EmbedCommand, EmbedService
 from ai_gateway.parse import ParseCommand, ParseService
 
@@ -40,6 +40,8 @@ class AnalyzeResponse(_Body):
     model_id: str | None
     prompt_version: str
     taxonomy_version: str | None
+    # unverified가 아니면 싣지 않는다(SPEC-016 R-23). 계약은 null과 없음을 같게 본다.
+    unverified_reason: UnverifiedReason | None = Field(default=None, exclude_if=lambda v: v is None)
     output: dict[str, object]
 
 
@@ -71,6 +73,7 @@ async def analyze(
         model_id=result.model_id,
         prompt_version=result.prompt_version,
         taxonomy_version=result.taxonomy_version,
+        unverified_reason=result.unverified_reason,
         output=result.output,
     )
 

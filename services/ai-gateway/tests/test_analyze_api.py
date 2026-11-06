@@ -530,3 +530,35 @@ async def test_spec020_r20_escalate_uses_its_profile_model_and_prompt(registry_d
     [call] = adapter.calls
     assert call.model == "fake-strong-vlm"
     assert call.message.task_type == "event_judge_escalate"
+
+
+async def test_spec016_r23_unconfigured_model_reports_model_unavailable(
+    registry_dir: Path,
+) -> None:
+    """[SPEC-016 R-23] 모델 미설정으로 unverified면 사유가 model_unavailable이다."""
+    async with gateway(registry_dir, profile(adapter=None, model=None)) as gw:
+        response = await post_analyze(gw.client, analyze_body())
+
+    assert response.json()["unverifiedReason"] == "model_unavailable"
+
+
+async def test_spec016_r23_budget_exceeded_reports_budget_exceeded(registry_dir: Path) -> None:
+    """[SPEC-016 R-23] 예산 초과로 unverified면 사유가 budget_exceeded이다."""
+    exhausted = MemoryBudget(limits={"*": Decimal(0)})
+    priced = profile(extra={"prices": PRICES})
+    async with gateway(registry_dir, priced, budget=exhausted) as gw:
+        response = await post_analyze(gw.client, analyze_body())
+
+    assert response.json()["unverifiedReason"] == "budget_exceeded"
+
+
+@pytest.mark.parametrize("reply", ["valid", "판단할 수 없음"])
+async def test_spec016_r23_other_results_have_no_reason(registry_dir: Path, reply: str) -> None:
+    """[SPEC-016 R-23] unverified가 아닌 결과(확정·판단 불가·캐시 적중)에는 사유를 싣지 않는다."""
+    text = _valid_reply(registry_dir) if reply == "valid" else reply
+    async with gateway(registry_dir, adapter=FakeAdapter(reply=text)) as gw:
+        first = (await post_analyze(gw.client, analyze_body())).json()
+        second = (await post_analyze(gw.client, analyze_body())).json()
+
+    assert "unverifiedReason" not in first
+    assert "unverifiedReason" not in second
