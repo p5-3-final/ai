@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vlm.example/contracts/prompts/event_judge_escalate/output.schema.json",
+  "title": "EventJudgeEscalateOutput",
+  "description": "event_judge_escalate 결과. event_judge와 같은 형식이고 원본은 서비스 간 계약 events/_vlm-analysis.schema.json(VLMAnalysis)이다(SPEC-020 R-20). 예시는 mock Adapter 응답이다.",
+  "$ref": "../../events/_vlm-analysis.schema.json",
+  "examples": [
+    {
+      "eventType": "fall",
+      "eventDetected": true,
+      "verificationStatus": "confirmed",
+      "description": "적재 구역에서 작업자 한 명이 지게차 옆에 넘어져 일어나지 못하고 있다.",
+      "beforeState": "작업자가 지게차 옆을 걸어가고 있다.",
+      "afterState": "작업자가 바닥에 누워 움직이지 않는다.",
+      "riskDetected": true,
+      "riskType": "worker_down",
+      "riskReason": "쓰러진 작업자 옆에서 지게차가 계속 움직이고 있다.",
+      "solution": "지게차 운행을 멈추고 작업자 상태를 확인한다.",
+      "severity": "high",
+      "evidenceStart": 62.0,
+      "evidenceEnd": 65.5
+    },
+    {
+      "eventType": "fall",
+      "eventDetected": null,
+      "verificationStatus": "unknown",
+      "description": null,
+      "beforeState": null,
+      "afterState": null,
+      "riskDetected": null,
+      "riskType": null,
+      "riskReason": null,
+      "solution": null,
+      "severity": null,
+      "evidenceStart": null,
+      "evidenceEnd": null
+    }
+  ]
+}

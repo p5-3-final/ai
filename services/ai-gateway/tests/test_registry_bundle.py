@@ -48,6 +48,8 @@ def test_spec009_r26_bundle_has_prompts_taxonomy_and_profiles(
     assert "prompts/event_judge/fallback.json" in names
     assert "taxonomy/v2/taxonomy.schema.json" in names
     assert "profiles/local-mock.toml" in names
+    # SPEC-020 R-20: 판정 출력 형식(계약)
+    assert "events/_vlm-analysis.schema.json" in names
 
 
 def test_spec012_r23_bundle_has_query_dictionary(bundle: tuple[bytes, str]) -> None:

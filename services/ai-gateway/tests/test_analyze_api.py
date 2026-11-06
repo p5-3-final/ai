@@ -508,3 +508,25 @@ async def test_spec016_r16_rate_limited_is_unavailable(registry_dir: Path) -> No
     [entry] = gw.call_log.entries
     assert (entry.status, entry.error_code) == ("unavailable", "AI_RATE_LIMITED")
     assert gw.adapter.calls == []
+
+
+async def test_spec020_r20_escalate_uses_its_profile_model_and_prompt(registry_dir: Path) -> None:
+    good = output_example(registry_dir)
+    adapter = FakeAdapter(reply=json.dumps(good, ensure_ascii=False))
+    task = PromptRegistry.load(registry_dir).get("event_judge_escalate")
+    assert task is not None
+    base = profile()
+    strong = base.tasks["event_judge"].model_copy(update={"model": "fake-strong-vlm"})
+    escalating = base.model_copy(update={"tasks": {**base.tasks, "event_judge_escalate": strong}})
+
+    async with gateway(registry_dir, escalating, adapter=adapter) as gw:
+        response = await post_analyze(gw.client, analyze_body(taskType="event_judge_escalate"))
+
+    assert response.status_code == 200
+    body = response.json()
+    assert (body["taskType"], body["modelId"]) == ("event_judge_escalate", "fake-strong-vlm")
+    assert body["promptVersion"] == task.version
+    assert body["output"] == good
+    [call] = adapter.calls
+    assert call.model == "fake-strong-vlm"
+    assert call.message.task_type == "event_judge_escalate"

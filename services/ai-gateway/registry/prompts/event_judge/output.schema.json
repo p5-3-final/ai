@@ -1,49 +1,9 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://vlm.example/contracts/prompts/event_judge/output.schema.json",
-  "title": "VLMAnalysis",
-  "description": "event_judge 결과. 모델이 이 형식으로 답하고 ai-gateway가 검증한다. ai-gateway가 직접 만드는 결과(모델 미설정 unverified, 검증 실패 unknown)도 같은 형식이다(SPEC-009 R-5~R-8).",
-  "type": "object",
-  "additionalProperties": false,
-  "required": [
-    "eventType",
-    "eventDetected",
-    "verificationStatus",
-    "description",
-    "beforeState",
-    "afterState",
-    "riskDetected",
-    "riskType",
-    "riskReason",
-    "solution",
-    "severity",
-    "evidenceStart",
-    "evidenceEnd"
-  ],
-  "properties": {
-    "eventType": {"$ref": "../../taxonomy/v2/taxonomy.schema.json#/$defs/eventType"},
-    "eventDetected": {"type": ["boolean", "null"], "description": "null이면 판단할 수 없음"},
-    "verificationStatus": {
-      "type": "string",
-      "enum": ["confirmed", "rejected", "unverified", "unknown"],
-      "description": "unverified는 모델 미설정, unknown은 판단 불가 또는 출력 검증 실패"
-    },
-    "description": {"type": ["string", "null"], "maxLength": 1000, "description": "누가, 어디서, 무엇을 했는지 한두 문장. ai-gateway가 만든 결과는 null"},
-    "beforeState": {"type": ["string", "null"], "maxLength": 500},
-    "afterState": {"type": ["string", "null"], "maxLength": 500},
-    "riskDetected": {"type": ["boolean", "null"]},
-    "riskType": {"type": ["string", "null"], "maxLength": 100},
-    "riskReason": {"type": ["string", "null"], "maxLength": 500},
-    "solution": {"type": ["string", "null"], "maxLength": 500, "description": "조치 제안. 화면에는 \"안전관리자 확인 필요\"와 함께 보인다"},
-    "severity": {
-      "anyOf": [{"$ref": "../../taxonomy/v2/taxonomy.schema.json#/$defs/severity"}, {"type": "null"}],
-      "description": "ai-gateway가 만든 결과는 null"
-    },
-    "evidenceStart": {"type": ["number", "null"], "minimum": 0, "description": "정규화 사본 기준 초"},
-    "evidenceEnd": {"type": ["number", "null"], "minimum": 0, "description": "정규화 사본 기준 초"}
-  },
-  "if": {"properties": {"riskDetected": {"const": true}}, "required": ["riskDetected"]},
-  "then": {"properties": {"riskType": {"type": "string"}, "riskReason": {"type": "string"}}},
+  "title": "EventJudgeOutput",
+  "description": "event_judge 결과. 형식의 원본은 서비스 간 계약 events/_vlm-analysis.schema.json(VLMAnalysis)이고 event.analyzed로 다른 레포에 전달된다(SPEC-020). 예시는 mock Adapter 응답이다.",
+  "$ref": "../../events/_vlm-analysis.schema.json",
   "examples": [
     {
       "eventType": "fall",
