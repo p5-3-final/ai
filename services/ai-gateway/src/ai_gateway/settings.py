@@ -33,8 +33,11 @@ class GatewaySettings(ServiceSettings):
     models_bucket: str | None = None
     # 가중치 로컬 캐시. 운영은 Pod의 emptyDir을 여기에 붙여 재시작 때 다시 받지 않는다.
     model_cache_dir: Path = Path("/var/cache/vlm-models")
+    # 결과 캐시 앞단·동시 호출 잠금·분당 한도를 Pod 사이에 나누는 Redis(SPEC-016). 비우면 DB 캐시와
+    # Pod별 한도만 쓴다. 비밀번호가 들어갈 수 있어 감싼다.
+    redis_url: SecretStr | None = None
 
-    @field_validator("registry_bundle", "registry_bundle_sha256", mode="before")
+    @field_validator("registry_bundle", "registry_bundle_sha256", "redis_url", mode="before")
     @classmethod
     def _empty_is_unset(cls, value: object) -> object:
         # compose는 값이 없는 변수를 빈 문자열(${VAR:-})로 넘긴다. 묶음을 쓰지 않는다는 뜻이다.

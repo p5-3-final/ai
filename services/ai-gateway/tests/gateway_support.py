@@ -24,10 +24,12 @@ from ai_gateway.adapters.base import (
 from ai_gateway.analyze import CallLogWriter
 from ai_gateway.budget import Reservation
 from ai_gateway.call_log import CallLogEntry
+from ai_gateway.gate import Limiter
 from ai_gateway.main import GatewayDeps, create_app
 from ai_gateway.profile import GatewayProfile
 from ai_gateway.prompts import PromptMessage, PromptRegistry
 from ai_gateway.query_dictionary import QueryDictionary
+from ai_gateway.rate_limit import RateLimiter
 from safetensors.torch import save
 from vlm_encoders.base import ImageTextEncoder
 from vlm_encoders.mock import MockEncoder
@@ -205,6 +207,8 @@ class Gateway:
     adapter: FakeAdapter
     call_log: RecordingCallLog
     storage: InMemoryStorage
+    cache: "MemoryCache"
+    budget: "MemoryBudget"
 
 
 @asynccontextmanager
@@ -218,6 +222,9 @@ async def gateway(
     call_log: CallLogWriter | None = None,
     encoder: ImageTextEncoder | None = None,
     embedders: dict[str, TextEmbeddingAdapter] | None = None,
+    cache: "MemoryCache | None" = None,
+    budget: "MemoryBudget | None" = None,
+    limiter: Limiter | None = None,
 ) -> AsyncIterator[Gateway]:
     """가짜 Adapter·메모리 저장소·기록용 호출 로그로 앱을 띄운다."""
     storage = InMemoryStorage()
@@ -227,6 +234,8 @@ async def gateway(
         prepare(storage)
     fake = adapter or FakeAdapter()
     recording = RecordingCallLog()
+    memory_cache = cache if cache is not None else MemoryCache()
+    memory_budget = budget if budget is not None else MemoryBudget()
     deps = GatewayDeps(
         profile=gateway_profile or profile(),
         prompts=PromptRegistry.load(registry_dir),
@@ -237,6 +246,9 @@ async def gateway(
         is_ready=ready,
         encoder=encoder,
         embedders=embedders or {},
+        cache=memory_cache,
+        budget=memory_budget,
+        limiter=limiter or RateLimiter(gateway_profile or profile()),
     )
 
     async def build() -> GatewayDeps:
@@ -246,7 +258,7 @@ async def gateway(
     async with app.router.lifespan_context(app):
         transport = httpx.ASGITransport(app=app)
         async with httpx.AsyncClient(transport=transport, base_url="http://ai-gateway") as client:
-            yield Gateway(client, fake, recording, storage)
+            yield Gateway(client, fake, recording, storage, memory_cache, memory_budget)
 
 
 def analyze_body(**changes: object) -> dict[str, object]:

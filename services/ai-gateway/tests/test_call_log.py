@@ -1,6 +1,7 @@
 import asyncio
 from collections.abc import AsyncIterator
 from dataclasses import replace
+from decimal import Decimal
 from uuid import uuid4
 
 import pytest
@@ -185,3 +186,46 @@ async def test_spec012_r27_saves_parse_call_without_source(engine: AsyncEngine) 
     assert row["raw_output"] is None
     assert row["output"]["parseMethod"] == "industrial-rule"
     assert row["output"]["dictionaryVersion"] == "v1@0123456789ab"
+
+
+async def test_spec016_r19_saves_cache_hit_and_costs(engine: AsyncEngine) -> None:
+    """[SPEC-016 R-19, R-11] 캐시 적중·예약·정산 비용과 budget_exceeded 상태를 남긴다."""
+    hit = replace(
+        _entry(),
+        raw_output=None,
+        cache_hit=True,
+        reserved_cost_usd=Decimal(0),
+        settled_cost_usd=Decimal(0),
+    )
+    exceeded = replace(
+        _entry(),
+        call_id=new_call_id(),
+        status="budget_exceeded",
+        raw_output=None,
+        cache_hit=False,
+    )
+    called = replace(
+        _entry(),
+        call_id=new_call_id(),
+        cache_hit=False,
+        reserved_cost_usd=Decimal("0.0084"),
+        settled_cost_usd=Decimal("0.00036"),
+    )
+
+    for entry in (hit, exceeded, called):
+        await CallLog(engine).save(entry)
+
+    async with engine.connect() as conn:
+        rows = {
+            r["call_id"]: r
+            for r in (
+                await conn.execute(
+                    text("SELECT * FROM ai.ai_call_log WHERE call_id = ANY(:ids)"),
+                    {"ids": [hit.call_id, exceeded.call_id, called.call_id]},
+                )
+            ).mappings()
+        }
+    assert rows[hit.call_id]["cache_hit"] is True
+    assert rows[exceeded.call_id]["status"] == "budget_exceeded"
+    assert rows[called.call_id]["reserved_cost_usd"] == Decimal("0.0084")
+    assert rows[called.call_id]["settled_cost_usd"] == Decimal("0.00036")

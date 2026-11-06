@@ -5,6 +5,8 @@
 호출 로그를 정한다.
 """
 
+import hashlib
+import json
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from decimal import Decimal
@@ -17,6 +19,21 @@ from ai_gateway.profile import GatewayProfile
 
 type JsonObject = dict[str, object]
 type GateKind = Literal["called", "cached", "budget_exceeded", "failed"]
+
+
+def cache_key(
+    task_type: str, adapter: str, model: str, prompt_version: str | None, content: object
+) -> str:
+    """입력이 같으면 같은 키(SPEC-016 R-2). 프롬프트 버전에 분류 체계 내용이 들어 있다."""
+    payload = {
+        "taskType": task_type,
+        "adapter": adapter,
+        "model": model,
+        "promptVersion": prompt_version,
+        "content": content,
+    }
+    canonical = json.dumps(payload, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
 class CacheStore(Protocol):
