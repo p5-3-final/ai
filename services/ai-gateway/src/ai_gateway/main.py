@@ -92,7 +92,7 @@ def create_app(build: Callable[[], Awaitable[GatewayDeps]]) -> FastAPI:
             deps.profile, deps.encoder, ImageReader(deps.storage), deps.embedders, deps.call_log
         )
         app.state.parse = ParseService(
-            deps.profile, deps.dictionary, deps.prompts, deps.adapters, deps.call_log
+            deps.profile, deps.dictionary, deps.prompts, deps.adapters, deps.call_log, gate
         )
         app.state.is_ready = deps.is_ready
         try:
