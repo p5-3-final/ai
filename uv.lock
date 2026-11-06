@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = "==3.12.*"
 resolution-markers = [
     "sys_platform == 'linux'",
@@ -8,19 +8,53 @@ resolution-markers = [
 
 [manifest]
 members = [
+    "aggregator",
     "ai-gateway",
     "ai-workspace",
     "chunk-processor",
+    "embedding-worker",
     "event-analyzer",
     "frame-encoder",
+    "grounding-worker",
     "normalize",
+    "track-analyzer",
+    "track-stitcher",
     "vlm-ai-client",
+    "vlm-analysis-client",
     "vlm-common",
     "vlm-contracts",
     "vlm-encoders",
     "vlm-messaging",
     "vlm-storage",
+    "vlm-stream-client",
     "vlm-testing",
+]
+
+[[package]]
+name = "aggregator"
+version = "0.1.0"
+source = { editable = "services/aggregator" }
+dependencies = [
+    { name = "redis" },
+    { name = "vlm-ai-client" },
+    { name = "vlm-analysis-client" },
+    { name = "vlm-common" },
+    { name = "vlm-contracts" },
+    { name = "vlm-messaging" },
+    { name = "vlm-storage" },
+    { name = "vlm-stream-client" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "redis", specifier = ">=5" },
+    { name = "vlm-ai-client", editable = "libs/ai-client" },
+    { name = "vlm-analysis-client", editable = "libs/analysis-client" },
+    { name = "vlm-common", editable = "libs/common" },
+    { name = "vlm-contracts", editable = "libs/contracts" },
+    { name = "vlm-messaging", editable = "libs/messaging" },
+    { name = "vlm-storage", editable = "libs/storage" },
+    { name = "vlm-stream-client", editable = "libs/stream-client" },
 ]
 
 [[package]]
@@ -371,6 +405,27 @@ wheels = [
 ]
 
 [[package]]
+name = "embedding-worker"
+version = "0.1.0"
+source = { editable = "services/embedding-worker" }
+dependencies = [
+    { name = "vlm-ai-client" },
+    { name = "vlm-common" },
+    { name = "vlm-contracts" },
+    { name = "vlm-messaging" },
+    { name = "vlm-storage" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "vlm-ai-client", editable = "libs/ai-client" },
+    { name = "vlm-common", editable = "libs/common" },
+    { name = "vlm-contracts", editable = "libs/contracts" },
+    { name = "vlm-messaging", editable = "libs/messaging" },
+    { name = "vlm-storage", editable = "libs/storage" },
+]
+
+[[package]]
 name = "event-analyzer"
 version = "0.1.0"
 source = { editable = "services/event-analyzer" }
@@ -473,6 +528,25 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/ef/31/9b4e140bc24d0ad7927ebd651f5608b0acc2334d061748c3b6ad19085cfa/greenlet-3.5.6-cp312-cp312-musllinux_1_2_x86_64.whl", hash = "sha256:3dbb4596a6a4e5d47121a33ff20533a81e60f302d9e67b69909a8bc21a43f0a7", size = 1647568, upload-time = "2026-09-14T14:35:49.787Z" },
     { url = "https://files.pythonhosted.org/packages/c3/71/d79f1791f824f8ff15c2978746640467ae932a2365e0201069f7f272395f/greenlet-3.5.6-cp312-cp312-win_amd64.whl", hash = "sha256:7ac4abb3877c43af320392c664774eef6fa2cc063c79a55fc02d844a3cbe7395", size = 324203, upload-time = "2026-09-14T14:22:54.504Z" },
     { url = "https://files.pythonhosted.org/packages/63/af/42aca4d56e8cb321912203069d8d34734cb288222f10ad2ae102718cc577/greenlet-3.5.6-cp312-cp312-win_arm64.whl", hash = "sha256:301102a49120b095e72a7838792b41233975fc1c155daec6d98f81c00c9280e0", size = 308310, upload-time = "2026-09-14T14:24:03.008Z" },
+]
+
+[[package]]
+name = "grounding-worker"
+version = "0.1.0"
+source = { editable = "services/grounding-worker" }
+dependencies = [
+    { name = "vlm-common" },
+    { name = "vlm-contracts" },
+    { name = "vlm-messaging" },
+    { name = "vlm-storage" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "vlm-common", editable = "libs/common" },
+    { name = "vlm-contracts", editable = "libs/contracts" },
+    { name = "vlm-messaging", editable = "libs/messaging" },
+    { name = "vlm-storage", editable = "libs/storage" },
 ]
 
 [[package]]
@@ -1431,6 +1505,46 @@ wheels = [
 ]
 
 [[package]]
+name = "track-analyzer"
+version = "0.1.0"
+source = { editable = "services/track-analyzer" }
+dependencies = [
+    { name = "vlm-ai-client" },
+    { name = "vlm-common" },
+    { name = "vlm-contracts" },
+    { name = "vlm-messaging" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "vlm-ai-client", editable = "libs/ai-client" },
+    { name = "vlm-common", editable = "libs/common" },
+    { name = "vlm-contracts", editable = "libs/contracts" },
+    { name = "vlm-messaging", editable = "libs/messaging" },
+]
+
+[[package]]
+name = "track-stitcher"
+version = "0.1.0"
+source = { editable = "services/track-stitcher" }
+dependencies = [
+    { name = "redis" },
+    { name = "vlm-common" },
+    { name = "vlm-contracts" },
+    { name = "vlm-messaging" },
+    { name = "vlm-storage" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "redis", specifier = ">=5" },
+    { name = "vlm-common", editable = "libs/common" },
+    { name = "vlm-contracts", editable = "libs/contracts" },
+    { name = "vlm-messaging", editable = "libs/messaging" },
+    { name = "vlm-storage", editable = "libs/storage" },
+]
+
+[[package]]
 name = "truststore"
 version = "0.10.5"
 source = { registry = "https://pypi.org/simple" }
@@ -1557,6 +1671,23 @@ requires-dist = [
 ]
 
 [[package]]
+name = "vlm-analysis-client"
+version = "0.1.0"
+source = { editable = "libs/analysis-client" }
+dependencies = [
+    { name = "httpx" },
+    { name = "pydantic" },
+    { name = "vlm-common" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "httpx", specifier = ">=0.28.1" },
+    { name = "pydantic", specifier = ">=2.14.2" },
+    { name = "vlm-common", editable = "libs/common" },
+]
+
+[[package]]
 name = "vlm-common"
 version = "0.1.0"
 source = { editable = "libs/common" }
@@ -1645,6 +1776,23 @@ requires-dist = [
     { name = "pydantic-settings", specifier = ">=2.16.2" },
     { name = "vlm-common", editable = "libs/common" },
     { name = "vlm-contracts", editable = "libs/contracts" },
+]
+
+[[package]]
+name = "vlm-stream-client"
+version = "0.1.0"
+source = { editable = "libs/stream-client" }
+dependencies = [
+    { name = "httpx" },
+    { name = "pydantic" },
+    { name = "vlm-common" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "httpx", specifier = ">=0.28.1" },
+    { name = "pydantic", specifier = ">=2.14.2" },
+    { name = "vlm-common", editable = "libs/common" },
 ]
 
 [[package]]

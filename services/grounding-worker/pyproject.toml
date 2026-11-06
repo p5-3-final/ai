@@ -1,0 +1,21 @@
+[project]
+name = "grounding-worker"
+version = "0.1.0"
+description = "검색 결과 bbox 주석 클립, grounding.completed 발행 (SPEC-026)"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "vlm-common",
+    "vlm-contracts",
+    "vlm-messaging",
+    "vlm-storage",
+]
+
+[tool.uv.sources]
+vlm-common = { workspace = true }
+vlm-contracts = { workspace = true }
+vlm-messaging = { workspace = true }
+vlm-storage = { workspace = true }
+
+[build-system]
+requires = ["uv_build>=0.12,<0.13"]
+build-backend = "uv_build"

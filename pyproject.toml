@@ -9,7 +9,27 @@ package = false
 
 [tool.uv.workspace]
 # 빈 서비스 폴더는 pyproject.toml이 생길 때 멤버로 추가한다(glob을 쓰면 uv가 빈 폴더에서 실패한다).
-members = ["libs/ai-client", "libs/common", "libs/contracts", "libs/encoders", "libs/messaging", "libs/storage", "libs/testing", "services/ai-gateway", "services/normalize", "services/chunk-processor", "services/frame-encoder", "services/event-analyzer"]
+members = [
+    "libs/ai-client",
+    "libs/analysis-client",
+    "libs/common",
+    "libs/contracts",
+    "libs/encoders",
+    "libs/messaging",
+    "libs/storage",
+    "libs/stream-client",
+    "libs/testing",
+    "services/ai-gateway",
+    "services/normalize",
+    "services/chunk-processor",
+    "services/frame-encoder",
+    "services/event-analyzer",
+    "services/track-stitcher",
+    "services/track-analyzer",
+    "services/embedding-worker",
+    "services/grounding-worker",
+    "services/aggregator",
+]
 
 [tool.uv.sources]
 vlm-testing = { workspace = true }
@@ -63,15 +83,57 @@ strict = true
 plugins = ["pydantic.mypy"]
 python_version = "3.12"
 # 실행은 인자 없이 `uv run mypy`. mypy는 .py가 없는 폴더를 오류로 보므로 코드가 있는 폴더만 둔다.
-files = ["libs", "services/ai-gateway", "services/normalize", "services/chunk-processor", "services/frame-encoder", "services/event-analyzer"]
+files = [
+    "libs",
+    "services/ai-gateway",
+    "services/normalize",
+    "services/chunk-processor",
+    "services/frame-encoder",
+    "services/event-analyzer",
+    "services/track-stitcher",
+    "services/track-analyzer",
+    "services/embedding-worker",
+    "services/grounding-worker",
+    "services/aggregator",
+]
 explicit_package_bases = true
-mypy_path = ["$MYPY_CONFIG_FILE_DIR/libs/ai-client/src", "$MYPY_CONFIG_FILE_DIR/libs/common/src", "$MYPY_CONFIG_FILE_DIR/libs/contracts/src", "$MYPY_CONFIG_FILE_DIR/libs/encoders/src", "$MYPY_CONFIG_FILE_DIR/libs/messaging/src", "$MYPY_CONFIG_FILE_DIR/libs/storage/src", "$MYPY_CONFIG_FILE_DIR/libs/testing/src", "$MYPY_CONFIG_FILE_DIR/services/ai-gateway/src", "$MYPY_CONFIG_FILE_DIR/services/normalize/src", "$MYPY_CONFIG_FILE_DIR/services/chunk-processor/src", "$MYPY_CONFIG_FILE_DIR/services/frame-encoder/src", "$MYPY_CONFIG_FILE_DIR/services/event-analyzer/src"]
+mypy_path = [
+    "$MYPY_CONFIG_FILE_DIR/libs/ai-client/src",
+    "$MYPY_CONFIG_FILE_DIR/libs/analysis-client/src",
+    "$MYPY_CONFIG_FILE_DIR/libs/common/src",
+    "$MYPY_CONFIG_FILE_DIR/libs/contracts/src",
+    "$MYPY_CONFIG_FILE_DIR/libs/encoders/src",
+    "$MYPY_CONFIG_FILE_DIR/libs/messaging/src",
+    "$MYPY_CONFIG_FILE_DIR/libs/storage/src",
+    "$MYPY_CONFIG_FILE_DIR/libs/stream-client/src",
+    "$MYPY_CONFIG_FILE_DIR/libs/testing/src",
+    "$MYPY_CONFIG_FILE_DIR/services/ai-gateway/src",
+    "$MYPY_CONFIG_FILE_DIR/services/normalize/src",
+    "$MYPY_CONFIG_FILE_DIR/services/chunk-processor/src",
+    "$MYPY_CONFIG_FILE_DIR/services/frame-encoder/src",
+    "$MYPY_CONFIG_FILE_DIR/services/event-analyzer/src",
+    "$MYPY_CONFIG_FILE_DIR/services/track-stitcher/src",
+    "$MYPY_CONFIG_FILE_DIR/services/track-analyzer/src",
+    "$MYPY_CONFIG_FILE_DIR/services/embedding-worker/src",
+    "$MYPY_CONFIG_FILE_DIR/services/grounding-worker/src",
+    "$MYPY_CONFIG_FILE_DIR/services/aggregator/src",
+]
 
 [tool.pytest.ini_options]
 # 멤버마다 tests/가 있어 같은 파일 이름이 겹치므로 importlib 모드로 모은다.
 addopts = "--import-mode=importlib"
 # importlib 모드는 테스트 폴더를 sys.path에 넣지 않는다. 여러 테스트 파일이 쓰는 도우미 모듈만 따로 연다.
-pythonpath = ["services/ai-gateway/tests", "services/chunk-processor/tests", "services/frame-encoder/tests", "services/event-analyzer/tests"]
+pythonpath = [
+    "services/ai-gateway/tests",
+    "services/chunk-processor/tests",
+    "services/frame-encoder/tests",
+    "services/event-analyzer/tests",
+    "services/track-stitcher/tests",
+    "services/track-analyzer/tests",
+    "services/embedding-worker/tests",
+    "services/grounding-worker/tests",
+    "services/aggregator/tests",
+]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 testpaths = ["libs", "services"]
