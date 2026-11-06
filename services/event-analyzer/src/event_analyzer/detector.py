@@ -11,7 +11,7 @@ from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from uuid import UUID
 
-from vlm_ai_client.models import AnalyzeRequest, ImageRef
+from vlm_ai_client.models import AnalyzeRequest
 from vlm_contracts.events import (
     DetectorCandidate,
     DetectorEvidence,
@@ -26,7 +26,7 @@ from vlm_messaging.worker import MessageContext
 from vlm_storage.storage import ObjectStorage
 
 from event_analyzer import ids
-from event_analyzer.calls import AnalyzeClient, EventPublisher, judge, publish
+from event_analyzer.calls import AnalyzeClient, EventPublisher, judge, judge_request, publish
 from event_analyzer.candidates import load_candidates
 from event_analyzer.cap import call_cap
 from event_analyzer.carry import TrackKey, plan_carry
@@ -40,22 +40,19 @@ from event_analyzer.service import AnalyzerConfig
 
 def detector_request(candidate: DetectorCandidate, source: EventCandidate) -> AnalyzeRequest:
     """탐지기 후보의 1차 판정 요청(SPEC-023 R-5). 재판정도 같은 입력이다."""
-    return AnalyzeRequest(
-        task_type="event_judge",
+    return judge_request(
         source_id=source.source_id,
-        images=[ImageRef(storage_key=key) for key in candidate.evidence_frame_keys],
-        variables={
-            "eventType": candidate.event_type,
-            "startSec": candidate.start_ms / 1000,
-            "endSec": candidate.end_ms / 1000,
-            "zoneName": candidate.zone_name,
-            "evidence": {
-                "path": "detector",
-                "triggerClass": candidate.trigger_class,
-                "score": candidate.score,
-                "observationCount": candidate.observation_count,
-                "detectorProfile": source.detector.detector_profile,
-            },
+        event_type=candidate.event_type,
+        start_ms=candidate.start_ms,
+        end_ms=candidate.end_ms,
+        zone_name=candidate.zone_name,
+        frame_keys=candidate.evidence_frame_keys,
+        evidence={
+            "path": "detector",
+            "triggerClass": candidate.trigger_class,
+            "score": candidate.score,
+            "observationCount": candidate.observation_count,
+            "detectorProfile": source.detector.detector_profile,
         },
     )
 

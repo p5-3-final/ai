@@ -13,7 +13,7 @@ from uuid import UUID
 
 from pydantic import ValidationError
 from vlm_ai_client.client import AiGatewayError
-from vlm_ai_client.models import AnalyzeRequest, AnalyzeResponse
+from vlm_ai_client.models import AnalyzeRequest, AnalyzeResponse, ImageRef
 from vlm_contracts.events import DetectableEventType, Event, VLMAnalysis
 from vlm_messaging.publisher import prepare_event
 from vlm_messaging.worker import NonRetryableError
@@ -43,6 +43,33 @@ class EventPublisher(Protocol):
     def publish(
         self, topic: str, event: Event, *, key: str | None = None, traceparent: str | None = None
     ) -> None: ...
+
+
+def judge_request(
+    *,
+    source_id: UUID,
+    event_type: DetectableEventType,
+    start_ms: int,
+    end_ms: int,
+    zone_name: str | None,
+    frame_keys: list[str],
+    evidence: dict[str, object],
+) -> AnalyzeRequest:
+    """`event_judge` 요청. 탐지기 후보와 긴급 후보가 같은 모양으로 만들어 결과 캐시가 적중한다
+    (SPEC-023 R-5, R-22). 이미지는 근거 프레임 순서 그대로다.
+    """
+    return AnalyzeRequest(
+        task_type="event_judge",
+        source_id=source_id,
+        images=[ImageRef(storage_key=key) for key in frame_keys],
+        variables={
+            "eventType": event_type,
+            "startSec": start_ms / 1000,
+            "endSec": end_ms / 1000,
+            "zoneName": zone_name,
+            "evidence": evidence,
+        },
+    )
 
 
 def for_stage(request: AnalyzeRequest, stage: Stage) -> AnalyzeRequest:

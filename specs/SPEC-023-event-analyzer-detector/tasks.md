@@ -65,8 +65,8 @@ updated: 2026-11-07
 - [x] T029 [R-19] `call_cap`과 순서 기반 상한, 넘는 후보는 `call_cap_reached`, 재판정은 남은 횟수 안에서만 — 테스트 `t/test_analyzer_cap.py`, `t/test_analyzer_detector_service.py`, 구현 `ea/cap.py`, `ea/service.py`, `ea/profile.py`
 - [x] T030 [R-20] `event.manifest`에 `carriedCount`·`capReachedCount`·`budgetExceededCount`·`jobType` — 테스트 `t/test_analyzer_detector_service.py`, 구현 `ea/service.py`
 - [ ] T031 [R-18] `RejudgeState`(Redis 키 읽기·갱신·TTL, 미설정이면 판정), `STREAM`에서 창 넘김 carry — 테스트 `t/test_analyzer_rejudge_state.py`(integration), `t/test_analyzer_detector_service.py`, 구현 `ea/rejudge_state.py`, `ea/settings.py`, `ea/__main__.py`, `.env.example`
-- [ ] T032 [R-21] [R-23] `alert.candidate` 핸들러: pending 즉시 발행 → `event_judge` → confirmed 또는 dismissed(`not_detected`·`unverified`·`unknown`), `event.analyzed` 없음 — 테스트 `t/test_analyzer_alert_service.py`, 구현 `ea/alerts.py`, `ea/ids.py`
-- [ ] T033 [R-22] 같은 candidateId의 `alert.candidate`·`event.candidate` 요청 본문이 같음(이미지 순서·변수) — 테스트 `t/test_analyzer_alert_service.py`, 구현 `ea/service.py`(`_detector_request` 공유)
+- [x] T032 [R-21] [R-23] `alert.candidate` 핸들러: pending 즉시 발행 → `event_judge` → confirmed 또는 dismissed(`not_detected`·`unverified`·`unknown`), `event.analyzed` 없음 — 테스트 `t/test_analyzer_alert_service.py`, 구현 `ea/alerts.py`, `ea/ids.py`
+- [x] T033 [R-22] 같은 candidateId의 `alert.candidate`·`event.candidate` 요청 본문이 같음(이미지 순서·변수) — 테스트 `t/test_analyzer_alert_service.py`, 구현 `ea/service.py`(`_detector_request` 공유)
 - [ ] T034 [R-24] 단계 `analyzer.alert`, 워커 경로 `alert.candidate` 추가와 e2e(pending → confirmed 2건, 잘못된 메시지 DLQ) — 테스트 `t/test_analyzer_alert_service.py`, `t/test_analyzer_worker_e2e.py`, 구현 `ea/alerts.py`, `ea/__main__.py`
 - [ ] T035 README(carry·상한·Redis·긴급 경로), 로컬 compose 측정: `alert.candidate` 받은 뒤 pending 발행 p95(목표 500ms), 창 2개에 걸친 carry 확인. 측정 기록에 남긴다
 

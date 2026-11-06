@@ -19,6 +19,7 @@ from referencing.jsonschema import DRAFT202012, Schema
 from vlm_ai_client.client import AiGatewayError
 from vlm_ai_client.models import AnalyzeRequest, AnalyzeResponse
 from vlm_contracts.events import (
+    AlertCandidate,
     DetectableEventType,
     DetectorCandidate,
     DetectorInfo,
@@ -150,6 +151,42 @@ def candidate_file(*candidates: DetectorCandidate, **ids: UUID) -> bytes:
         "candidates": [c.model_dump(mode="json", by_alias=True) for c in candidates],
     }
     return json.dumps(body).encode()
+
+
+CAMERA = UUID("0192fb00-0000-7000-8000-000000000020")
+
+
+def alert_candidate(
+    event_type: DetectableEventType = "fall",
+    *,
+    first_seen_ms: int = 302_400,
+    observed_ms: int = 302_800,
+    score: float = 0.82,
+    frames: int = 2,
+) -> AlertCandidate:
+    """실시간 긴급 후보. 근거 프레임은 같은 실행 폴더 안이다."""
+    return AlertCandidate(
+        event_id=MESSAGE_ID,
+        occurred_at=NOW,
+        source_id=SOURCE,
+        owner_id=OWNER,
+        job_id=JOB,
+        chunk_id=CHUNK,
+        execution_id=EXECUTION,
+        normalization_id=NORMALIZATION,
+        camera_id=CAMERA,
+        candidate_id=UUID(int=0xC001),
+        candidate_event_type=event_type,
+        reason="severity_high",
+        track_id=UUID(int=0xA001),
+        zone_id=None,
+        first_seen_ms=first_seen_ms,
+        observed_ms=observed_ms,
+        observations=2,
+        score=score,
+        evidence_frame_keys=[f"{PREFIX}blurred/alert-{i}.jpg" for i in range(frames)],
+        detector_profile=DETECTOR_PROFILE,
+    )
 
 
 def candidates_message(*candidates: VectorCandidate) -> EventCandidateVector:
