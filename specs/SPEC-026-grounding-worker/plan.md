@@ -87,7 +87,7 @@ updated: 2026-11-06
 ```python
 class GroundingDetector(Protocol):
     @property
-    def version(self) -> str: ...          # groundingModel(가중치 manifest의 version)
+    def version(self) -> str: ...  # groundingModel(가중치 manifest의 version)
     def detect(self, frame: RgbFrame, targets: Sequence[str]) -> list[Detection]: ...
 ```
 
