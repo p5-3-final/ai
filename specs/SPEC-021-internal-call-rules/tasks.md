@@ -18,7 +18,7 @@ updated: 2026-11-06
 ## Phase 0: 준비
 
 - [x] T001 계약 잠금 4.1.0(지시로 3.14.0 대신 4.1.0): `scripts/fetch-service-contracts.sh --update 3.14.0`. 잠금을 올리면 깨지는 기존 계약 테스트를 맞춘다(단계 ID 전체 목록, `EventAnalyzed`의 `detectorCandidate`·`rule`·`rule+vlm`·`rule+vlm+escalate`·`judgments` 0개). 모델만 넓히고 SPEC-023 동작은 만들지 않는다 — 테스트 `libs/contracts/tests/test_stage_contracts.py`, `test_event_contracts.py`(지금 4건 실패가 Red), 구현 `service-contracts.lock`, `vlm_contracts/stages.py`, `vlm_contracts/events.py`
-- [ ] T002 datamodel-code-generator를 루트 dev 그룹에 추가(`uv add --dev`), 생성 옵션 `libs/ai-client/pyproject.toml` `[tool.datamodel-codegen]`, 스크립트 `scripts/generate-ai-client.sh`(shellcheck). 생성 결과의 `TaskType`(열린 목록 → `str`), nullable, 자유 객체, `extra` 처리를 확인하고 `Any`가 나오면 plan 8절대로 멈추고 확인한다
+- [x] T002 datamodel-code-generator를 루트 dev 그룹에 추가(`uv add --dev`), 생성 옵션 `libs/ai-client/pyproject.toml` `[tool.datamodel-codegen]`, 스크립트 `scripts/generate-ai-client.sh`(shellcheck). 생성 결과의 `TaskType`(열린 목록 → `str`), nullable, 자유 객체, `extra` 처리를 확인하고 `Any`가 나오면 plan 8절대로 멈추고 확인한다
 - [ ] T003 [P] ai-gateway 테스트 도우미: `post_analyze`·`post_embed`·`post_parse`에 `headers` 인자, 호출을 세는 가짜 저장소·캐시·예산, 느린 가짜 Adapter — `gwt/gateway_support.py`(기존 테스트 통과로 확인)
 
 ## Phase 1: US-1 포기한 호출에 비용을 쓰지 않음 — ai-gateway (P1)
@@ -37,7 +37,7 @@ updated: 2026-11-06
 
 ## Phase 2: US-2 계약과 코드가 어긋나지 않음 — ai-client (P1)
 
-- [ ] T015 [R-7] 잠금 계약으로 `tmp_path`에 다시 생성한 결과가 커밋된 `ac/models.py`와 같아야 한다. Red는 생성 파일이 없는 상태의 비교 실패, Green은 스크립트로 생성해 커밋 — 테스트 `act/test_ai_client_generated.py`, 구현 `ac/models.py`(생성), `scripts/generate-ai-client.sh`
+- [x] T015 [R-7] 잠금 계약으로 `tmp_path`에 다시 생성한 결과가 커밋된 `ac/models.py`와 같아야 한다. Red는 생성 파일이 없는 상태의 비교 실패, Green은 스크립트로 생성해 커밋 — 테스트 `act/test_ai_client_generated.py`, 구현 `ac/models.py`(생성), `scripts/generate-ai-client.sh`
 - [ ] T016 [R-6] 클라이언트가 생성 모델만 쓴다: `ac/` 안에 `models.py` 밖의 `BaseModel` 하위 클래스가 없고, 계약 예시가 생성 모델로 왕복된다. 손 작성 모델 삭제, event-analyzer import를 `vlm_ai_client.models`로(`AnalyzeImage` → `ImageRef`) — 테스트 `act/test_ai_client_models.py`, 기존 `act/test_ai_gateway_client.py`·`t/test_analyzer_service.py`, 구현 `ac/client.py`, `ea/service.py`
 - [ ] T017 [R-13] `embed`: 요청 본문·헤더, 생성 응답 모델 — 테스트 `act/test_ai_gateway_client.py`, 구현 `ac/client.py`
 - [ ] T018 [R-13] `parse`: 요청 본문·헤더, 생성 응답 모델 — 테스트 `act/test_ai_gateway_client.py`, 구현 `ac/client.py`

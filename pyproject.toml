@@ -46,6 +46,7 @@ explicit = true
 
 [dependency-groups]
 dev = [
+    "datamodel-code-generator>=0.90.0",
     "httpx>=0.28.1",
     "mypy>=2.4.1",
     "pydantic-settings>=2.16.2",
@@ -77,6 +78,9 @@ select = [
 
 [tool.ruff.lint.per-file-ignores]
 "**/tests/**" = ["S101"]
+# 계약에서 생성한 클라이언트 모델은 손으로 고치지 않는다. 계약 description이 Field 문자열로 들어가
+# 줄 길이만 넘는다(SPEC-021, #44). 나머지 규칙은 그대로 검사한다(.claude/rules/lint.md).
+"libs/*-client/src/*/models.py" = ["E501"]
 
 [tool.mypy]
 strict = true
@@ -124,6 +128,7 @@ mypy_path = [
 addopts = "--import-mode=importlib"
 # importlib 모드는 테스트 폴더를 sys.path에 넣지 않는다. 여러 테스트 파일이 쓰는 도우미 모듈만 따로 연다.
 pythonpath = [
+    "libs/ai-client/tests",
     "services/ai-gateway/tests",
     "services/chunk-processor/tests",
     "services/frame-encoder/tests",

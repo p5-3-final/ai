@@ -1,17 +1,47 @@
 [project]
 name = "vlm-ai-client"
 version = "0.1.0"
-description = "ai-gateway REST 호출 클라이언트(/v1/analyze). 계약은 docs 레포 service-contracts/openapi/ai-gateway.yaml"
+description = "ai-gateway REST 호출 클라이언트(/v1/analyze, /v1/embed, /v1/parse). 모델은 계약 openapi/ai-gateway.yaml에서 scripts/generate-clients.sh로 생성한다"
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "httpx>=0.28.1",
     "pydantic>=2.14.2",
     "vlm-common",
+    "vlm-contracts",
 ]
 
 [tool.uv.sources]
 vlm-common = { workspace = true }
+vlm-contracts = { workspace = true }
 
 [build-system]
 requires = ["uv_build>=0.12,<0.13"]
 build-backend = "uv_build"
+
+# 생성 모델 src/vlm_ai_client/models.py의 옵션(SPEC-021 R-6·R-7). scripts/generate-clients.sh가 이 폴더에서
+# 생성기를 실행해 이 설정을 읽는다. 입력·출력 경로와 머리글은 스크립트가 넘긴다.
+[tool.datamodel-codegen]
+input-file-type = "openapi"
+# _common.yaml의 ProblemDetail도 만들려고 경로에서 참조하는 스키마까지 넣는다.
+openapi-scopes = ["schemas", "paths"]
+output-model-type = "pydantic_v2.BaseModel"
+target-python-version = "3.12"
+snake-case-field = true
+use-standard-collections = true
+use-union-operator = true
+field-constraints = true
+use-annotated = true
+# 자유 객체(variables, output)를 Any 대신 object로 만든다(Any 금지).
+use-object-type = true
+# 열린 목록 taskType(x-extensible-enum, ADR-0014)과 enum을 RootModel·Enum 클래스 대신 str·Literal 별칭으로
+# 만들어 호출부가 문자열 그대로 쓰게 한다.
+use-type-alias = true
+enum-field-as-literal = "all"
+# 계약의 상대 참조(taxonomy/v2)를 따라간다. 잠금 체크섬으로 고정한 로컬 파일이다.
+allow-remote-refs = true
+# 생성기가 allOf+not(other 제외)을 풀지 못해 빈 모델을 만든다. 같은 정의를 계약 테스트로 맞춘 모델로 바꾼다.
+type-overrides = { DetectableEventType = "vlm_contracts.events.DetectableEventType" }
+disable-timestamp = true
+use-double-quotes = true
+# 포맷은 스크립트가 레포 ruff 설정으로 따로 한다(생성기 안의 ruff는 레포 설정을 찾지 못한다).
+formatters = []
