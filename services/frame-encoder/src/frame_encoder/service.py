@@ -10,6 +10,7 @@ from vlm_contracts.events import Event, SegmentEmbedded, SegmentReady
 from vlm_contracts.vectors import CropVector, SegmentVector, VectorFile
 from vlm_encoders.base import ImageDecodeError, ImageTextEncoder, Vector
 from vlm_messaging.publisher import prepare_event
+from vlm_messaging.timing import StageRecorder
 from vlm_messaging.worker import MessageContext, NonRetryableError
 from vlm_storage.storage import ObjectNotFoundError, ObjectStorage
 
@@ -65,29 +66,16 @@ class FrameEncoderService:
 
         이벤트 루프를 막지 않아야 처리 중에도 소비 그룹 하트비트가 이어진다(SPEC-019 NFR-3).
         """
-        await asyncio.to_thread(self._process, event, ctx.traceparent)
+        await asyncio.to_thread(self._process, event, ctx.traceparent, ctx.timing)
 
-    def _process(self, ready: SegmentReady, traceparent: str | None) -> None:
-        frames = self._encode([f.key for s in ready.segments for f in s.frames])
-        segments = [
-            SegmentVector(
-                segment_id=s.segment_id,
-                start_ms=s.start_ms,
-                end_ms=s.end_ms,
-                static=s.static,
-                vector=segment_vector(
-                    frames[i * _FRAMES_PER_SEGMENT : (i + 1) * _FRAMES_PER_SEGMENT]
-                ),
-            )
-            for i, s in enumerate(ready.segments)
-        ]
-        crop_vectors = self._encode([c.key for c in ready.crops])
-        crops = [
-            CropVector(
-                crop_id=c.crop_id, track_local_id=c.track_local_id, pts_ms=c.pts_ms, vector=v
-            )
-            for c, v in zip(ready.crops, crop_vectors, strict=True)
-        ]
+    def _process(self, ready: SegmentReady, traceparent: str | None, timing: StageRecorder) -> None:
+        # SPEC-019 R-19: 실패한 단계도 `error`로 남는다.
+        with timing.stage("encoder.segments", unit="segments") as block:
+            segments = self._segment_vectors(ready)
+            block.count = len(segments)
+        with timing.stage("encoder.crops", unit="crops") as block:
+            crops = self._crop_vectors(ready)
+            block.count = len(crops)
         vector_file = VectorFile(
             source_id=ready.source_id,
             job_id=ready.job_id,
@@ -100,10 +88,12 @@ class FrameEncoderService:
             crops=crops,
         )
         key = ids.vectors_key(ready)
-        # 같은 실행은 같은 키·같은 내용이라 다시 처리할 때 덮어써도 된다.
-        self._storage.put_bytes(
-            key, vector_file.model_dump_json(by_alias=True).encode(), "application/json"
-        )
+        with timing.stage("encoder.store", unit="files") as block:
+            # 같은 실행은 같은 키·같은 내용이라 다시 처리할 때 덮어써도 된다.
+            self._storage.put_bytes(
+                key, vector_file.model_dump_json(by_alias=True).encode(), "application/json"
+            )
+            block.count = 1
         embedded = SegmentEmbedded(
             event_id=ids.embedded_event_id(ready.execution_id),
             occurred_at=self._clock(),
@@ -120,6 +110,30 @@ class FrameEncoderService:
             dimension=self._encoder.dimension,
         )
         self._publish(embedded, traceparent)
+
+    def _segment_vectors(self, ready: SegmentReady) -> list[SegmentVector]:
+        frames = self._encode([f.key for s in ready.segments for f in s.frames])
+        return [
+            SegmentVector(
+                segment_id=s.segment_id,
+                start_ms=s.start_ms,
+                end_ms=s.end_ms,
+                static=s.static,
+                vector=segment_vector(
+                    frames[i * _FRAMES_PER_SEGMENT : (i + 1) * _FRAMES_PER_SEGMENT]
+                ),
+            )
+            for i, s in enumerate(ready.segments)
+        ]
+
+    def _crop_vectors(self, ready: SegmentReady) -> list[CropVector]:
+        vectors = self._encode([c.key for c in ready.crops])
+        return [
+            CropVector(
+                crop_id=c.crop_id, track_local_id=c.track_local_id, pts_ms=c.pts_ms, vector=v
+            )
+            for c, v in zip(ready.crops, vectors, strict=True)
+        ]
 
     def _encode(self, keys: list[str]) -> list[Vector]:
         """이미지를 묶음으로 나눠 읽고 인코딩한다.

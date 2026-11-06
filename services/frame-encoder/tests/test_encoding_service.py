@@ -1,3 +1,4 @@
+from dataclasses import replace
 from uuid import UUID
 
 import pytest
@@ -20,6 +21,7 @@ from frame_encoder.vectors import segment_vector
 from vlm_contracts.events import SegmentEmbedded, SegmentReady
 from vlm_contracts.vectors import VectorFile
 from vlm_encoders.base import ImageDecodeError, Vector
+from vlm_messaging.timing import StageRecorder
 from vlm_messaging.worker import MessageContext, NonRetryableError
 from vlm_storage.memory import InMemoryStorage
 
@@ -241,3 +243,43 @@ async def test_spec_019_r18_transient_storage_error_is_retried(failure: str) -> 
         await _service(storage, publisher).handle(ready, CTX)
 
     assert publisher.published == []
+
+
+def _timed_ctx() -> MessageContext:
+    return replace(CTX, timing=StageRecorder(service="frame-encoder", attempt=1, received_at=NOW))
+
+
+async def test_spec_019_r19_records_segment_crop_and_store_stages() -> None:
+    ready = segment_ready(segments=2, crops=3)
+    storage = storage_with_images(ready)
+    ctx = _timed_ctx()
+
+    await _service(storage, RecordingPublisher()).handle(ready, ctx)
+
+    timings = ctx.timing.timings
+    assert [(t.stage_id, t.status) for t in timings] == [
+        ("encoder.segments", "ok"),
+        ("encoder.crops", "ok"),
+        ("encoder.store", "ok"),
+    ]
+    # 단계마다 처리한 개수: 구간 2개(이미지 8장), 크롭 3장, 파일 1개
+    assert [(t.count, t.unit) for t in timings] == [
+        (2, "segments"),
+        (3, "crops"),
+        (1, "files"),
+    ]
+
+
+async def test_spec_019_r19_failed_stage_is_recorded_as_error() -> None:
+    ready = segment_ready(segments=1, crops=2)
+    storage = storage_with_images(ready)
+    storage.delete_prefix(crop_key(0))
+    ctx = _timed_ctx()
+
+    with pytest.raises(NonRetryableError):
+        await _service(storage, RecordingPublisher()).handle(ready, ctx)
+
+    assert [(t.stage_id, t.status) for t in ctx.timing.timings] == [
+        ("encoder.segments", "ok"),
+        ("encoder.crops", "error"),
+    ]
