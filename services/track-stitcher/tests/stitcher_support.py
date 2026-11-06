@@ -2,7 +2,7 @@
 
 import json
 from collections.abc import Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from functools import cache
 from pathlib import Path
@@ -241,24 +241,6 @@ def store_vectors(storage: ObjectStorage, vectors: VectorFile) -> None:
     put(storage, vectors_key(vectors), vectors)
 
 
-@dataclass
-class RecordingPublisher:
-    published: list[tuple[str, Event, str | None, str | None]] = field(default_factory=list)
-    fail: bool = False
-
-    def publish(
-        self, topic: str, event: Event, *, key: str | None = None, traceparent: str | None = None
-    ) -> None:
-        if self.fail:
-            from vlm_messaging.publisher import PublishError
-
-            raise PublishError("broker unavailable")
-        self.published.append((topic, event, key, traceparent))
-
-    def events(self, topic: str) -> list[Event]:
-        return [e for t, e, _, _ in self.published if t == topic]
-
-
 # 로컬은 작업 공간(project/repos/ai) 두 단계 위 docs 레포의 service-contracts/를 읽는다.
 # CI는 service-contracts.lock 버전을 받아 CONTRACTS_DIR로 준다(docs ADR-0013).
 def _default_contracts_dir() -> Path:
@@ -304,3 +286,33 @@ def event_errors(event: Event) -> list[str]:
 def mapping_errors(raw: bytes) -> list[str]:
     """저장한 번역표 파일을 docs 원본 스키마로 검증한다."""
     return _errors("tracks/v1/track-mapping.schema.json", json.loads(raw))
+
+
+def crossing_chunks(
+    count: int = 5, *, source: UUID = SOURCE, job: UUID = JOB, attempt: int = 0
+) -> list[ChunkTracks]:
+    """경계마다 같은 사람 트랙 하나가 지나가는 청크들. 경계 창 양쪽에 같은 박스가 있다."""
+    duration = count * CHUNK_MS
+    files: list[ChunkTracks] = []
+    for i in range(count):
+        own, proc = owned(i, duration), processing(i, duration)
+        head = boxes(own.start_ms - OVERLAP_MS, own.start_ms + OVERLAP_MS) if i > 0 else []
+        tail = boxes(own.end_ms - OVERLAP_MS, own.end_ms + OVERLAP_MS) if i < count - 1 else []
+        person = track("p", proc.start_ms, proc.end_ms - 1, head=head, tail=tail)
+        files.append(
+            chunk_tracks(i, [person], duration_ms=duration, attempt=attempt, source=source, job=job)
+        )
+    return files
+
+
+@dataclass
+class Clock:
+    """테스트가 움직이는 시계(epoch 초)."""
+
+    now: float = NOW.timestamp()
+
+    def __call__(self) -> float:
+        return self.now
+
+    def advance(self, seconds: float) -> None:
+        self.now += seconds
