@@ -14,8 +14,10 @@ manifest_sha256 = "569e79292c638ca67fbe5318adb212c3e26c73fbacfc6453268abf95c9266
 batch_size = 16
 
 # 텍스트 프로토타입 후보(SPEC-019 R-10~R-15).
-# 아래 문장과 임계값은 event.candidate.vector 흐름을 로컬에서 확인하려는 예시다. 실제 영상으로 잰
+# 아래 문장과 임계값은 event.candidate.vector 흐름을 로컬에서 확인하려는 예시다. 실제 현장 영상으로 잰
 # 값이 아니며, 운영 값은 모델 담당이 평가(evals)로 정하고 version을 올린다.
+# 임계값 0.2: 공개 사진 2장으로 잰 fire_or_smoke 점수(화재 0.217, 지게차 0.158) 사이(-m model 테스트).
+# fall은 잰 값이 없어 같은 값을 둔다.
 [prototypes]
 version = "local-sample-v1"
 
@@ -24,11 +26,11 @@ texts = [
   "a photo of a worker lying on the floor",
   "a photo of a person who has fallen down at a construction site",
 ]
-threshold = 0.25
+threshold = 0.2
 
 [prototypes.types.fire_or_smoke]
 texts = [
   "a photo of fire in a factory",
   "a photo of thick smoke rising indoors",
 ]
-threshold = 0.25
+threshold = 0.2

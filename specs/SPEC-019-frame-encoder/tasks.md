@@ -46,9 +46,17 @@ updated: 2026-11-06
 - [x] T018 [R-9] 기동 조립: 프로필 읽기, 인코더 로드(manifest 불일치면 실패) — 테스트 `t/test_encoder_main.py`, 구현 `fe/{__main__,settings}.py`
 - [x] T019 [R-16] [NFR-1] [NFR-3] 워커 e2e: 정상 처리, 잘못된 메시지 DLQ — 테스트 `t/test_encoder_worker_e2e.py`
 - [x] T020 Dockerfile, 로컬 프로필, README, `scripts/test-in-docker.sh` 대상
-- [ ] T021 [NFR-2] 실제 모델 테스트(`-m model`)와 로컬 compose 측정
+- [x] T021 [NFR-2] 실제 모델 테스트(`-m model`)와 로컬 compose 측정
+
+## 측정 기록 (T021, 2026-11-06)
+
+- `-m model`(호스트 Apple M5): 실제 MobileCLIP2-S0 가중치로 프로필 manifest sha256부터 가중치까지 일치, 구간 24개·크롭 30장 24.35초, 벡터 54개 모두 512차원·길이 1
+- 로컬 compose(메모리 상한 1GB, `local.toml`): 같은 크기 메시지를 발행부터 `segment.embedded`까지 9.69초(NFR-2 기준 120초), 최대 메모리 690MiB
+  - 단계: `encoder.segments` 7.14초, `encoder.crops` 1.92초, `encoder.store` 25ms, `encoder.prototype` 3ms
+  - 화재 사진 구간 12개만 `fire_or_smoke` 후보(임계값 0.2), 지게차 사진 구간 0개
+- chunk-processor가 아직 `segment.ready`를 발행하지 않아 메시지는 직접 넣었다
 
 ## 완료 조건
 
-- [ ] 모든 R-*, NFR-* 테스트 또는 측정 통과
-- [ ] ruff, mypy, pytest, test-in-docker 통과
+- [x] 모든 R-*, NFR-* 테스트 또는 측정 통과
+- [x] ruff, mypy, pytest, test-in-docker 통과
