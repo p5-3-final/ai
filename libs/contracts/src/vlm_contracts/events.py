@@ -228,6 +228,126 @@ class ChunkExecutionFinished(Event):
         return self
 
 
+_MS = Field(ge=0, le=9223372036854775807)
+_UUID36 = r"[0-9a-f-]{36}"
+_EXECUTION_PREFIX = rf"^sources/{_UUID36}/jobs/{_UUID36}/chunks/{_UUID36}/executions/{_UUID36}/"
+_BLURRED_IMAGE = _EXECUTION_PREFIX + r"blurred/[^/?#]+\.(jpg|jpeg|png|webp)$"
+# 분류 체계 v2의 탐지 가능 유형(other 제외). 원본은 taxonomy/v2/taxonomy.schema.json이다.
+type DetectableEventType = Literal[
+    "fall",
+    "fire_or_smoke",
+    "ppe_missing",
+    "object_removed",
+    "barrier_not_restored",
+    "hazard_zone_access",
+    "equipment_abandoned",
+    "object_moved",
+]
+
+
+class _Part(BaseModel):
+    model_config = ConfigDict(
+        alias_generator=to_camel, populate_by_name=True, frozen=True, extra="forbid"
+    )
+
+
+class SegmentFrame(_Part):
+    """구간 안 프레임 하나(블러 사본)."""
+
+    pts_ms: int = _MS
+    key: str = Field(pattern=_BLURRED_IMAGE)
+
+
+class ReadySegment(_Part):
+    """`segment.ready`의 구간. 프레임은 정확히 4장이다."""
+
+    segment_id: UUID
+    start_ms: int = _MS
+    end_ms: int = _MS
+    static: bool
+    frames: list[SegmentFrame] = Field(min_length=4, max_length=4)
+
+
+class ReadyCrop(_Part):
+    """트랙 대표 크롭(블러 사본)."""
+
+    crop_id: UUID
+    track_local_id: str = Field(pattern=r"^[A-Za-z0-9_-]{1,64}$")
+    pts_ms: int = _MS
+    key: str = Field(pattern=_BLURRED_IMAGE)
+
+
+class _Execution(Event):
+    """청크 실행 하나에 묶인 이벤트의 식별자."""
+
+    job_id: UUID
+    chunk_id: UUID
+    execution_id: UUID
+    normalization_id: UUID
+
+    def execution_prefix(self) -> str:
+        """이 실행의 저장소 폴더. 입력·출력 경로는 모두 이 아래다."""
+        return (
+            f"sources/{self.source_id}/jobs/{self.job_id}/chunks/{self.chunk_id}"
+            f"/executions/{self.execution_id}/"
+        )
+
+
+class SegmentReady(_Execution):
+    """청크의 검색 경로 입력 준비 완료. 발행: chunk-processor. 소비: frame-encoder(SPEC-019)."""
+
+    event_type: Literal["segment.ready"] = "segment.ready"
+    schema_version: Literal[1] = 1
+    segments: list[ReadySegment] = Field(max_length=64)
+    crops: list[ReadyCrop] = Field(max_length=512)
+
+    @model_validator(mode="after")
+    def _inside_execution_folder(self) -> Self:
+        # SPEC-019 R-16: 다른 영상·실행의 이미지를 읽지 않는다. 스키마 패턴은 형식만 보므로
+        # 메시지의 식별자와 맞는지 여기서 확인한다.
+        prefix = self.execution_prefix() + "blurred/"
+        keys = [f.key for s in self.segments for f in s.frames] + [c.key for c in self.crops]
+        if any(not key.startswith(prefix) for key in keys):
+            raise ValueError("image key is outside the execution folder of this message")
+        return self
+
+
+class SegmentEmbedded(_Execution):
+    """구간·크롭 벡터 파일 저장 완료. 발행: frame-encoder(SPEC-019 R-4)."""
+
+    event_type: Literal["segment.embedded"] = "segment.embedded"
+    schema_version: Literal[1] = 1
+    vectors_key: str = Field(pattern=_EXECUTION_PREFIX + r"vectors[.]json$")
+    segment_count: int = Field(ge=0)
+    crop_count: int = Field(ge=0)
+    embedding_model: str = Field(pattern=r"^[^:\s]+:[^:\s]+:[^:\s]+:[^:\s]+$")
+    dimension: int = Field(ge=1, le=4096)
+
+
+class VectorCandidate(_Part):
+    """구간 벡터 프로토타입 후보 하나(SPEC-019 R-14)."""
+
+    candidate_id: UUID
+    segment_id: UUID
+    start_ms: int = _MS
+    end_ms: int = _MS
+    event_type: DetectableEventType
+    score: float = Field(ge=-1, le=1)
+    threshold: float = Field(gt=-1, le=1)
+    frame_keys: list[str] = Field(min_length=4, max_length=4)
+
+
+class EventCandidateVector(_Execution):
+    """구간 벡터 프로토타입 후보 묶음. 발행: frame-encoder(SPEC-019 R-12, ADR-0010 ③)."""
+
+    event_type: Literal["event.candidate.vector"] = "event.candidate.vector"
+    schema_version: Literal[1] = 1
+    embedding_model: str = Field(pattern=r"^[^:\s]+:[^:\s]+:[^:\s]+:[^:\s]+$")
+    prototype_version: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._:@-]{0,99}$")
+    taxonomy_version: Literal["v2"] = "v2"
+    candidates: list[VectorCandidate] = Field(min_length=1, max_length=512)
+
+
 EVENT_MODELS: dict[str, type[Event]] = {
     "chunk.requested": ChunkRequested,
     "chunk.execution.finished": ChunkExecutionFinished,
@@ -235,5 +355,8 @@ EVENT_MODELS: dict[str, type[Event]] = {
     "video.deleted": VideoDeleted,
     "video.normalizing": VideoNormalizing,
     "video.normalized": VideoNormalized,
+    "segment.ready": SegmentReady,
+    "segment.embedded": SegmentEmbedded,
+    "event.candidate.vector": EventCandidateVector,
 }
 """토픽 이름 → 이벤트 모델. 계약 테스트는 여기 등록된 모델을 모두 검증한다."""
