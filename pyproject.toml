@@ -9,7 +9,7 @@ package = false
 
 [tool.uv.workspace]
 # 빈 서비스 폴더는 pyproject.toml이 생길 때 멤버로 추가한다(glob을 쓰면 uv가 빈 폴더에서 실패한다).
-members = ["libs/common", "libs/contracts", "libs/encoders", "libs/messaging", "libs/storage", "libs/testing", "services/ai-gateway", "services/normalize", "services/chunk-processor"]
+members = ["libs/common", "libs/contracts", "libs/encoders", "libs/messaging", "libs/storage", "libs/testing", "services/ai-gateway", "services/normalize", "services/chunk-processor", "services/frame-encoder"]
 
 [tool.uv.sources]
 vlm-testing = { workspace = true }
@@ -63,9 +63,9 @@ strict = true
 plugins = ["pydantic.mypy"]
 python_version = "3.12"
 # 실행은 인자 없이 `uv run mypy`. mypy는 .py가 없는 폴더를 오류로 보므로 코드가 있는 폴더만 둔다.
-files = ["libs", "services/ai-gateway", "services/normalize", "services/chunk-processor"]
+files = ["libs", "services/ai-gateway", "services/normalize", "services/chunk-processor", "services/frame-encoder"]
 explicit_package_bases = true
-mypy_path = ["$MYPY_CONFIG_FILE_DIR/libs/common/src", "$MYPY_CONFIG_FILE_DIR/libs/contracts/src", "$MYPY_CONFIG_FILE_DIR/libs/encoders/src", "$MYPY_CONFIG_FILE_DIR/libs/messaging/src", "$MYPY_CONFIG_FILE_DIR/libs/storage/src", "$MYPY_CONFIG_FILE_DIR/libs/testing/src", "$MYPY_CONFIG_FILE_DIR/services/ai-gateway/src", "$MYPY_CONFIG_FILE_DIR/services/normalize/src", "$MYPY_CONFIG_FILE_DIR/services/chunk-processor/src"]
+mypy_path = ["$MYPY_CONFIG_FILE_DIR/libs/common/src", "$MYPY_CONFIG_FILE_DIR/libs/contracts/src", "$MYPY_CONFIG_FILE_DIR/libs/encoders/src", "$MYPY_CONFIG_FILE_DIR/libs/messaging/src", "$MYPY_CONFIG_FILE_DIR/libs/storage/src", "$MYPY_CONFIG_FILE_DIR/libs/testing/src", "$MYPY_CONFIG_FILE_DIR/services/ai-gateway/src", "$MYPY_CONFIG_FILE_DIR/services/normalize/src", "$MYPY_CONFIG_FILE_DIR/services/chunk-processor/src", "$MYPY_CONFIG_FILE_DIR/services/frame-encoder/src"]
 
 [tool.pytest.ini_options]
 # 멤버마다 tests/가 있어 같은 파일 이름이 겹치므로 importlib 모드로 모은다.
