@@ -67,6 +67,8 @@ class TaskProfile(Profile):
     adapter: str | None = None
     model: str | None = None
     max_output_tokens: int = Field(gt=0)
+    # 받는 이미지 수의 하한. 기존 taskType은 하한이 없어 기본 0이다(SPEC-024 R-11·R-12).
+    min_images: int = Field(default=0, ge=0)
     max_images: int = Field(gt=0)
     timeout_s: float = Field(gt=0)
     max_retries: int = Field(ge=0)
@@ -77,6 +79,8 @@ class TaskProfile(Profile):
     def _both_or_none(self) -> Self:
         if (self.adapter is None) != (self.model is None):
             raise ValueError("adapter and model must be set together")
+        if self.min_images > self.max_images:
+            raise ValueError("min_images must not exceed max_images")
         return self
 
 

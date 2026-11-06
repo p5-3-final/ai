@@ -511,6 +511,131 @@ class EventAnalyzed(_Execution):
         return self
 
 
+# --- SPEC-024 트랙 속성 분석·객체 질문 ---------------------------------------------------------
+
+# 분류 체계 v2 `ppeState`·`workerRole`(taxonomy/v2/taxonomy.schema.json). 계약 테스트가 enum을
+# 비교하도록 일반 별칭으로 둔다.
+PpeState = Literal["worn", "not_worn", "unknown"]
+WorkerRole = Literal["worker", "supervisor", "visitor", "driver", "unknown"]
+# 판정이 아니라 관찰이라 rejected가 없다.
+ObservationStatus = Literal["confirmed", "unverified", "unknown"]
+AttributeReason = Literal["event", "click", "question"]
+_SOURCE_IMAGE = r"^sources/[0-9a-f-]{36}/.+/blurred/[^/?#]+\.(jpg|jpeg|png|webp)$"
+
+
+class TrackAttribute(_Part):
+    """트랙 속성 분석 결과(`_track-attribute.schema.json`).
+
+    ai-gateway `track_attribute`의 출력이고 `track.analyzed`의 `attributes`다(SPEC-024 R-3, R-11).
+    """
+
+    verification_status: ObservationStatus
+    helmet: PpeState | None
+    vest: PpeState | None
+    role: WorkerRole | None
+    equipment: list[ClassName] = Field(max_length=10)
+    description: str | None = Field(max_length=300)
+
+    @model_validator(mode="after")
+    def _unique_equipment(self) -> Self:
+        if len(set(self.equipment)) != len(self.equipment):
+            raise ValueError("equipment must be unique")
+        return self
+
+
+class ObjectAnswer(_Part):
+    """객체 자유 질문의 답(`_object-answer.schema.json`, SPEC-024 R-3, R-12)."""
+
+    verification_status: ObservationStatus
+    answerable: bool | None
+    answer: str | None = Field(max_length=1000)
+
+
+class AttributeCrop(_Part):
+    """트랙 대표 크롭 하나(블러 사본)."""
+
+    key: str = Field(pattern=_SOURCE_IMAGE)
+    pts_ms: int = _MS
+
+
+class AttributeRequested(Event):
+    """트랙 하나의 속성 분석이나 객체 질문 요청. 발행: analysis-api. 소비: track-analyzer.
+
+    계약은 소비 쪽(SPEC-024)이 아키텍처 문서대로 정했다. reason `question`만 질문과 장면 프레임이
+    있다(R-2, R-7).
+    """
+
+    event_type: Literal["attribute.requested"] = "attribute.requested"
+    schema_version: Literal[1] = 1
+    request_id: UUID
+    job_id: UUID
+    track_id: UUID
+    class_name: ClassName
+    reason: AttributeReason
+    crops: list[AttributeCrop] = Field(min_length=1, max_length=3)
+    evidence_frame_keys: list[Annotated[str, Field(pattern=_SOURCE_IMAGE)]] = Field(max_length=8)
+    question: str | None = Field(min_length=1, max_length=500)
+
+    @model_validator(mode="after")
+    def _question_only_for_question(self) -> Self:
+        # 계약의 if/then/else
+        if self.reason == "question":
+            if self.question is None:
+                raise ValueError("question is required for reason question")
+        elif self.question is not None or self.evidence_frame_keys:
+            raise ValueError("question and evidenceFrameKeys are only for reason question")
+        return self
+
+    @model_validator(mode="after")
+    def _inside_source_folder(self) -> Self:
+        # SPEC-024 R-6: 다른 영상의 이미지를 읽지 않는다. 계약 패턴은 sourceId와 `..`를 보지
+        # 않으므로 메시지의 sourceId 폴더 안인지, 경로 조각이 정상인지 여기서 확인한다.
+        prefix = f"sources/{self.source_id}/"
+        for key in self.image_keys():
+            parts = key.removeprefix(prefix).split("/")
+            if not key.startswith(prefix) or any(p in {"", ".", ".."} for p in parts):
+                raise ValueError("image key is outside the source folder of this message")
+        return self
+
+    def image_keys(self) -> list[str]:
+        """모델에 보낼 순서의 이미지 경로. 크롭 다음에 장면 프레임이다(R-2)."""
+        return [c.key for c in self.crops] + list(self.evidence_frame_keys)
+
+
+class TrackAnalyzed(Event):
+    """`attribute.requested` 하나의 처리 결과. 발행: track-analyzer(SPEC-024 R-3~R-5)."""
+
+    event_type: Literal["track.analyzed"] = "track.analyzed"
+    schema_version: Literal[1] = 1
+    request_id: UUID
+    job_id: UUID
+    track_id: UUID
+    reason: AttributeReason
+    outcome: Literal["READY", "FAILED"]
+    attributes: TrackAttribute | None
+    answer: ObjectAnswer | None
+    call_id: UUID | None
+    model_id: str | None = Field(max_length=200)
+    prompt_version: str | None = Field(max_length=200)
+    taxonomy_version: Literal["v2"] | None
+    error_code: str | None = Field(pattern=r"^[A-Z][A-Z0-9_]{1,63}$")
+
+    @model_validator(mode="after")
+    def _result_matches_outcome(self) -> Self:
+        # 계약 allOf의 if/then 세 개: outcome과 reason에 따라 결과 자리가 정해진다.
+        if self.outcome == "FAILED":
+            if self.error_code is None or self.attributes is not None or self.answer is not None:
+                raise ValueError("FAILED requires errorCode and null attributes and answer")
+        elif self.reason == "question":
+            if self.answer is None or self.attributes is not None:
+                raise ValueError("READY question requires answer and null attributes")
+        elif self.attributes is None or self.answer is not None:
+            raise ValueError("READY event or click requires attributes and null answer")
+        return self
+
+
+# --- SPEC-022 track-stitcher ---------------------------------------------------------------
+
 _TRACK_LOCAL_ID = r"^[A-Za-z0-9_-]{1,64}$"
 _DETECTOR_PROFILE = r"^[A-Za-z0-9][A-Za-z0-9._:@-]{0,99}$"
 _TRACKS_KEY = _EXECUTION_PREFIX + r"tracks[.]json$"
@@ -654,6 +779,8 @@ EVENT_MODELS: dict[str, type[Event]] = {
     "segment.embedded": SegmentEmbedded,
     "event.candidate.vector": EventCandidateVector,
     "event.analyzed": EventAnalyzed,
+    "attribute.requested": AttributeRequested,
+    "track.analyzed": TrackAnalyzed,
     "chunk.boundary": ChunkBoundary,
     "track.detected": TrackDetected,
     "track.manifest": TrackManifest,

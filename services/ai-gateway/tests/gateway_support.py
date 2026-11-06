@@ -95,7 +95,8 @@ def parse_settings(**changes: object) -> dict[str, object]:
 def profile(extra: dict[str, object] | None = None, **task: object) -> GatewayProfile:
     """테스트 프로필. `task`로 event_judge 설정을, `extra`로 최상위 항목을 바꾼다.
 
-    Registry의 taskType마다 설정이 있어야 해서 event_judge_escalate도 같은 설정으로 둔다.
+    Registry의 taskType마다 설정이 있어야 해서 event_judge_escalate·track_attribute·
+    object_question도 같은 설정으로 둔다.
     """
     event_judge: dict[str, object] = {
         "adapter": "fake",
@@ -111,7 +112,15 @@ def profile(extra: dict[str, object] | None = None, **task: object) -> GatewayPr
             "callers": {"allowed": [CALLER]},
             "images": {"allowed_patterns": [r"^sources/{source_id}/.+/blurred/[^/]+\.(jpg|png)$"]},
             "adapters": {"fake": {"kind": "mock"}},
-            "tasks": {"event_judge": event_judge, "event_judge_escalate": event_judge},
+            "tasks": {
+                name: event_judge
+                for name in (
+                    "event_judge",
+                    "event_judge_escalate",
+                    "track_attribute",
+                    "object_question",
+                )
+            },
             "parse": parse_settings(),
             **(extra or {}),
         }

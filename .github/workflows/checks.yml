@@ -109,6 +109,8 @@ jobs:
         run: docker build -f services/frame-encoder/Dockerfile --target runtime -t vlm/frame-encoder .
       - name: event analyzer runtime image
         run: docker build -f services/event-analyzer/Dockerfile --target runtime -t vlm/event-analyzer .
+      - name: track analyzer runtime image
+        run: docker build -f services/track-analyzer/Dockerfile --target runtime -t vlm/track-analyzer .
       - name: track stitcher runtime image
         run: docker build -f services/track-stitcher/Dockerfile --target runtime -t vlm/track-stitcher .
       # 분류 체계는 잠금 버전의 계약을 이름 있는 빌드 컨텍스트로 넘긴다(docs ADR-0012·0013).

@@ -10,8 +10,13 @@ from vlm_testing.containers import postgres, redis
 
 # Prompt Registry 원본(docs ADR-0012). 분류 체계는 서비스 간 계약에서 가져와 합친다.
 _REGISTRY_SOURCE = Path(__file__).resolve().parents[1] / "registry"
-# 판정 결과 형식은 다른 레포로 나가므로 계약이 원본이다(SPEC-020). 이 파일 하나만 가져온다.
-VLM_ANALYSIS_FILE = "_vlm-analysis.schema.json"
+# 출력 형식 중 다른 레포로 나가는 것은 계약이 원본이다(SPEC-020, SPEC-024). 이 파일만 가져온다.
+# 이미지(Dockerfile)의 COPY 목록과 같다.
+OUTPUT_CONTRACT_FILES = (
+    "_vlm-analysis.schema.json",
+    "_track-attribute.schema.json",
+    "_object-answer.schema.json",
+)
 
 
 # 로컬은 작업 공간(project/repos/ai) 두 단계 위 docs 레포의 service-contracts/를 읽는다.
@@ -46,7 +51,8 @@ def registry_dir(contracts_dir: Path, tmp_path_factory: pytest.TempPathFactory) 
     shutil.copytree(_REGISTRY_SOURCE / "query", target / "query")
     shutil.copytree(taxonomy, target / "taxonomy")
     (target / "events").mkdir()
-    shutil.copy(contracts_dir / "events" / VLM_ANALYSIS_FILE, target / "events")
+    for name in OUTPUT_CONTRACT_FILES:
+        shutil.copy(contracts_dir / "events" / name, target / "events")
     return target
 
 

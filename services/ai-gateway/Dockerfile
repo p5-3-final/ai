@@ -48,8 +48,13 @@ COPY --from=build /opt/venv /opt/venv
 COPY services/ai-gateway/registry/prompts /app/registry/prompts
 COPY services/ai-gateway/registry/query /app/registry/query
 COPY --from=docs-contracts taxonomy /app/registry/taxonomy
-# 판정 출력 형식은 event.analyzed로 다른 레포에 나가므로 계약이 원본이다(SPEC-020).
-COPY --from=docs-contracts events/_vlm-analysis.schema.json /app/registry/events/
+# 출력 형식 중 event.analyzed·track.analyzed로 다른 레포에 나가는 것은 계약이 원본이다
+# (SPEC-020, SPEC-024).
+COPY --from=docs-contracts \
+    events/_vlm-analysis.schema.json \
+    events/_track-attribute.schema.json \
+    events/_object-answer.schema.json \
+    /app/registry/events/
 COPY services/ai-gateway/profiles /app/profiles
 ENV AI_GATEWAY_REGISTRY_DIR=/app/registry \
     AI_GATEWAY_PROFILE_PATH=/app/profiles/local.toml

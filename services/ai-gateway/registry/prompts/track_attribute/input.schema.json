@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vlm.example/contracts/prompts/track_attribute/input.schema.json",
+  "title": "TrackAttributeInput",
+  "description": "/v1/analyze 요청의 variables(taskType track_attribute). 트랙 대표 크롭 1~3장은 요청의 images로 따로 보낸다 (SPEC-024 R-11).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["className"],
+  "properties": {
+    "className": {
+      "$ref": "../../taxonomy/v2/taxonomy.schema.json#/$defs/className",
+      "description": "트랙의 탐지 클래스(예: person, forklift)"
+    }
+  },
+  "examples": [{"className": "person"}]
+}

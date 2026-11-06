@@ -78,7 +78,7 @@ def test_spec009_r13_formatting_only_json_change_keeps_version(copied: Path) -> 
 
 
 def test_spec009_r3_unknown_task_is_none(registry_dir: Path) -> None:
-    assert PromptRegistry.load(registry_dir).get("track_attribute") is None
+    assert PromptRegistry.load(registry_dir).get("not_registered_task") is None
 
 
 def test_spec009_r2_validates_variables_with_input_schema(registry_dir: Path) -> None:
@@ -318,3 +318,79 @@ def test_spec020_r20_escalate_has_its_own_prompt_version(registry_dir: Path) -> 
     assert re.fullmatch(r"event_judge_escalate@[0-9a-f]{12}", task.version)
     assert task.taxonomy_version == "v2"
     assert task.input_errors(CANDIDATE) == []
+
+
+# SPEC-024: 트랙 속성·객체 질문. 출력 형식의 원본은 계약 events/의 결과 형식이다.
+_TRACK_TASKS: dict[str, tuple[str, dict[str, object]]] = {
+    "track_attribute": ("_track-attribute.schema.json", {"className": "person"}),
+    "object_question": (
+        "_object-answer.schema.json",
+        {"className": "person", "question": "손에 무엇을 들고 있나요?"},
+    ),
+}
+
+
+@pytest.mark.parametrize("task_type", sorted(_TRACK_TASKS))
+def test_spec024_r11_r12_track_tasks_load_with_contract_output(
+    registry_dir: Path, task_type: str
+) -> None:
+    """[SPEC-024 R-11·R-12] 두 taskType은 폴더만으로 등록되고 출력은 계약 결과 형식이다."""
+    contract_file, variables = _TRACK_TASKS[task_type]
+    contract = json.loads((registry_dir / "events" / contract_file).read_text(encoding="utf-8"))
+
+    task = PromptRegistry.load(registry_dir).get(task_type)
+
+    assert task is not None
+    assert re.fullmatch(rf"{task_type}@[0-9a-f]{{12}}", task.version)
+    assert task.taxonomy_version == "v2"
+    assert task.input_errors(variables) == []
+    assert task.input_errors({**variables, "extra": 1}) != []
+    assert task.input_errors({"className": "Person!"}) != []
+    for example in contract["examples"]:
+        assert task.output_errors(example) == []
+    assert task.output_errors(task.output_example) == []
+
+
+@pytest.mark.parametrize("task_type", sorted(_TRACK_TASKS))
+def test_spec024_r11_r12_track_output_needs_contract_file(copied: Path, task_type: str) -> None:
+    contract_file, _ = _TRACK_TASKS[task_type]
+    (copied / "events" / contract_file).unlink()
+
+    with pytest.raises(PromptRegistryError, match=contract_file.removesuffix(".schema.json")):
+        PromptRegistry.load(copied)
+
+
+@pytest.mark.parametrize("question", ["", "가" * 501])
+def test_spec024_r12_question_must_be_1_to_500_chars(registry_dir: Path, question: str) -> None:
+    task = PromptRegistry.load(registry_dir).get("object_question")
+    assert task is not None
+
+    assert task.input_errors({"className": "person", "question": question}) != []
+    assert task.input_errors({"className": "person", "question": "가" * 500}) == []
+
+
+@pytest.mark.parametrize("status", ["unknown", "unverified"])
+@pytest.mark.parametrize("task_type", sorted(_TRACK_TASKS))
+def test_spec024_r13_track_fallback_has_no_judgment(
+    registry_dir: Path, task_type: str, status: FallbackStatus
+) -> None:
+    """[SPEC-024 R-13] 대체 결과는 판정 필드가 null이고 장비는 빈 배열이다."""
+    _, variables = _TRACK_TASKS[task_type]
+    task = PromptRegistry.load(registry_dir).get(task_type)
+    assert task is not None
+
+    output = task.fallback(variables, status)
+
+    assert task.output_errors(output) == []
+    assert output["verificationStatus"] == status
+    if task_type == "track_attribute":
+        assert output == {
+            "verificationStatus": status,
+            "helmet": None,
+            "vest": None,
+            "role": None,
+            "equipment": [],
+            "description": None,
+        }
+    else:
+        assert output == {"verificationStatus": status, "answerable": None, "answer": None}

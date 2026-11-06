@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vlm.example/contracts/prompts/track_attribute/output.schema.json",
+  "title": "TrackAttributeOutput",
+  "description": "track_attribute 결과. 형식의 원본은 서비스 간 계약 events/_track-attribute.schema.json(TrackAttribute)이고 track.analyzed로 다른 레포에 전달된다(SPEC-024). 예시는 mock Adapter 응답이다.",
+  "$ref": "../../events/_track-attribute.schema.json",
+  "examples": [
+    {
+      "verificationStatus": "confirmed",
+      "helmet": "not_worn",
+      "vest": "worn",
+      "role": "worker",
+      "equipment": [],
+      "description": "주황색 안전조끼를 입고 안전모를 쓰지 않은 작업자"
+    }
+  ]
+}
