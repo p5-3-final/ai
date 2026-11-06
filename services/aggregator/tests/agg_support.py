@@ -2,12 +2,16 @@
 
 import json
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from functools import cache
 from pathlib import Path
 from uuid import UUID
 
+from aggregator.kv import MemoryStore
 from aggregator.model import AggregateInput, InputEvent, Presence, TrackSpan, ZoneInfo
 from aggregator.profile import DEFAULT_PROFILE_PATH, LoadedProfile, load_aggregate_profile
+from aggregator.reader import JobReader
+from aggregator.service import AggregatorService, ServiceConfig
 from jsonschema import Draft202012Validator
 from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings
@@ -25,7 +29,16 @@ from vlm_analysis_client.client import (
 from vlm_analysis_client.models import FinalState
 from vlm_common.http_call import Deadline, Failure
 from vlm_contracts.aggregates import CarriedRisk, InitialState, ZoneState
-from vlm_contracts.events import EventType, SessionRef, VLMAnalysis
+from vlm_contracts.events import (
+    AnalysisCompleted,
+    AnalysisCounts,
+    Event,
+    EventType,
+    SessionRef,
+    VLMAnalysis,
+)
+from vlm_messaging.worker import MessageContext
+from vlm_storage.memory import InMemoryStorage
 
 SOURCE = UUID("0192f0d2-1a2b-7c3d-8e4f-5a6b7c8d9e0f")
 OWNER = UUID("0192f0c4-6d1e-7a3b-9c2d-1e2f3a4b5c6d")
@@ -390,4 +403,81 @@ class FakeGateway:
             prompt_version="source_summary@0123456789ab",
             taxonomy_version="v2",
             output=self.output,
+        )
+
+
+# ---- 서비스 조립 ----
+
+
+@dataclass
+class RecordingPublisher:
+    published: list[tuple[str, Event, str | None, str | None]] = field(default_factory=list)
+
+    def publish(
+        self, topic: str, event: Event, *, key: str | None = None, traceparent: str | None = None
+    ) -> None:
+        self.published.append((topic, event, key, traceparent))
+
+    def of(self, topic: str) -> list[Event]:
+        return [e for t, e, _, _ in self.published if t == topic]
+
+
+def context(attempt: int = 1, topic: str = "analysis.completed") -> MessageContext:
+    return MessageContext(
+        topic=topic, partition=0, offset=0, key=None, attempt=attempt, traceparent=TRACEPARENT
+    )
+
+
+def completed(
+    *,
+    job_type: str = "FULL",
+    events: int = 0,
+    tracks: int = 0,
+    session: SessionRef | None = None,
+    job: UUID = JOB,
+    source: UUID = SOURCE,
+    **extra: object,
+) -> AnalysisCompleted:
+    return AnalysisCompleted.model_validate(
+        {
+            "eventId": str(uid(0xAC)),
+            "occurredAt": "2026-11-06T10:00:00Z",
+            "sourceId": str(source),
+            "ownerId": str(OWNER),
+            "jobId": str(job),
+            "jobType": job_type,
+            "normalizationId": str(NORMALIZATION),
+            "durationMs": DURATION_MS,
+            "session": session.model_dump(mode="json", by_alias=True) if session else None,
+            "counts": AnalysisCounts(chunks=1, segments=1, events=events, tracks=tracks),
+            **extra,
+        }
+    )
+
+
+T0 = 1_762_000_000.0
+NOW = datetime(2026, 11, 6, 10, 0, tzinfo=UTC)
+
+
+@dataclass
+class Harness:
+    """가짜 analysis-api·ai-gateway·메모리 저장소·기록 발행기로 조립한 서비스."""
+
+    api: FakeAnalysisApi = field(default_factory=FakeAnalysisApi)
+    gateway: FakeGateway = field(default_factory=FakeGateway)
+    storage: InMemoryStorage = field(default_factory=InMemoryStorage)
+    publisher: RecordingPublisher = field(default_factory=RecordingPublisher)
+    store: MemoryStore | None = field(default_factory=MemoryStore)
+
+    def service(self) -> "AggregatorService":
+        return AggregatorService(
+            reader=JobReader(self.api, page_limit=2),
+            gateway=self.gateway,
+            storage=self.storage,
+            publisher=self.publisher,
+            profile=profile(),
+            config=ServiceConfig(read_timeout_s=300, max_attempts=5),
+            store=self.store,
+            clock=lambda: T0,
+            now=lambda: NOW,
         )

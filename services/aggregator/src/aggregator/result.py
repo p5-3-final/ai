@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
 from vlm_contracts.aggregates import SourceResult, Summary, result_key
 from vlm_contracts.events import (
+    AnalysisCompleted,
     MissingCounts,
     SessionRef,
     SourceCompleted,
@@ -82,6 +83,8 @@ class AggregateMeta(BaseModel):
     revision: int = Field(ge=1)
     input_event_ids: list[UUID]
     partial: bool = False
+    # 늦은 벡터 이벤트로 다시 계산할 때(R-27) 같은 입력을 다시 읽으려고 받은 완료 메시지를 둔다.
+    completed: AnalysisCompleted
 
 
 def meta_key(source_id: UUID, job_id: UUID) -> str:
@@ -130,15 +133,9 @@ def source_completed(
     )
 
 
-def confirmed_event_ids(source: AggregateInput) -> list[UUID]:
-    """결과 파일 계산에 쓴 입력 eventId(정렬)."""
-    return sorted({e.event_id for e in source.events})
-
-
 __all__ = [
     "AggregateMeta",
     "build_result",
-    "confirmed_event_ids",
     "empty_summary",
     "encode_result",
     "meta_key",

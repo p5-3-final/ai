@@ -57,19 +57,19 @@ updated: 2026-11-07
 ## Phase 5: US-4 세션 이어받기 (P2)
 
 - [x] T024 [R-15] 초기 활성 위험을 원래 riskId·`firstSeenMs: 0`·`carriedOver: true`로 시작, 이 영상에서 해소 가능 — 테스트 `t/test_aggregator_state.py`
-- [ ] T025 [R-5] `previousSourceId`면 `final-state`를 초기 상태로, 404 `ANALYSIS_NO_ACTIVE_VERSION`이면 빈 상태·`fromSourceId: null` — 테스트 `t/test_aggregator_reader.py`, 구현 `agg/reader.py`
+- [x] T025 [R-5] `previousSourceId`면 `final-state`를 초기 상태로, 404 `ANALYSIS_NO_ACTIVE_VERSION`이면 빈 상태·`fromSourceId: null` — 테스트 `t/test_aggregator_reader.py`, 구현 `agg/reader.py`
 
 ## Phase 6: 핸들러 (P1)
 
-- [ ] T026 [R-3] 세 목록을 마지막 쪽까지, 구역 목록, 모든 호출에 같은 마감(핸들러 시작 + 설정값) — 테스트 `t/test_aggregator_reader.py`
-- [ ] T027 [R-4] 이벤트·트랙 수가 `counts`와 다르면 발행 없이 재시도 가능 오류 — 테스트 `t/test_aggregator_reader.py`, `t/test_aggregator_service.py`
-- [ ] T028 [R-1] `FULL`·`REANALYZE`면 결과 파일 저장과 `source.completed` 한 건(둘 다 계약 스키마 통과, 개수) — 테스트 `t/test_aggregator_service.py`, 구현 `agg/{service,compute,result}.py`
-- [ ] T029 [R-2] `REEMBED`면 저장·발행 없이 건너뛴 이유 로그 — 테스트 `t/test_aggregator_service.py`
-- [ ] T030 [R-20] 결과 파일 경로, 저장이 끝난 뒤 발행(저장 실패면 발행 없음) — 테스트 `t/test_aggregator_service.py`
-- [ ] T031 [R-22] 재시도 소진·504·404 `ANALYSIS_JOB_NOT_FOUND`·저장소·발행 오류는 그대로 던짐 — 테스트 `t/test_aggregator_service.py`
-- [ ] T032 [R-23] 400·계약과 맞지 않는 응답(`analysis`가 `VLMAnalysis`가 아님 포함)은 `NonRetryableError` — 테스트 `t/test_aggregator_service.py`
-- [ ] T033 [R-21] 같은 입력 두 번(입력 순서를 섞어도) 요약을 뺀 결과 파일이 바이트 단위로 같음 — 테스트 `t/test_aggregator_compute.py`, 구현 `agg/result.py` `encode_result`
-- [ ] T034 [R-24] 단계 블록 `aggregate.read`·`compute`·`summary`·`store`와 count — 테스트 `t/test_aggregator_service.py`
+- [x] T026 [R-3] 세 목록을 마지막 쪽까지, 구역 목록, 모든 호출에 같은 마감(핸들러 시작 + 설정값) — 테스트 `t/test_aggregator_reader.py`
+- [x] T027 [R-4] 이벤트·트랙 수가 `counts`와 다르면 발행 없이 재시도 가능 오류 — 테스트 `t/test_aggregator_reader.py`, `t/test_aggregator_service.py`
+- [x] T028 [R-1] `FULL`·`REANALYZE`면 결과 파일 저장과 `source.completed` 한 건(둘 다 계약 스키마 통과, 개수) — 테스트 `t/test_aggregator_service.py`, 구현 `agg/{service,compute,result}.py`
+- [x] T029 [R-2] `REEMBED`면 저장·발행 없이 건너뛴 이유 로그 — 테스트 `t/test_aggregator_service.py`
+- [x] T030 [R-20] 결과 파일 경로, 저장이 끝난 뒤 발행(저장 실패면 발행 없음) — 테스트 `t/test_aggregator_service.py`
+- [x] T031 [R-22] 재시도 소진·504·404 `ANALYSIS_JOB_NOT_FOUND`·저장소·발행 오류는 그대로 던짐 — 테스트 `t/test_aggregator_service.py`
+- [x] T032 [R-23] 400·계약과 맞지 않는 응답(`analysis`가 `VLMAnalysis`가 아님 포함)은 `NonRetryableError` — 테스트 `t/test_aggregator_service.py`
+- [x] T033 [R-21] 같은 입력 두 번(입력 순서를 섞어도) 요약을 뺀 결과 파일이 바이트 단위로 같음 — 테스트 `t/test_aggregator_compute.py`, 구현 `agg/result.py` `encode_result`
+- [x] T034 [R-24] 단계 블록 `aggregate.read`·`compute`·`summary`·`store`와 count — 테스트 `t/test_aggregator_service.py`
 
 ## Phase 7: US-5 요약 (P2)
 
@@ -81,18 +81,18 @@ updated: 2026-11-07
 
 - [ ] T038 기동 조립: 설정, 두 클라이언트, 저장소, 워커 — 테스트 `t/test_aggregator_main.py`, 구현 `agg/{__main__,settings}.py`
 - [ ] T039 [NFR-4] [R-23] 워커 e2e: 정상 발행 뒤 커밋, 잘못된 메시지·400 DLQ, 503 소진 재시도 토픽 — 테스트 `t/test_aggregator_worker_e2e.py`
-- [ ] T040 [NFR-3] 로그에 요약 문장·이벤트 설명 원문이 없음 — 테스트 `t/test_aggregator_service.py`
+- [x] T040 [NFR-3] 로그에 요약 문장·이벤트 설명 원문이 없음 — 테스트 `t/test_aggregator_service.py`
 - [ ] T041 [NFR-1] 생성 입력(이벤트 2,000·트랙 5,000·머문 구간 20,000)으로 `compute` p95 5초 — 테스트 `t/test_aggregator_performance.py`
 - [ ] T042 Dockerfile, README(환경변수 표), CI `service-images`에 aggregator runtime 빌드
 - [ ] T043 [NFR-2] 로컬 compose(docs PR: aggregator 256M, 토픽 4개)와 analysis-api 자리 표시 서버(plan 5절 사용자 확인 뒤)로 성공 지표·메모리 측정, 아래에 측정 기록
 
 ## Phase 9: v5.1 추가(계약 묶음 4.0.0)
 
-- [ ] T044 [R-4] `rule*` 이벤트 수·트랙 수만 대조, 재시도 상한 뒤 `partial`·`missingCounts`로 발행 — 테스트 `t/test_aggregator_reader.py`, `t/test_aggregator_service.py`, 구현 `agg/reader.py`, `agg/service.py`, `vlm_contracts/events.py`(`SourceCompleted`·`AnalysisCompleted` 4.0.0 필드)
+- [x] T044 [R-4] `rule*` 이벤트 수·트랙 수만 대조, 재시도 상한 뒤 `partial`·`missingCounts`로 발행 — 테스트 `t/test_aggregator_reader.py`, `t/test_aggregator_service.py`, 구현 `agg/reader.py`, `agg/service.py`, `vlm_contracts/events.py`(`SourceCompleted`·`AnalysisCompleted` 4.0.0 필드)
 - [ ] T045 [R-25] [R-29] 대기 집합 저장소(`pending-vector:<jobId>` 7일, `pending:<sourceId>:<chunkId>` 1시간, HSET 멱등)와 워커 경로 `event.analyzed`·`track.detected` — 테스트 `t/test_aggregator_pending.py`(integration), `t/test_aggregator_service.py`, 구현 `agg/pending.py`, `agg/service.py`, `agg/__main__.py`, `agg/settings.py`(`AGGREGATOR_REDIS_URL`)
-- [ ] T046 [R-26] 읽은 이벤트와 대기 집합 벡터 이벤트를 eventId로 합침 — 테스트 `t/test_aggregator_service.py`, 구현 `agg/reader.py`
-- [ ] T047 [R-28] 결과 파일 `inputEventIds`·`revision`, `source.completed.revision`과 결정적 eventId — 테스트 `t/test_aggregator_ids.py`, `t/test_aggregator_service.py`, 구현 `agg/result.py`, `agg/ids.py`
-- [ ] T048 [R-27] 발행 뒤 도착한 `vector*` `confirmed` 이벤트: 전체 재계산·같은 경로 저장·`revision + 1` 재발행, 미발행 job이거나 `confirmed`가 아니면 대기만 — 테스트 `t/test_aggregator_revision.py`, `t/test_aggregator_service.py`, 구현 `agg/revision.py`, `agg/service.py`
+- [x] T046 [R-26] 읽은 이벤트와 대기 집합 벡터 이벤트를 eventId로 합침 — 테스트 `t/test_aggregator_service.py`, 구현 `agg/reader.py`
+- [x] T047 [R-28] 결과 파일 `inputEventIds`·`revision`, `source.completed.revision`과 결정적 eventId — 테스트 `t/test_aggregator_ids.py`, `t/test_aggregator_service.py`, 구현 `agg/result.py`, `agg/ids.py`
+- [x] T048 [R-27] 발행 뒤 도착한 `vector*` `confirmed` 이벤트: 전체 재계산·같은 경로 저장·`revision + 1` 재발행, 미발행 job이거나 `confirmed`가 아니면 대기만 — 테스트 `t/test_aggregator_revision.py`, `t/test_aggregator_service.py`, 구현 `agg/revision.py`, `agg/service.py`
 - [ ] T049 [R-30] `fold`·`SessionState`·`FoldDelta` 추출(동작 불변, 기존 테스트 유지), 창 단위 누적 = 한 번 fold 테스트 — 테스트 `t/test_aggregator_fold.py`, 구현 `agg/fold.py`, `agg/compute.py`
 - [ ] T050 [R-30] 세션 상태 저장소: Redis → S3 스냅샷 → `previousSourceId` → 빈 상태 순서, 30창마다 스냅샷 — 테스트 `t/test_aggregator_session_state.py`(integration), 구현 `agg/session_state.py`
 - [ ] T051 [R-30] `analysis.completed(chunk)` 처리: 대조 → fold → `state.updated`(sequence·창 범위·gapMs·activeRiskZoneIds) → Redis·스냅샷·창 delta 저장, 같은 창 재수신은 재발행만 — 테스트 `t/test_aggregator_stream_service.py`, 구현 `agg/stream.py`, `agg/service.py`, `vlm_contracts/events.py`(`StateUpdated`)
