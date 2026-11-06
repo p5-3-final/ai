@@ -145,6 +145,8 @@ async def test_spec022_r15_job_without_boundary_is_dropped_with_warning(
     await env.embedded(first)
     env.clock.advance(WAIT_S)
 
+    caplog.clear()
+
     with caplog.at_level(logging.WARNING):
         assert env.sweeper().sweep_once() == 0
         assert env.sweeper().sweep_once() == 0
@@ -187,6 +189,8 @@ async def test_spec022_r15_failed_job_is_retried_next_sweep(
     env = _Env(storage=storage)
     await env.boundary(crossing_chunks()[0])
     env.clock.advance(WAIT_S)
+
+    caplog.clear()
 
     with caplog.at_level(logging.ERROR):
         assert env.sweeper().sweep_once() == 0

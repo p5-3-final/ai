@@ -161,6 +161,7 @@ async def test_spec022_r2_first_execution_is_kept(
     [retried, *_] = crossing_chunks(attempt=1)
 
     await h.boundary(first)
+    caplog.clear()
     with caplog.at_level(logging.WARNING):
         await h.boundary(first)
         assert not _ours(caplog)
@@ -461,6 +462,8 @@ async def test_spec022_r17_input_after_manifest_is_ignored(
     await _full(h, files)
     published = len(h.publisher.published)
 
+    caplog.clear()
+
     with caplog.at_level(logging.WARNING):
         await h.boundary(files[0])
         await h.embedded(vector_file(files[0]))
@@ -543,6 +546,8 @@ async def test_spec022_r23_stream_jobs_are_skipped_without_state(
     stream = boundary_message(first, job_type="STREAM")
     vectors = embedded_message(vector_file(first)).model_copy(update={"job_type": "STREAM"})
 
+    caplog.clear()
+
     with caplog.at_level(logging.INFO):
         # 파일이 없어도 읽지 않으므로 DLQ로 가지 않는다.
         await h.service.on_chunk_boundary(stream, h.ctx("chunk.boundary"))
@@ -578,6 +583,8 @@ async def test_spec022_nfr4_logs_have_no_coordinates_or_vectors(
 ) -> None:
     files = crossing_chunks()
     [retried, *_] = crossing_chunks(attempt=1)
+
+    caplog.clear()
 
     with caplog.at_level(logging.DEBUG):
         await _full(h, files)
