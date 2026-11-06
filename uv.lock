@@ -487,6 +487,7 @@ dependencies = [
     { name = "vlm-common" },
     { name = "vlm-contracts" },
     { name = "vlm-messaging" },
+    { name = "vlm-storage" },
 ]
 
 [package.metadata]
@@ -495,6 +496,7 @@ requires-dist = [
     { name = "vlm-common", editable = "libs/common" },
     { name = "vlm-contracts", editable = "libs/contracts" },
     { name = "vlm-messaging", editable = "libs/messaging" },
+    { name = "vlm-storage", editable = "libs/storage" },
 ]
 
 [[package]]

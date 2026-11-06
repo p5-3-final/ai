@@ -1,0 +1,46 @@
+# event-analyzer 로컬 프로필(SPEC-023). 문장·기준값은 동작 확인용 자리값이고 실제 값은 AI 담당자가 정한다.
+
+[merge]
+# 같은 트랙·유형의 반복 후보를 합치는 간격(초). 아키텍처 8.4절 기본값
+cooldown_s = 10
+
+[rule_text]
+# 구역 이름이 없는 규칙 후보의 템플릿에 넣는 글자(SPEC-023 D-9)
+missing_zone_name = "이름 없는 구역"
+
+# 규칙 확정 결과. 탐지 가능 유형 8종 모두 필요하다(SPEC-023 D-8). severity는 아키텍처 8.2절 기본값
+[rules.fall]
+template = "{zoneName}에서 쓰러진 사람이 감지되었다."
+severity = "high"
+
+[rules.fire_or_smoke]
+template = "{zoneName}에서 화재 또는 연기가 감지되었다."
+severity = "high"
+
+[rules.ppe_missing]
+template = "{zoneName}에서 보호구를 착용하지 않은 사람이 감지되었다."
+severity = "medium"
+
+[rules.object_removed]
+template = "{zoneName}에서 물건이 사라졌다."
+severity = "medium"
+
+[rules.barrier_not_restored]
+template = "{zoneName}의 방호 시설이 복구되지 않았다."
+severity = "high"
+
+[rules.hazard_zone_access]
+template = "{zoneName} 구역에 사람이 들어왔다."
+severity = "medium"
+
+[rules.equipment_abandoned]
+template = "{zoneName}에 장비가 방치되었다."
+severity = "medium"
+
+[rules.object_moved]
+template = "{zoneName}의 안전시설이 옮겨졌다."
+severity = "medium"
+
+# 애매 점수 구간(양 끝 포함). 점수가 이 안이면 재판정한다(SPEC-023 R-6). 동작 확인용 자리값
+[escalation.ppe_missing]
+ambiguous_score = [0.4, 0.6]

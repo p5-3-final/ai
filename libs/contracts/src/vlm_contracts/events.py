@@ -511,6 +511,136 @@ class EventAnalyzed(_Execution):
         return self
 
 
+_DETECTOR_PROFILE = _PROTOTYPE_VERSION
+_TRACK_LOCAL_ID = r"^[A-Za-z0-9_-]{1,64}$"
+type UnsupportedEvents = dict[DetectableEventType, Annotated[str, Field(max_length=200)]]
+
+
+class DetectorCandidate(_Part):
+    """탐지기·규칙 후보 하나(`candidates/v1/candidate-file.schema.json#/$defs/candidate`).
+
+    `event.candidate`의 `candidates`와 후보 파일이 같은 항목을 쓴다(SPEC-023 R-1).
+    """
+
+    candidate_id: UUID
+    event_type: DetectableEventType
+    start_ms: int = _MS
+    end_ms: int = _MS
+    # rule: 규칙으로 확정(VLM 없음), vlm: event_judge로 판정. 생산자의 이벤트 정의 목록이 정한다.
+    judgment: Literal["rule", "vlm"]
+    trigger_class: ClassName
+    score: float = Field(ge=0, le=1)
+    observation_count: int = Field(ge=1)
+    # 화재·연기처럼 트랙이 없으면 None이고, 쿨다운 병합 대상이 아니다(SPEC-023 R-3).
+    track_local_id: str | None = Field(pattern=_TRACK_LOCAL_ID)
+    zone_id: UUID | None
+    zone_name: str | None = Field(max_length=100)
+    evidence_frame_keys: list[Annotated[str, Field(pattern=_BLURRED_IMAGE)]] = Field(
+        min_length=1, max_length=12
+    )
+
+
+def frames_outside(prefix: str, candidates: list[DetectorCandidate]) -> bool:
+    """근거 프레임 중 실행 폴더(`prefix` + `blurred/`) 밖의 것이 있으면 True."""
+    blurred = prefix + "blurred/"
+    return any(not key.startswith(blurred) for c in candidates for key in c.evidence_frame_keys)
+
+
+class DetectorModel(_Part):
+    """탐지 프로필이 쓰는 모델 하나와 이번 실행에서 쓸 수 있었는지."""
+
+    model_id: str = Field(max_length=128)
+    available: bool
+
+
+class DetectorInfo(_Part):
+    """실행 하나의 탐지기 능력 선언(`event.candidate`의 `detector`)."""
+
+    detector_profile: str = Field(pattern=_DETECTOR_PROFILE)
+    models: list[DetectorModel]
+    supported_events: list[DetectableEventType]
+
+    @model_validator(mode="after")
+    def _unique_events(self) -> Self:
+        if len(set(self.supported_events)) != len(self.supported_events):
+            raise ValueError("supportedEvents must be unique")
+        return self
+
+
+class EventCandidate(_Execution):
+    """청크 실행 하나의 탐지기·규칙 후보 묶음. 발행: chunk-processor·stream-ingestor.
+
+    소비: event-analyzer(SPEC-023 R-1). 후보는 `candidates`나 `candidates_key` 파일 중 한 곳에 있다.
+    """
+
+    event_type: Literal["event.candidate"] = "event.candidate"
+    schema_version: Literal[1] = 1
+    owned_range: TimeRange
+    detector: DetectorInfo
+    unsupported_events: UnsupportedEvents
+    candidate_count: int = Field(ge=0)
+    candidates: list[DetectorCandidate] | None = Field(
+        default=None, max_length=256, exclude_if=lambda v: v is None
+    )
+    candidates_key: str | None = Field(
+        default=None,
+        pattern=_EXECUTION_PREFIX + r"candidates[.]json$",
+        exclude_if=lambda v: v is None,
+    )
+    taxonomy_version: Literal["v2"] = "v2"
+
+    @model_validator(mode="after")
+    def _consistent(self) -> Self:
+        # 계약의 oneOf
+        if (self.candidates is None) == (self.candidates_key is None):
+            raise ValueError("exactly one of candidates and candidatesKey is required")
+        # 스키마 패턴은 형식만 본다. 다른 실행의 후보 파일을 읽지 않도록 식별자와 맞춰 본다.
+        if self.candidates_key is not None:
+            if self.candidates_key != self.execution_prefix() + "candidates.json":
+                raise ValueError("candidatesKey is not the candidate file of this execution")
+            return self
+        candidates = self.candidates or []
+        # SPEC-023 R-2는 파일만 적었지만, 메시지에 실린 후보도 개수가 다르면 빠진 후보가 있다.
+        if len(candidates) != self.candidate_count:
+            raise ValueError("candidateCount does not match the number of candidates")
+        # SPEC-023 D-10: 규칙 후보는 ai-gateway의 경로 검사를 거치지 않고 근거 프레임이 그대로
+        # event.analyzed에 실리므로 다른 영상·실행의 이미지를 여기서 막는다(SPEC-019 R-16과 같다).
+        if frames_outside(self.execution_prefix(), candidates):
+            raise ValueError("evidence frame key is outside the execution folder of this message")
+        return self
+
+
+class EventManifest(_Execution):
+    """청크 실행 하나의 `event.candidate` 판정 완료. 발행: event-analyzer(SPEC-023 R-10, R-20)."""
+
+    event_type: Literal["event.manifest"] = "event.manifest"
+    schema_version: Literal[1] = 1
+    candidate_count: int = Field(ge=0)
+    merged_count: int = Field(ge=0)
+    analyzed_count: int = Field(ge=0)
+    analyzed_event_ids: list[UUID]
+    unsupported_events: UnsupportedEvents
+    detector_profile: str = Field(pattern=_DETECTOR_PROFILE)
+    taxonomy_version: Literal["v2"] = "v2"
+    # v5.1 계수(SPEC-023 R-20). 계약에서 선택이라 받은 메시지에 없으면 None이고 JSON에서 뺀다.
+    carried_count: int | None = Field(default=None, ge=0, exclude_if=lambda v: v is None)
+    cap_reached_count: int | None = Field(default=None, ge=0, exclude_if=lambda v: v is None)
+    budget_exceeded_count: int | None = Field(default=None, ge=0, exclude_if=lambda v: v is None)
+
+    @model_validator(mode="after")
+    def _counts(self) -> Self:
+        # 소비자(analysis-api)가 저장 수와 맞춰 보는 값이라 서로 어긋나면 계약 위반이다.
+        if len(set(self.analyzed_event_ids)) != len(self.analyzed_event_ids):
+            raise ValueError("analyzedEventIds must be unique")
+        if self.analyzed_count != len(self.analyzed_event_ids) or (
+            self.analyzed_count != self.candidate_count - self.merged_count
+        ):
+            raise ValueError(
+                "analyzedCount must equal len(analyzedEventIds) and candidateCount - mergedCount"
+            )
+        return self
+
+
 EVENT_MODELS: dict[str, type[Event]] = {
     "chunk.requested": ChunkRequested,
     "chunk.execution.finished": ChunkExecutionFinished,
@@ -522,5 +652,7 @@ EVENT_MODELS: dict[str, type[Event]] = {
     "segment.embedded": SegmentEmbedded,
     "event.candidate.vector": EventCandidateVector,
     "event.analyzed": EventAnalyzed,
+    "event.candidate": EventCandidate,
+    "event.manifest": EventManifest,
 }
 """토픽 이름 → 이벤트 모델. 계약 테스트는 여기 등록된 모델을 모두 검증한다."""

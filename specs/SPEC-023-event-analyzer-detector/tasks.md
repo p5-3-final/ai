@@ -19,11 +19,11 @@ updated: 2026-11-07
 
 ## Phase 0: 준비
 
-- [ ] T001 [R-9] [R-13] 계약 잠금 4.0.0(`scripts/fetch-service-contracts.sh --update 4.0.0`)과 그 때문에 깨지는 계약 테스트 맞춤: `StageId` 전체 목록(`analyzer.merge` 포함), `EventAnalyzed`의 판정 방식 5종·`DetectorEvidence`·`judgments` 개수 규칙(`rule`은 0개, 그 밖은 1개 이상)·`rule*`이면 `detectorCandidate` 필수. 잠금이 이미 3.14.0이고 이 테스트가 통과하면 건너뛴다(SPEC-024 T001과 같은 태스크) — 테스트 `lc/tests/test_stage_contracts.py`, `lc/tests/test_event_contracts.py`, `lc/tests/test_analysis_contracts.py`, 구현 `service-contracts.lock`, `vlm_contracts/{stages,events}.py`
-- [ ] T002 [R-14] `DetectorCandidate`·`DetectorInfo`·`EventCandidate`(`candidates`·`candidatesKey` 중 하나, `candidatesKey`가 메시지 실행 폴더의 `candidates.json`), `EventManifest`, `EVENT_MODELS` 등록. 근거 프레임 실행 폴더 검사는 plan의 사용자 확인 3 결과에 따른다 — 테스트 `lc/tests/test_event_contracts.py`(자동 계약 검사), `lc/tests/test_analysis_contracts.py`, 구현 `vlm_contracts/events.py`
-- [ ] T003 [P] [R-1] 후보 파일 `CandidateFile` 모델 — 테스트 `lc/tests/test_candidate_file_contract.py`, 구현 `vlm_contracts/candidates.py`
-- [ ] T004 `services/event-analyzer/pyproject.toml`에 `vlm-storage` 워크스페이스 의존 추가, `uv.lock` 갱신(새 외부 패키지 없음)
-- [ ] T005 [R-16] 프로필 `EventAnalyzerProfile`: 쿨다운 기본 10초·0 이하 거부, 탐지 가능 유형 8종의 템플릿·기본 severity 필수, 애매 구간 0~1·시작 ≤ 끝, 템플릿 900자 이하. 자리값 `profiles/local.toml` — 테스트 `t/test_analyzer_profile.py`, 구현 `ea/profile.py`, `services/event-analyzer/profiles/local.toml`
+- [x] T001 [R-9] [R-13] 계약 잠금 4.0.0(`scripts/fetch-service-contracts.sh --update 4.0.0`)과 그 때문에 깨지는 계약 테스트 맞춤: `StageId` 전체 목록(`analyzer.merge` 포함), `EventAnalyzed`의 판정 방식 5종·`DetectorEvidence`·`judgments` 개수 규칙(`rule`은 0개, 그 밖은 1개 이상)·`rule*`이면 `detectorCandidate` 필수. 잠금(4.1.0)·`StageId`·`EventAnalyzed` 확장은 SPEC-021 PR(#44)이 했다. 이 PR은 `rule*` 계약 규칙 테스트만 더했다 — 테스트 `lc/tests/test_stage_contracts.py`, `lc/tests/test_event_contracts.py`, `lc/tests/test_analysis_contracts.py`, 구현 `service-contracts.lock`, `vlm_contracts/{stages,events}.py`
+- [x] T002 [R-14] `DetectorCandidate`·`DetectorInfo`·`EventCandidate`(`candidates`·`candidatesKey` 중 하나, `candidatesKey`가 메시지 실행 폴더의 `candidates.json`), `EventManifest`, `EVENT_MODELS` 등록. 근거 프레임 실행 폴더 검사는 plan의 사용자 확인 3 결과에 따른다 — 테스트 `lc/tests/test_event_contracts.py`(자동 계약 검사), `lc/tests/test_analysis_contracts.py`, 구현 `vlm_contracts/events.py`
+- [x] T003 [P] [R-1] 후보 파일 `CandidateFile` 모델 — 테스트 `lc/tests/test_candidate_file_contract.py`, 구현 `vlm_contracts/candidates.py`
+- [x] T004 `services/event-analyzer/pyproject.toml`에 `vlm-storage` 워크스페이스 의존 추가, `uv.lock` 갱신(새 외부 패키지 없음)
+- [x] T005 [R-16] 프로필 `EventAnalyzerProfile`: 쿨다운 기본 10초·0 이하 거부, 탐지 가능 유형 8종의 템플릿·기본 severity 필수, 애매 구간 0~1·시작 ≤ 끝, 템플릿 900자 이하. 자리값 `profiles/local.toml` — 테스트 `t/test_analyzer_profile.py`, 구현 `ea/profile.py`, `services/event-analyzer/profiles/local.toml`
 
 ## Phase 1: 규칙 (US-2·US-3, P1)
 
