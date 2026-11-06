@@ -6,6 +6,8 @@ import json
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
+from datetime import date
+from decimal import Decimal
 from pathlib import Path
 from uuid import UUID
 
@@ -20,6 +22,7 @@ from ai_gateway.adapters.base import (
     VlmAdapter,
 )
 from ai_gateway.analyze import CallLogWriter
+from ai_gateway.budget import Reservation
 from ai_gateway.call_log import CallLogEntry
 from ai_gateway.main import GatewayDeps, create_app
 from ai_gateway.profile import GatewayProfile
@@ -316,3 +319,70 @@ async def post_parse(
 ) -> httpx.Response:
     headers = {"X-Caller": caller} if caller is not None else {}
     return await client.post("/v1/parse", json={"query": query}, headers=headers)
+
+
+@dataclass
+class MemoryCache:
+    """메모리 결과 캐시. `front=False`면 Redis가 없는 것처럼 잠금을 못 건다."""
+
+    values: dict[str, dict[str, object]] = field(default_factory=dict)
+    locks: set[str] = field(default_factory=set)
+    sources: dict[str, UUID | None] = field(default_factory=dict)
+    front: bool = True
+    # 다른 요청이 잠근 호출을 기다리면 이 값을 받는다(None이면 그 호출이 실패한 것).
+    awaited: dict[str, object] | None = None
+
+    async def get(self, key: str) -> dict[str, object] | None:
+        return self.values.get(key)
+
+    async def put(
+        self, key: str, task_type: str, source_id: UUID | None, value: dict[str, object]
+    ) -> None:
+        self.values[key] = value
+        self.sources[key] = source_id
+
+    async def try_lock(self, key: str, ttl_s: float) -> bool | None:
+        if not self.front:
+            return None
+        if key in self.locks:
+            return False
+        self.locks.add(key)
+        return True
+
+    async def release(self, key: str) -> None:
+        self.locks.discard(key)
+
+    async def wait_for(self, key: str, timeout_s: float) -> dict[str, object] | None:
+        return self.awaited
+
+    async def delete_source(self, source_id: UUID) -> int:
+        keys = [k for k, s in self.sources.items() if s == source_id]
+        for key in keys:
+            self.values.pop(key, None)
+            del self.sources[key]
+        return len(keys)
+
+
+@dataclass
+class MemoryBudget:
+    """메모리 예산. 한도는 범위(호출 서비스, "*")별이고 없으면 무제한이다."""
+
+    limits: dict[str, Decimal] = field(default_factory=dict)
+    spent: dict[str, Decimal] = field(default_factory=dict)
+
+    async def reserve(self, caller: str, cost: Decimal) -> Reservation | None:
+        scopes = (caller, "*")
+        for scope in scopes:
+            limit = self.limits.get(scope)
+            if limit is not None and self.spent.get(scope, Decimal(0)) + cost > limit:
+                return None
+        for scope in scopes:
+            self.spent[scope] = self.spent.get(scope, Decimal(0)) + cost
+        return Reservation(date(2030, 1, 1), scopes, cost)
+
+    async def settle(self, reservation: Reservation, actual: Decimal) -> None:
+        for scope in reservation.scopes:
+            self.spent[scope] += actual - reservation.cost
+
+    async def release(self, reservation: Reservation) -> None:
+        await self.settle(reservation, Decimal(0))

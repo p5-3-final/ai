@@ -266,3 +266,20 @@ async def test_spec012_r10_omits_temperature_by_default() -> None:
 
     [request] = seen
     assert "temperature" not in json.loads(request.content)
+
+
+async def test_spec016_r13_connection_failure_was_not_sent() -> None:
+    """[SPEC-016 R-13] 연결조차 못 한 요청은 보내지 않은 것으로 본다."""
+    with pytest.raises(ProviderUnavailableError) as caught:
+        await _complete(_adapter(_raise(httpx2.ConnectError("down"))))
+
+    assert caught.value.sent is False
+
+
+@pytest.mark.parametrize("handler", [_raise(httpx2.ReadTimeout("slow")), _status(503)])
+async def test_spec016_r22_timeout_and_server_errors_may_have_been_sent(handler: Handler) -> None:
+    """[SPEC-016 R-22] 시간 초과·5xx는 공급자가 처리했을 수 있다."""
+    with pytest.raises(ProviderUnavailableError) as caught:
+        await _complete(_adapter(handler))
+
+    assert caught.value.sent is True

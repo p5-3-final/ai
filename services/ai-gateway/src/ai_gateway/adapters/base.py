@@ -33,11 +33,18 @@ class Embeddings:
 
 
 class ProviderUnavailableError(GatewayRequestError):
-    """시간 초과, 연결 불가, 429·5xx. 호출자가 다시 시도할 수 있다(SPEC-009 R-18)."""
+    """시간 초과, 연결 불가, 429·5xx. 호출자가 다시 시도할 수 있다(SPEC-009 R-18).
+
+    `sent`는 요청이 공급자에 갔을 수 있는지다. 연결조차 못 했으면 False라 예산 예약을 되돌린다
+    (SPEC-016 R-13). 시간 초과는 공급자가 처리했을 수 있어 True다(R-22).
+    """
 
     code = "AI_PROVIDER_UNAVAILABLE"
     status = 503
     title = "Service Unavailable"
+    # 호출 로그에 남길 코드. 원인을 응답보다 자세히 나눌 때 하위 클래스가 바꾼다.
+    log_code = "AI_PROVIDER_UNAVAILABLE"
+    sent = True
 
 
 class ProviderFailedError(GatewayRequestError):
