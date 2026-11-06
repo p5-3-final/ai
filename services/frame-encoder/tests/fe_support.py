@@ -1,5 +1,6 @@
 """frame-encoder 테스트가 함께 쓰는 메시지·저장소 준비 도우미."""
 
+import hashlib
 import json
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -142,3 +143,27 @@ def event_errors(event: Event) -> list[str]:
     validator = Draft202012Validator({"$ref": schema_id}, registry=registry)
     body = json.loads(event.model_dump_json(by_alias=True))
     return [e.message for e in validator.iter_errors(body)]
+
+
+ENCODER_MANIFEST_KEY = "models/mobileclip2-s0/dfndr2b/manifest.json"
+
+
+def put_encoder_model(models: InMemoryStorage, weights: bytes, dimension: int = 512) -> str:
+    """가중치와 manifest를 모델 버킷에 올리고 프로필에 적을 manifest sha256을 돌려준다."""
+    name = "open_clip_model.safetensors"
+    manifest = {
+        "kind": "image_text_encoder",
+        "modelId": "open_clip:MobileCLIP2-S0:dfndr2b",
+        "version": "dfndr2b",
+        "files": [
+            {"name": name, "sha256": hashlib.sha256(weights).hexdigest(), "size": len(weights)}
+        ],
+        "dimension": dimension,
+        "source": {"type": "public", "origin": "huggingface:timm/MobileCLIP2-S0-OpenCLIP"},
+        "license": "Apple AMLR",
+    }
+    raw = json.dumps(manifest).encode()
+    prefix = ENCODER_MANIFEST_KEY.rsplit("/", 1)[0]
+    models.put_bytes(f"{prefix}/{name}", weights, "application/octet-stream")
+    models.put_bytes(ENCODER_MANIFEST_KEY, raw, "application/json")
+    return hashlib.sha256(raw).hexdigest()

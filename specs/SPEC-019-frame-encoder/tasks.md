@@ -43,7 +43,7 @@ updated: 2026-11-06
 
 ## Phase 3: 워커와 배포
 
-- [ ] T018 [R-9] 기동 조립: 프로필 읽기, 인코더 로드(manifest 불일치면 실패) — 테스트 `t/test_encoder_main.py`, 구현 `fe/{__main__,settings}.py`
+- [x] T018 [R-9] 기동 조립: 프로필 읽기, 인코더 로드(manifest 불일치면 실패) — 테스트 `t/test_encoder_main.py`, 구현 `fe/{__main__,settings}.py`
 - [ ] T019 [R-16] [NFR-1] [NFR-3] 워커 e2e: 정상 처리, 잘못된 메시지 DLQ — 테스트 `t/test_encoder_worker_e2e.py`
 - [ ] T020 Dockerfile, 로컬 프로필, README, `scripts/test-in-docker.sh` 대상
 - [ ] T021 [NFR-2] 실제 모델 테스트(`-m model`)와 로컬 compose 측정

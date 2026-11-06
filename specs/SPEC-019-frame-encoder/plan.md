@@ -71,7 +71,7 @@ ai-gateway의 인코더 프로필·로드 코드(`EncoderProfile`, `load_encoder
 | `libs/contracts/.../taxonomy.py` | `DetectableEventType`(분류 체계 v2, 계약 테스트로 일치 확인) |
 | `libs/contracts/.../stages.py` | 단계 ID 6개 추가 |
 | `libs/encoders/.../loader.py` | `EncoderProfile`, `load_encoder`(ai-gateway에서 옮김) |
-| `fe/settings.py` | 환경변수: Kafka, 프로필 경로, 모델 버킷, 캐시 폴더 |
+| `fe/settings.py` | 환경변수: Kafka, 프로필 경로, 모델 버킷, 캐시 폴더, mock 허용(`FRAME_ENCODER_ALLOW_MOCK`, ai-gateway와 같이 mock 인코더는 따로 켜야 기동한다) |
 | `fe/profile.py` | TOML 프로필: `[encoder]`, `[prototypes]`(version, `types.<유형>`의 texts·threshold) |
 | `fe/vectors.py` | 정규화·평균·코사인 |
 | `fe/prototypes.py` | 프로토타입 벡터와 후보 계산 |
