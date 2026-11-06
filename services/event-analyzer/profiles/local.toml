@@ -52,3 +52,8 @@ fire_or_smoke = 60
 ppe_missing = 120
 barrier_not_restored = 300
 hazard_zone_access = 120
+
+# 실행당 VLM 호출 상한 = max(floor, ceil(per_minute * 실행 길이(분)))(SPEC-023 R-19, 아키텍처 17.2절)
+[cap]
+floor = 3
+per_minute = 3

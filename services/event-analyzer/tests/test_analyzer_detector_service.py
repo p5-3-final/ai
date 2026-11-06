@@ -277,7 +277,10 @@ async def test_spec023_r11_us4_no_candidates_publishes_only_manifest() -> None:
 async def test_spec023_r12_limits_concurrent_judgments() -> None:
     gateway = FakeGateway(delay_s=0.01)
     publisher = RecordingPublisher()
-    message = detector_message(*(detected(i, track=f"t{i}") for i in range(10)))
+    # 10분 실행이라 상한(30회)에 걸리지 않는다.
+    message = detector_message(
+        *(detected(i, track=f"t{i}") for i in range(10)), owned_ms=(0, 600_000)
+    )
 
     await _service(gateway, publisher, concurrency=3).handle(message, CTX)
 
@@ -447,3 +450,78 @@ async def test_spec023_r17_carry_copies_unknown_state_of_the_judged_candidate() 
 
     assert carried.analysis == judged_event.analysis == VLMAnalysis.unknown("ppe_missing")
     assert carried.judgment_method == "rule+carry"
+
+
+async def test_spec023_r19_us3_candidates_beyond_cap_are_unverified_without_call() -> None:
+    # 2분 청크의 상한은 6회다. 시작이 늦은 2개가 상한에 걸린다.
+    candidates = [detected(i, "fall", start_s=10 * i, track=f"t{i}") for i in range(8, 0, -1)]
+
+    gateway, events, _ = await _run(detector_message(*candidates))
+
+    assert len(gateway.requests) == 6
+    capped = {e.candidate_id.int for e in events if e.unverified_reason == "call_cap_reached"}
+    assert capped == {0xD007, 0xD008}
+    for event in events:
+        if event.candidate_id.int in capped:
+            assert event.analysis.verification_status == "unverified"
+            assert event.judgment_method == "rule+vlm"
+            [skipped] = event.judgments
+            assert (skipped.call_id, skipped.verification_status) == (None, "unverified")
+            assert skipped.error_code == "CALL_CAP_REACHED"
+
+
+async def test_spec023_r19_escalation_only_uses_remaining_calls() -> None:
+    # 20초 창의 상한은 3회다. 1차 2회 뒤 재판정은 1회만 남는다.
+    candidates = [detected(i, "fire_or_smoke", start_s=i, track=None) for i in (1, 2)]
+    gateway = FakeGateway(reply=lambda r: judged("fire_or_smoke", severity="high"))
+
+    _, events, _ = await _run(detector_message(*candidates, owned_ms=(100_000, 120_000)), gateway)
+
+    assert gateway.task_types() == ["event_judge", "event_judge", "event_judge_escalate"]
+    methods = {e.candidate_id.int: e.judgment_method for e in events}
+    assert methods == {0xD001: "rule+vlm+escalate", 0xD002: "rule+vlm"}
+    assert all(e.unverified_reason is None for e in events)
+
+
+async def test_spec023_r19_rule_and_carried_candidates_do_not_use_calls() -> None:
+    candidates = [
+        *(detected(i, "hazard_zone_access", judgment="rule", track=f"r{i}") for i in range(5)),
+        *(detected(10 + i, start_s=20 * i) for i in range(5)),
+    ]
+
+    gateway, events, _ = await _run(detector_message(*candidates, owned_ms=(0, 20_000)))
+
+    assert len(gateway.requests) == 1
+    assert not any(e.unverified_reason for e in events)
+
+
+async def test_spec023_r20_manifest_counts_carry_cap_and_budget() -> None:
+    # 20초 창의 상한 3회: 보호구 1회(+복사 1건), 화재 2회는 예산 초과, 남은 화재 1건은 상한
+    candidates = [
+        detected(1, start_s=0),
+        detected(2, start_s=15),
+        *(detected(10 + i, "fire_or_smoke", start_s=i + 1, track=None) for i in range(3)),
+    ]
+
+    def reply(request: AnalyzeRequest) -> dict[str, object]:
+        if request.variables["eventType"] == "fire_or_smoke":
+            return judged("fire_or_smoke", "unverified")
+        return judged("ppe_missing")
+
+    gateway = FakeGateway(reply=reply, unverified_reason="budget_exceeded")
+    message = detector_message(*candidates, job_type="STREAM", owned_ms=(0, 20_000))
+
+    _, events, [manifest] = await _run(message, gateway)
+
+    assert (manifest.carried_count, manifest.cap_reached_count) == (1, 1)
+    assert manifest.budget_exceeded_count == 2
+    assert manifest.job_type == "STREAM"
+    assert len(events) == 5
+
+
+async def test_spec023_r20_counts_are_zero_not_missing() -> None:
+    _, _, [manifest] = await _run(detector_message())
+
+    body = manifest.model_dump(by_alias=True, mode="json")
+    assert (body["carriedCount"], body["capReachedCount"], body["budgetExceededCount"]) == (0, 0, 0)
+    assert "jobType" not in body

@@ -19,6 +19,7 @@ from vlm_contracts.events import (
     EventAnalyzed,
     EventCandidate,
     EventManifest,
+    UnverifiedReason,
 )
 from vlm_messaging.worker import MessageContext
 from vlm_storage.storage import ObjectStorage
@@ -26,6 +27,7 @@ from vlm_storage.storage import ObjectStorage
 from event_analyzer import ids
 from event_analyzer.calls import AnalyzeClient, EventPublisher, judge, publish
 from event_analyzer.candidates import load_candidates
+from event_analyzer.cap import call_cap
 from event_analyzer.carry import plan_carry
 from event_analyzer.judgment import Decision, Outcome, Stage, decide, needs_escalation
 from event_analyzer.merge import Kept, merge_candidates
@@ -115,33 +117,49 @@ class DetectorAnalyzerService:
         await asyncio.to_thread(self._publish, manifest, ctx.traceparent)
 
     async def _judge_all(
-        self, message: EventCandidate, vlm: list[Kept], ctx: MessageContext
+        self, message: EventCandidate, targets: list[Kept], ctx: MessageContext
     ) -> dict[UUID, Decision]:
-        """1차 판정을 모두 끝낸 뒤 재판정한다. 단계 측정 두 개가 spec대로 나뉜다(SPEC-020 plan)."""
-        if not vlm:
-            return {}
+        """상한 안에서 1차 판정을 모두 끝낸 뒤 남은 횟수로 재판정한다.
+
+        1차 판정·재판정 모두 시작순으로 상한을 나눠 같은 메시지면 같은 후보가 판정된다(R-19).
+        단계 측정 두 개가 spec대로 나뉜다(SPEC-020 plan).
+        """
+        ordered = sorted(
+            targets, key=lambda k: (k.candidate.start_ms, str(k.candidate.candidate_id))
+        )
+        cap = call_cap(message.owned_range, self._profile.cap)
+        called, over = ordered[:cap], ordered[cap:]
+        decisions = {
+            k.candidate.candidate_id: decide(Outcome.capped(k.candidate.event_type), None, "rule")
+            for k in over
+        }
+        if not called:
+            return decisions
         limit = asyncio.Semaphore(self._config.concurrency)
         with ctx.timing.stage("analyzer.judge", unit="candidates") as block:
             firsts = await asyncio.gather(
-                *(self._call(message, k.candidate, "judge", limit, ctx) for k in vlm)
+                *(self._call(message, k.candidate, "judge", limit, ctx) for k in called)
             )
-            block.count = len(vlm)
+            block.count = len(called)
         risky = [
             i
-            for i, (k, first) in enumerate(zip(vlm, firsts, strict=True))
+            for i, (k, first) in enumerate(zip(called, firsts, strict=True))
             if needs_escalation(first, ambiguous=self._ambiguous(k.candidate))
-        ]
+        ][: cap - len(called)]
         escalated: dict[int, Outcome] = {}
         if risky:
             with ctx.timing.stage("analyzer.escalate", unit="candidates") as block:
                 seconds = await asyncio.gather(
-                    *(self._call(message, vlm[i].candidate, "escalate", limit, ctx) for i in risky)
+                    *(
+                        self._call(message, called[i].candidate, "escalate", limit, ctx)
+                        for i in risky
+                    )
                 )
                 escalated = dict(zip(risky, seconds, strict=True))
                 block.count = len(risky)
-        return {
+        return decisions | {
             k.candidate.candidate_id: decide(first, escalated.get(i), path="rule")
-            for i, (k, first) in enumerate(zip(vlm, firsts, strict=True))
+            for i, (k, first) in enumerate(zip(called, firsts, strict=True))
         }
 
     async def _call(
@@ -223,11 +241,24 @@ class DetectorAnalyzerService:
             analyzed_event_ids=[e.event_id for e in analyzed],
             unsupported_events=message.unsupported_events,
             detector_profile=message.detector.detector_profile,
+            # 계약에서 선택이지만 소비자가 합산하므로 0이어도 싣는다(SPEC-023 R-20). 사유별 수는
+            # 그 사유로 unverified가 된 결과를 복사한 rule+carry도 센다.
+            carried_count=sum(e.judgment_method == "rule+carry" for e in analyzed),
+            cap_reached_count=_reason_count(analyzed, "call_cap_reached"),
+            budget_exceeded_count=_reason_count(analyzed, "budget_exceeded"),
         )
 
     def _publish(self, event: Event, traceparent: str | None) -> None:
         # AsyncAPI: 키는 sourceId다. 같은 영상의 이벤트가 한 파티션에서 순서를 지킨다.
         publish(self._publisher, event, self._clock, traceparent, key=str(event.source_id))
+
+
+def _reason_count(events: list[EventAnalyzed], reason: UnverifiedReason) -> int:
+    return sum(e.unverified_reason == reason for e in events)
+
+
+def _start_order(kept: Kept) -> tuple[int, str]:
+    return kept.candidate.start_ms, str(kept.candidate.candidate_id)
 
 
 def _result(kept: Kept, decisions: dict[UUID, Decision], carry: dict[UUID, UUID | None]) -> _Result:

@@ -49,6 +49,17 @@ class EscalationProfile(Profile):
         return self
 
 
+class CapProfile(Profile):
+    """실행당 VLM 호출 상한(`[cap]`, SPEC-023 R-19).
+
+    상한 = max(floor, ceil(per_minute * 실행 길이(분))). 공유 카운터 없이 Job 합이 상한 이하다.
+    기본값은 아키텍처 v5.1 17.2절(2분 청크 6회, 20초 창 3회)이다.
+    """
+
+    floor: int = Field(default=3, ge=1)
+    per_minute: float = Field(default=3, gt=0)
+
+
 class EventAnalyzerProfile(Profile):
     """event-analyzer 프로필 전체."""
 
@@ -56,6 +67,7 @@ class EventAnalyzerProfile(Profile):
     rule_text: RuleTextProfile
     rules: dict[DetectableEventType, RuleTemplate]
     escalation: dict[DetectableEventType, EscalationProfile] = Field(default_factory=dict)
+    cap: CapProfile = CapProfile()
     # 상태형 유형의 재판정 간격(초, SPEC-023 R-17). 원본은 이벤트 정의 목록의 rejudgeIntervalS이고
     # 계약과 같이 0보다 커야 한다. 없는 유형은 사건형이라 구간 규칙(carry)이 없다.
     rejudge: dict[DetectableEventType, Annotated[float, Field(gt=0)]] = Field(default_factory=dict)

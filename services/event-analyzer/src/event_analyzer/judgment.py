@@ -26,6 +26,7 @@ _TASK_TYPES: dict[Stage, Literal["event_judge", "event_judge_escalate"]] = {
     "judge": "event_judge",
     "escalate": "event_judge_escalate",
 }
+CALL_CAP_REACHED = "CALL_CAP_REACHED"
 _METHODS: dict[tuple[Path, bool], Method] = {
     ("vector", False): "vector+vlm",
     ("vector", True): "vector+vlm+escalate",
@@ -76,6 +77,20 @@ class Outcome:
     def failed(cls, stage: Stage, event_type: DetectableEventType, error_code: str) -> "Outcome":
         """호출이 결과 없이 끝났다. 후보를 버리지 않고 `unknown`으로 남긴다(R-12)."""
         return cls(stage, VLMAnalysis.unknown(event_type), error_code=error_code)
+
+    @classmethod
+    def capped(cls, event_type: DetectableEventType) -> "Outcome":
+        """실행당 호출 상한으로 부르지 않은 1차 판정(SPEC-023 R-19).
+
+        계약은 rule+vlm에 호출 기록 1개 이상을 요구하므로, 실패 호출과 같이 호출 ID 없는 기록을
+        남기고 오류 코드로 상한임을 적는다.
+        """
+        analysis = VLMAnalysis.unknown(event_type).model_copy(
+            update={"verification_status": "unverified"}
+        )
+        return cls(
+            "judge", analysis, error_code=CALL_CAP_REACHED, unverified_reason="call_cap_reached"
+        )
 
     def record(self) -> Judgment:
         """`event.analyzed`의 `judgments` 항목."""
