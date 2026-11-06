@@ -11,7 +11,7 @@ from vlm_contracts.events import RuleEvent
 
 from aggregator.exposure import exposure_of
 from aggregator.fold import RiskRecord, SessionState
-from aggregator.merge import merge_events
+from aggregator.merge import Merged, merge_events
 from aggregator.model import AggregateInput, InputEvent
 from aggregator.profile import LoadedProfile
 from aggregator.rules import rule_events
@@ -39,10 +39,19 @@ class Computed:
     final_state: SessionState
 
 
-def compute(source: AggregateInput, loaded: LoadedProfile) -> Computed:
-    """업로드 job의 결과를 계산한다. 같은 입력과 프로필이면 같은 값이다(R-21)."""
+def compute(source: AggregateInput, loaded: LoadedProfile, *, merge: bool = True) -> Computed:
+    """job의 결과를 계산한다. 같은 입력과 프로필이면 같은 값이다(R-21).
+
+    Args:
+        merge: 청크 경계 병합(R-6). 실시간 세션 마무리는 창마다 낸 상태와 같은 위험이 나오도록
+            끈다(창 fold에는 병합이 없다).
+    """
     profile = loaded.profile
-    merged = merge_events(source.events, gap_ms=profile.merge_gap_ms, job_id=source.job_id)
+    merged = (
+        merge_events(source.events, gap_ms=profile.merge_gap_ms, job_id=source.job_id)
+        if merge
+        else Merged(tuple(sorted(source.events, key=lambda e: (e.start_ms, e.event_id))), ())
+    )
     confirmed = confirmed_in_order(merged.representatives)
     run = run_state(
         confirmed, source.initial_state, job_id=source.job_id, source_id=source.source_id

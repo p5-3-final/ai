@@ -9,19 +9,16 @@ import asyncio
 import logging
 import time
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Protocol
 from uuid import UUID
 
 from vlm_analysis_client.client import AnalysisApiError
-from vlm_common.errors import VlmError
 from vlm_common.http_call import Deadline
 from vlm_contracts.aggregates import result_key
 from vlm_contracts.events import (
     AnalysisCompleted,
     ChunkManifest,
-    Event,
     EventAnalyzed,
     TrackDetected,
 )
@@ -32,6 +29,7 @@ from aggregator.compute import compute
 from aggregator.kv import KeyValueStore, StoreUnavailableError
 from aggregator.model import AggregateInput, InputEvent
 from aggregator.pending import PendingVectors, StoredEvent
+from aggregator.ports import CountMismatchError, EventPublisher, ServiceConfig
 from aggregator.profile import LoadedProfile
 from aggregator.reader import InvalidInputError, JobReader, missing_counts
 from aggregator.result import (
@@ -48,24 +46,9 @@ _JSON = "application/json"
 # 다시 읽어도 같은 결과가 나오는 analysis-api 오류(R-23)
 _PERMANENT_CODES = frozenset({"ANALYSIS_INVALID_RESPONSE"})
 
+__all__ = ["AggregatorService", "CountMismatchError", "ServiceConfig"]
+
 logger = logging.getLogger(__name__)
-
-
-class CountMismatchError(VlmError):
-    """읽은 `rule*` 이벤트·트랙 수가 `counts`와 다르다.
-
-    적재가 덜 끝났을 수 있어 다시 시도한다(R-4).
-    """
-
-    code = "AGGREGATOR_COUNT_MISMATCH"
-
-
-class EventPublisher(Protocol):
-    """이벤트 발행기. 운영은 `vlm_messaging.publisher.KafkaPublisher`다."""
-
-    def publish(
-        self, topic: str, event: Event, *, key: str | None = None, traceparent: str | None = None
-    ) -> None: ...
 
 
 class WindowHandler(Protocol):
@@ -82,20 +65,6 @@ class WindowHandler(Protocol):
     async def on_track_detected(self, message: TrackDetected) -> None: ...
 
     async def on_chunk_manifest(self, message: ChunkManifest) -> None: ...
-
-
-@dataclass(frozen=True, slots=True)
-class ServiceConfig:
-    """핸들러 설정.
-
-    Attributes:
-        read_timeout_s: 한 메시지의 analysis-api 읽기 마감(핸들러 시작 + 이 값, R-3).
-        max_attempts: 워커 재시도 정책의 최대 시도 수. 이 시도에서도 개수가 다르면 partial로
-            발행한다(R-4). 워커의 `RetryPolicy.max_attempts`와 같아야 한다.
-    """
-
-    read_timeout_s: float = 300
-    max_attempts: int = 5
 
 
 class AggregatorService:

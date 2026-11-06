@@ -9,9 +9,11 @@ from uuid import UUID
 
 from aggregator.kv import MemoryStore
 from aggregator.model import AggregateInput, InputEvent, Presence, TrackSpan, ZoneInfo
+from aggregator.ports import ServiceConfig
 from aggregator.profile import DEFAULT_PROFILE_PATH, LoadedProfile, load_aggregate_profile
 from aggregator.reader import JobReader
-from aggregator.service import AggregatorService, ServiceConfig
+from aggregator.service import AggregatorService
+from aggregator.stream import StreamAggregator
 from jsonschema import Draft202012Validator
 from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings
@@ -32,13 +34,17 @@ from vlm_contracts.aggregates import CarriedRisk, InitialState, ZoneState
 from vlm_contracts.events import (
     AnalysisCompleted,
     AnalysisCounts,
+    ChunkManifest,
     Event,
+    EventAnalyzed,
     EventType,
     SessionRef,
+    TrackDetected,
     VLMAnalysis,
 )
 from vlm_messaging.worker import MessageContext
 from vlm_storage.memory import InMemoryStorage
+from vlm_stream_client.models import ZoneList as StreamZoneList
 
 SOURCE = UUID("0192f0d2-1a2b-7c3d-8e4f-5a6b7c8d9e0f")
 OWNER = UUID("0192f0c4-6d1e-7a3b-9c2d-1e2f3a4b5c6d")
@@ -388,6 +394,8 @@ class FakeGateway:
     )
     model_id: str | None = "summary-m"
     error: AiGatewayError | None = None
+    # event_judge(실시간 재판정, R-31) 응답. source_summary는 `output`이다.
+    judge_output: dict[str, object] | None = None
     requests: list[tuple[AnalyzeRequest, str | None]] = field(default_factory=list)
 
     async def analyze(
@@ -400,10 +408,15 @@ class FakeGateway:
             call_id=uid(0xCA11 + len(self.requests)),
             task_type=request.task_type,
             model_id=self.model_id,
-            prompt_version="source_summary@0123456789ab",
+            prompt_version=f"{request.task_type}@0123456789ab",
             taxonomy_version="v2",
-            output=self.output,
+            output=self.judge_output
+            if request.task_type == "event_judge" and self.judge_output is not None
+            else self.output,
         )
+
+    def task_types(self) -> list[str]:
+        return [r.task_type for r, _ in self.requests]
 
 
 # ---- 서비스 조립 ----
@@ -436,7 +449,7 @@ def completed(
     session: SessionRef | None = None,
     job: UUID = JOB,
     source: UUID = SOURCE,
-    **extra: object,
+    extra: dict[str, object] | None = None,
 ) -> AnalysisCompleted:
     return AnalysisCompleted.model_validate(
         {
@@ -450,7 +463,7 @@ def completed(
             "durationMs": DURATION_MS,
             "session": session.model_dump(mode="json", by_alias=True) if session else None,
             "counts": AnalysisCounts(chunks=1, segments=1, events=events, tracks=tracks),
-            **extra,
+            **(extra or {}),
         }
     )
 
@@ -478,6 +491,255 @@ class Harness:
             profile=profile(),
             config=ServiceConfig(read_timeout_s=300, max_attempts=5),
             store=self.store,
+            clock=lambda: T0,
+            now=lambda: NOW,
+        )
+
+
+# ---- 실시간(STREAM) 창 ----
+STREAM_SOURCE = UUID("0192fb00-0000-7000-8000-000000000010")
+STREAM_JOB = UUID("0192fb00-0000-7000-8000-000000000030")
+STREAM_PREVIOUS = UUID("0192fb00-0000-7000-8000-0000000000aa")
+EXECUTION = UUID("0192fb00-0000-7000-8000-0000000000e0")
+WINDOW_MS = 20_000
+
+
+def window_id(sequence: int) -> UUID:
+    return uid(0xB000 + sequence)
+
+
+def stream_analyzed(
+    n: int,
+    sequence: int,
+    *,
+    at: int,
+    result: VLMAnalysis,
+    method: str = "rule",
+    event_type: str = "fall",
+    zone: UUID | None = None,
+    track: str = "t5",
+) -> EventAnalyzed:
+    """창 `sequence`의 실시간 `event.analyzed`(탐지기 경로)."""
+    chunk = window_id(sequence)
+    prefix = stream_prefix(sequence)
+    no_call = method in {"rule", "rule+carry"}
+    return EventAnalyzed.model_validate(
+        {
+            "eventId": str(uid(n)),
+            "occurredAt": "2026-11-06T10:00:00Z",
+            "sourceId": str(STREAM_SOURCE),
+            "ownerId": str(OWNER),
+            "jobType": "STREAM",
+            "jobId": str(STREAM_JOB),
+            "chunkId": str(chunk),
+            "executionId": str(EXECUTION),
+            "normalizationId": str(NORMALIZATION),
+            "candidateId": str(uid(n + 0x100)),
+            "candidateEventType": event_type,
+            "startMs": at - 1_000,
+            "endMs": at,
+            "evidenceFrameKeys": [f"{prefix}blurred/c{n}.jpg"],
+            "judgmentMethod": method,
+            "analysis": json.loads(result.model_dump_json(by_alias=True)),
+            "judgments": []
+            if no_call
+            else [
+                {
+                    "stage": "judge",
+                    "taskType": "event_judge",
+                    "callId": str(uid(n + 0x200)),
+                    "modelId": "m",
+                    "promptVersion": "event_judge@0123456789ab",
+                    "verificationStatus": result.verification_status,
+                    "errorCode": None,
+                }
+            ],
+            "reviewRequired": False,
+            "reviewReasons": [],
+            "detectorCandidate": {
+                "chunkId": str(chunk),
+                "executionId": str(EXECUTION),
+                "triggerClass": "person",
+                "score": 0.9,
+                "observationCount": 3,
+                "trackLocalId": track,
+                "zoneId": str(zone) if zone else None,
+                "zoneName": "A동 크레인 하부" if zone else None,
+                "detectorProfile": "industrial-default@1",
+                "mergedCandidateIds": [],
+            },
+        }
+    )
+
+
+def stream_prefix(sequence: int) -> str:
+    """창 `sequence`의 실행 폴더."""
+    chunk = window_id(sequence)
+    return f"sources/{STREAM_SOURCE}/jobs/{STREAM_JOB}/chunks/{chunk}/executions/{EXECUTION}/"
+
+
+def stream_tracks(sequence: int, *tracks: tuple[str, str, int, int]) -> tuple[TrackDetected, bytes]:
+    """창의 `track.detected`와 그 트랙 요약 파일 내용. 트랙은 (로컬 ID, 클래스, 시작, 끝)이다."""
+    chunk = window_id(sequence)
+    prefix = stream_prefix(sequence)
+    message = TrackDetected.model_validate(
+        {
+            "eventId": str(uid(0xD000 + sequence)),
+            "occurredAt": "2026-11-06T10:00:00Z",
+            "sourceId": str(STREAM_SOURCE),
+            "ownerId": str(OWNER),
+            "jobType": "STREAM",
+            "jobId": str(STREAM_JOB),
+            "normalizationId": str(NORMALIZATION),
+            "origin": "chunk",
+            "chunkId": str(chunk),
+            "executionId": str(EXECUTION),
+            "tracksKey": f"{prefix}tracks.json",
+            "detectionsKey": f"{prefix}detections.json",
+            "trackCount": len(tracks),
+        }
+    )
+    body = {
+        "tracks": [
+            {
+                "trackLocalId": local,
+                "className": cls,
+                "startMs": start,
+                "endMs": end,
+                "representativeCrops": [
+                    {
+                        "cropId": str(uid(0xE000 + i)),
+                        "ptsMs": start,
+                        "key": f"{prefix}blurred/{local}.jpg",
+                    }
+                ],
+            }
+            for i, (local, cls, start, end) in enumerate(tracks)
+        ]
+    }
+    return message, json.dumps(body).encode()
+
+
+def stream_manifest(sequence: int, *, gap_ms: int = 0, last: bool = False) -> ChunkManifest:
+    chunk = window_id(sequence)
+    prefix = stream_prefix(sequence)
+    body: dict[str, object] = {
+        "eventId": str(uid(0xF000 + sequence)),
+        "occurredAt": "2026-11-06T10:00:00Z",
+        "sourceId": str(STREAM_SOURCE),
+        "ownerId": str(OWNER),
+        "jobType": "STREAM",
+        "jobId": str(STREAM_JOB),
+        "chunkId": str(chunk),
+        "executionId": str(EXECUTION),
+        "normalizationId": str(NORMALIZATION),
+        "ownedRange": {"startMs": (sequence - 1) * WINDOW_MS, "endMs": sequence * WINDOW_MS},
+        "counts": {"segments": 0, "candidates": 0, "tracks": 0},
+        "detector": {
+            "detectorProfile": "industrial-default@1",
+            "models": [],
+            "supportedEvents": [],
+        },
+        "unsupportedEvents": {},
+        "staticObjects": [],
+        "referenceFrames": [{"ptsMs": 0, "key": f"{prefix}blurred/ref-0.jpg"}],
+        "gapMs": gap_ms,
+    }
+    if last:
+        body["last"] = True
+    return ChunkManifest.model_validate(body)
+
+
+STREAM_SESSION = SessionRef(
+    session_id=uid(0x5E55), role="ROTATION", previous_source_id=STREAM_PREVIOUS
+)
+
+
+def stream_completed(
+    sequence: int | None, *, events: int = 0, session: SessionRef | None = STREAM_SESSION
+) -> AnalysisCompleted:
+    """창 완료(scope chunk) 또는 sequence가 None이면 세션 완료(scope job)."""
+    extra: dict[str, object] = (
+        {"scope": "chunk", "chunkId": str(window_id(sequence))}
+        if sequence is not None
+        else {"scope": "job"}
+    )
+    return completed(
+        job_type="STREAM",
+        events=events,
+        session=session,
+        job=STREAM_JOB,
+        source=STREAM_SOURCE,
+        extra=extra,
+    )
+
+
+@dataclass
+class FakeZones:
+    """가짜 stream-service 내부 구역 API. 부른 횟수를 센다."""
+
+    zones: tuple[ZoneInfo, ...] = ZONES
+    calls: int = 0
+
+    async def get_session_zones(self, session_id: UUID, *, deadline: Deadline) -> StreamZoneList:
+        self.calls += 1
+        return StreamZoneList.model_validate(
+            {
+                "zones": [
+                    {
+                        "zoneId": str(z.zone_id),
+                        "name": z.name,
+                        "kind": z.kind,
+                        "polygon": [[0, 0], [1, 0], [1, 1]],
+                    }
+                    for z in self.zones
+                ],
+                "updatedAt": None,
+            }
+        )
+
+
+@dataclass
+class StreamHarness(Harness):
+    """실시간 창 처리를 붙인 서비스. 재판정 상한·스냅샷 간격은 프로필 값을 바꿔 쓴다."""
+
+    zones: FakeZones = field(default_factory=FakeZones)
+    snapshot_every: int = 30
+    judge_limit: int = 20
+
+    def service(self) -> "AggregatorService":
+        loaded = profile()
+        changed = LoadedProfile(
+            loaded.profile.model_copy(
+                update={
+                    "snapshot_every_windows": self.snapshot_every,
+                    "judge_call_limit": self.judge_limit,
+                }
+            ),
+            loaded.version,
+        )
+        store = self.store or MemoryStore()
+        config = ServiceConfig(read_timeout_s=300, max_attempts=5)
+        stream = StreamAggregator(
+            store=store,
+            storage=self.storage,
+            publisher=self.publisher,
+            gateway=self.gateway,
+            zones=self.zones,
+            profile=changed,
+            config=config,
+            clock=lambda: T0,
+            now=lambda: NOW,
+        )
+        return AggregatorService(
+            reader=JobReader(self.api, page_limit=2),
+            gateway=self.gateway,
+            storage=self.storage,
+            publisher=self.publisher,
+            profile=changed,
+            config=config,
+            store=store,
+            stream=stream,
             clock=lambda: T0,
             now=lambda: NOW,
         )
