@@ -17,7 +17,7 @@ updated: 2026-11-06
 
 ## Phase 0: 준비
 
-- [ ] T001 계약 잠금 3.14.0: `scripts/fetch-service-contracts.sh --update 3.14.0`. 잠금을 올리면 깨지는 기존 계약 테스트를 맞춘다(단계 ID 전체 목록, `EventAnalyzed`의 `detectorCandidate`·`rule`·`rule+vlm`·`rule+vlm+escalate`·`judgments` 0개). 모델만 넓히고 SPEC-023 동작은 만들지 않는다 — 테스트 `libs/contracts/tests/test_stage_contracts.py`, `test_event_contracts.py`(지금 4건 실패가 Red), 구현 `service-contracts.lock`, `vlm_contracts/stages.py`, `vlm_contracts/events.py`
+- [x] T001 계약 잠금 4.1.0(지시로 3.14.0 대신 4.1.0): `scripts/fetch-service-contracts.sh --update 3.14.0`. 잠금을 올리면 깨지는 기존 계약 테스트를 맞춘다(단계 ID 전체 목록, `EventAnalyzed`의 `detectorCandidate`·`rule`·`rule+vlm`·`rule+vlm+escalate`·`judgments` 0개). 모델만 넓히고 SPEC-023 동작은 만들지 않는다 — 테스트 `libs/contracts/tests/test_stage_contracts.py`, `test_event_contracts.py`(지금 4건 실패가 Red), 구현 `service-contracts.lock`, `vlm_contracts/stages.py`, `vlm_contracts/events.py`
 - [ ] T002 datamodel-code-generator를 루트 dev 그룹에 추가(`uv add --dev`), 생성 옵션 `libs/ai-client/pyproject.toml` `[tool.datamodel-codegen]`, 스크립트 `scripts/generate-ai-client.sh`(shellcheck). 생성 결과의 `TaskType`(열린 목록 → `str`), nullable, 자유 객체, `extra` 처리를 확인하고 `Any`가 나오면 plan 8절대로 멈추고 확인한다
 - [ ] T003 [P] ai-gateway 테스트 도우미: `post_analyze`·`post_embed`·`post_parse`에 `headers` 인자, 호출을 세는 가짜 저장소·캐시·예산, 느린 가짜 Adapter — `gwt/gateway_support.py`(기존 테스트 통과로 확인)
 

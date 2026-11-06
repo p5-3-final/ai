@@ -39,7 +39,7 @@ updated: 2026-11-07
 
 ## Phase 5: v5.1 추가(계약 묶음 4.0.0)
 
-- [ ] T011 [R-10] 잠금 4.0.0의 단계 ID 6개를 `StageId`에 추가(SPEC-023 T001·SPEC-027 T001과 같은 태스크, 먼저 하는 쪽이 한다) — 테스트 `libs/contracts/tests/test_stage_contracts.py`, 구현 `con/stages.py`
+- [x] T011 [R-10] 잠금 4.0.0의 단계 ID 6개를 `StageId`에 추가(SPEC-023 T001·SPEC-027 T001과 같은 태스크, 먼저 하는 쪽이 한다) — 테스트 `libs/contracts/tests/test_stage_contracts.py`, 구현 `con/stages.py`
 
 ## 완료 조건 (Definition of Done)
 
