@@ -394,3 +394,27 @@ def test_spec024_r13_track_fallback_has_no_judgment(
         }
     else:
         assert output == {"verificationStatus": status, "answerable": None, "answer": None}
+
+
+def test_spec027_r18_source_summary_prompt_loads_with_contract_output(registry_dir: Path) -> None:
+    """[SPEC-027 R-18] source_summary는 Registry 폴더 하나이고 출력은 계약 `_source-summary`다."""
+    task = PromptRegistry.load(registry_dir).get("source_summary")
+    assert task is not None
+    contract = json.loads(
+        (registry_dir / "events/_source-summary.schema.json").read_text(encoding="utf-8")
+    )
+
+    assert re.fullmatch(r"source_summary@[0-9a-f]{12}", task.version)
+    for example in contract["examples"]:
+        assert task.output_errors(example) == []
+    assert task.fallback({}, "unknown") == {"summary": None, "highlights": []}
+
+
+def test_spec027_r18_source_summary_input_has_no_event_descriptions(registry_dir: Path) -> None:
+    """[SPEC-027 R-18·NFR-3] 입력 변수는 타임라인·위험·구역·영상 길이다. 설명 원문 자리는 없다."""
+    task = PromptRegistry.load(registry_dir).get("source_summary")
+    assert task is not None
+
+    ok = {"durationSec": 125.0, "zones": [], "timeline": [], "risks": []}
+    assert task.input_errors(ok) == []
+    assert task.input_errors({**ok, "descriptions": ["x"]}) != []

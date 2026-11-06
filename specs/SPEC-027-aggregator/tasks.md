@@ -73,7 +73,7 @@ updated: 2026-11-07
 
 ## Phase 7: US-5 요약 (P2)
 
-- [ ] T035 [R-18] ai-gateway `source_summary` 등록(입력·출력 스키마, 자리 표시 프롬프트, `fallback.json`, 두 프로필, 테스트 도우미, Registry에 `_source-summary` 계약 파일) — 테스트 `services/ai-gateway/tests/test_prompts.py`, `test_analyze_api.py`, 구현 `registry/prompts/source_summary/`, 프로필, `registry_bundle.py`, `tests/conftest.py`, Dockerfile
+- [x] T035 [R-18] ai-gateway `source_summary` 등록(입력·출력 스키마, 자리 표시 프롬프트, `fallback.json`, 두 프로필, 테스트 도우미, Registry에 `_source-summary` 계약 파일) — 테스트 `services/ai-gateway/tests/test_prompts.py`, `test_analyze_api.py`, 구현 `registry/prompts/source_summary/`, 프로필, `registry_bundle.py`, `tests/conftest.py`, Dockerfile
 - [ ] T036 [R-18] 확정 이벤트나 위험이 있으면 이미지 없이 한 번 호출(변수: 타임라인·위험·구역·영상 길이), 없으면 부르지 않고 `empty` — 테스트 `t/test_aggregator_summary.py`, 구현 `agg/summary.py`
 - [ ] T037 [R-19] `modelId: null`이면 `not_configured`, 오류·대체 결과면 `failed`, 나머지 결과는 그대로 발행 — 테스트 `t/test_aggregator_summary.py`, `t/test_aggregator_service.py`
 

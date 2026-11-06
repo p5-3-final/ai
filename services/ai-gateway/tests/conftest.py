@@ -10,12 +10,14 @@ from vlm_testing.containers import postgres, redis
 
 # Prompt Registry 원본(docs ADR-0012). 분류 체계는 서비스 간 계약에서 가져와 합친다.
 _REGISTRY_SOURCE = Path(__file__).resolve().parents[1] / "registry"
-# 출력 형식 중 다른 레포로 나가는 것은 계약이 원본이다(SPEC-020, SPEC-024). 이 파일만 가져온다.
+# 출력 형식 중 다른 레포로 나가는 것은 계약이 원본이다(SPEC-020, SPEC-024, SPEC-027).
+# 이 파일만 가져온다.
 # 이미지(Dockerfile)의 COPY 목록과 같다.
 OUTPUT_CONTRACT_FILES = (
     "_vlm-analysis.schema.json",
     "_track-attribute.schema.json",
     "_object-answer.schema.json",
+    "_source-summary.schema.json",
 )
 
 

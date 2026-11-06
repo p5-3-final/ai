@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vlm.example/contracts/prompts/source_summary/output.schema.json",
+  "title": "SourceSummaryOutput",
+  "description": "source_summary 결과. 형식의 원본은 서비스 간 계약 events/_source-summary.schema.json이고 aggregator 결과 파일 summary로 다른 레포에 전달된다(SPEC-027). 예시는 mock Adapter 응답이다.",
+  "$ref": "../../events/_source-summary.schema.json",
+  "examples": [
+    {
+      "summary": "A동 크레인 하부에서 안전모 미착용 위험이 1분 40초부터 영상 끝까지 해소되지 않았습니다.",
+      "highlights": [{"atMs": 100000, "text": "크레인 하부 안전모 미착용 확인"}]
+    }
+  ]
+}

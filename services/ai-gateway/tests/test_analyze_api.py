@@ -731,3 +731,42 @@ async def test_spec024_r11_r12_too_few_images_is_rejected(
     problem = _problem(response, 400, "AI_INVALID_REQUEST")
     assert problem["errors"] == [{"field": "images", "message": ANY}]
     assert gw.adapter.calls == []
+
+
+def _summary_body() -> dict[str, object]:
+    return analyze_body(
+        taskType="source_summary",
+        images=[],
+        variables={"durationSec": 125.0, "zones": [], "timeline": [], "risks": []},
+    )
+
+
+async def test_spec027_r18_source_summary_without_images(registry_dir: Path) -> None:
+    """[SPEC-027 R-18] 이미지 없이 부르고 계약 `_source-summary` 형식의 결과를 받는다."""
+    reply = {"summary": "위험이 해소되었습니다.", "highlights": [{"atMs": 0, "text": "시작"}]}
+    adapter = FakeAdapter(reply=json.dumps(reply, ensure_ascii=False))
+
+    async with gateway(registry_dir, adapter=adapter) as gw:
+        response = await post_analyze(gw.client, _summary_body())
+
+    assert response.status_code == 200
+    body = response.json()
+    assert (body["taskType"], body["output"]) == ("source_summary", reply)
+    assert body["promptVersion"].startswith("source_summary@")
+    [call] = adapter.calls
+    assert call.images == []
+
+
+async def test_spec027_r19_unconfigured_source_summary_returns_null_model(
+    registry_dir: Path,
+) -> None:
+    """[SPEC-027 R-19] 모델 미설정이면 modelId null과 summary null 대체 결과다."""
+    judge = profile().tasks["event_judge"].model_dump()
+    unset = {**judge, "adapter": None, "model": None, "max_images": 1}
+    tasks = {"event_judge": judge, "event_judge_escalate": judge, "source_summary": unset}
+
+    async with gateway(registry_dir, profile(extra={"tasks": tasks})) as gw:
+        response = await post_analyze(gw.client, _summary_body())
+
+    body = response.json()
+    assert (body["modelId"], body["output"]) == (None, {"summary": None, "highlights": []})

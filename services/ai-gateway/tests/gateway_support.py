@@ -113,13 +113,17 @@ def profile(extra: dict[str, object] | None = None, **task: object) -> GatewayPr
             "images": {"allowed_patterns": [r"^sources/{source_id}/.+/blurred/[^/]+\.(jpg|png)$"]},
             "adapters": {"fake": {"kind": "mock"}},
             "tasks": {
-                name: event_judge
-                for name in (
-                    "event_judge",
-                    "event_judge_escalate",
-                    "track_attribute",
-                    "object_question",
-                )
+                **{
+                    name: event_judge
+                    for name in (
+                        "event_judge",
+                        "event_judge_escalate",
+                        "track_attribute",
+                        "object_question",
+                    )
+                },
+                # 이미지가 없는 taskType이지만 프로필 상한은 0보다 커야 한다(SPEC-027).
+                "source_summary": {**event_judge, "max_images": 1},
             },
             "parse": parse_settings(),
             **(extra or {}),
