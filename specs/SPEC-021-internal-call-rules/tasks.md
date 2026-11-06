@@ -33,7 +33,7 @@ updated: 2026-11-06
 - [x] T011 [R-3] analyze: Adapter가 남은 시간 안에 끝나지 않으면 504, 호출 로그 status `unavailable`·`error_code` `AI_DEADLINE_EXCEEDED`, 예산은 예약액으로 정산. 프로필 제한 시간이 먼저 끝나면 지금처럼 503 — 테스트 `gwt/test_deadline_api.py`, 구현 `gw/analyze.py`(`asyncio.timeout`, 예외 변환)
 - [x] T012 [R-3] embed_text는 504, parse LLM 경로는 `safe-fallback` 대신 504(호출 로그는 남김) — 테스트 `gwt/test_deadline_api.py`, 구현 `gw/embed.py`, `gw/parse.py`
 - [x] T013 [NFR-1] mock 프로필에서 지난 마감 요청 200회 p95 20ms 이하 — 테스트 `gwt/test_deadline_latency.py`
-- [ ] T014 [NFR-2] 기존 성능 테스트 통과 확인(`gwt/test_overhead.py`, `gwt/test_embed_latency.py`). 새 코드 없음, 결과를 PR에 적는다
+- [x] T014 [NFR-2] 기존 성능 테스트 통과 확인(`gwt/test_overhead.py`, `gwt/test_embed_latency.py`). 새 코드 없음, 결과를 PR에 적는다
 
 ## Phase 2: US-2 계약과 코드가 어긋나지 않음 — ai-client (P1)
 
@@ -54,14 +54,14 @@ updated: 2026-11-06
 
 - [x] T024 [R-14] 클라이언트가 504 `AI_DEADLINE_EXCEEDED`를 던지면 그 판정을 실패로 기록하고 메시지를 거절하지 않으며 호출은 한 번이다. 지금 코드로도 통과할 가능성이 높아 Red 없음이면 PR에 적는다 — 테스트 `t/test_analyzer_service.py`, 구현 `ea/service.py`(필요하면)
 - [x] T025 [R-9] [R-14] 조립: 재시도 설정이 analyze 규칙(연결 실패만)으로 클라이언트에 전달되고 `call_timeout_s`가 마감이 됨. 설정 주석을 "연결 실패 재시도"로 고침 — 테스트 `t/test_analyzer_main.py`, 구현 `ea/__main__.py`, `ea/settings.py`
-- [ ] T026 워커 e2e가 새 클라이언트로 그대로 통과(Kafka testcontainer) — 테스트 `t/test_analyzer_worker_e2e.py`
+- [x] T026 워커 e2e가 새 클라이언트로 그대로 통과(Kafka testcontainer) — 테스트 `t/test_analyzer_worker_e2e.py`
 
 ## Phase 5: 마무리
 
-- [ ] T027 계약과 구현 일치 확인: ai-gateway 응답 계약 테스트, 생성 모델 비교 테스트를 `CONTRACTS_DIR`(잠금 4.1.0)로 실행
+- [x] T027 계약과 구현 일치 확인: ai-gateway 응답 계약 테스트, 생성 모델 비교 테스트를 `CONTRACTS_DIR`(잠금 4.1.0)로 실행
 - [x] T028 로그 확인: 504가 JSON 로그·호출 로그에 `AI_DEADLINE_EXCEEDED`로, 클라이언트 재시도 로그에 시도 번호·남은 시간
 - [x] T029 README 갱신(`services/ai-gateway/README.md` 마감 헤더, `services/event-analyzer/README.md` 재시도 규칙, `libs/ai-client/pyproject.toml` description에 embed·parse·생성 방법). 환경변수 추가 없음
-- [ ] T030 로컬 compose 확인(성공 지표): 지난 마감으로 `/v1/analyze`를 부르면 504이고 호출 로그에 모델 호출이 없음. 결과를 아래 "측정 기록"에 남긴다
+- [ ] T030 로컬 compose 확인(성공 지표): 지난 마감으로 `/v1/analyze`를 부르면 504이고 호출 로그에 모델 호출이 없음. 결과를 아래 "측정 기록"에 남긴다 — 보류: 로컬 compose는 `repos/ai`(main 체크아웃)에서 이미지를 빌드해 이 브랜치를 반영하지 못한다. 머지 뒤 확인한다. 같은 조건(지난 마감이면 504, 호출 로그·Adapter 호출 0)은 `gwt/test_deadline_api.py`가 검증한다
 
 ## 완료 조건 (Definition of Done)
 
