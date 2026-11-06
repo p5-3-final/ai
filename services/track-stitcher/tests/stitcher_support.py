@@ -1,7 +1,7 @@
 """track-stitcher 테스트가 함께 쓰는 메시지·파일·발행기·계약 검증 도우미."""
 
 import json
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from functools import cache
@@ -164,7 +164,7 @@ def unit(*values: float) -> list[float]:
 
 def vector_file(
     tracks: ChunkTracks,
-    crops: dict[str, Sequence[list[float]]] | None = None,
+    crops: Mapping[str, Sequence[list[float]]] | None = None,
     *,
     model: str = EMBEDDING_MODEL,
 ) -> VectorFile:
