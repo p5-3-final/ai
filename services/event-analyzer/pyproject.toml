@@ -1,0 +1,21 @@
+[project]
+name = "event-analyzer"
+version = "0.1.0"
+description = "이벤트 후보 VLM 판정, event.analyzed 발행 (SPEC-020)"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "vlm-ai-client",
+    "vlm-common",
+    "vlm-contracts",
+    "vlm-messaging",
+]
+
+[tool.uv.sources]
+vlm-ai-client = { workspace = true }
+vlm-common = { workspace = true }
+vlm-contracts = { workspace = true }
+vlm-messaging = { workspace = true }
+
+[build-system]
+requires = ["uv_build>=0.12,<0.13"]
+build-backend = "uv_build"
