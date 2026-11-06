@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import Literal
 from uuid import UUID
 
-from vlm_contracts.events import DetectableEventType, Judgment, VLMAnalysis
+from vlm_contracts.events import DetectableEventType, Judgment, UnverifiedReason, VLMAnalysis
 
 type Stage = Literal["judge", "escalate"]
 type Method = Literal["vector+vlm", "vector+vlm+escalate"]
@@ -32,6 +32,8 @@ class Outcome:
     prompt_version: str | None = None
     # None이 아니면 호출이 실패했고 `analysis`는 event-analyzer가 만든 unknown이다.
     error_code: str | None = None
+    # ai-gateway가 unverified로 답한 이유(SPEC-020 R-21). 그 밖에는 None이다.
+    unverified_reason: UnverifiedReason | None = None
 
     @classmethod
     def called(
@@ -41,9 +43,19 @@ class Outcome:
         model_id: str | None,
         prompt_version: str,
         analysis: VLMAnalysis,
+        *,
+        unverified_reason: UnverifiedReason | None = None,
     ) -> "Outcome":
         """ai-gateway가 돌려준 결과. 모델 미설정·예산 초과면 `model_id`가 None이다."""
-        return cls(stage, analysis, call_id, model_id, prompt_version)
+        return cls(
+            stage, analysis, call_id, model_id, prompt_version, unverified_reason=unverified_reason
+        )
+
+    def final_unverified_reason(self) -> UnverifiedReason | None:
+        """이 결과가 최종 분석일 때 `event.analyzed.unverifiedReason`. unverified가 아니면 None."""
+        if self.analysis.verification_status != "unverified":
+            return None
+        return self.unverified_reason
 
     @classmethod
     def failed(cls, stage: Stage, event_type: DetectableEventType, error_code: str) -> "Outcome":
@@ -72,6 +84,7 @@ class Decision:
     judgments: list[Judgment]
     review_required: bool
     review_reasons: list[ReviewReason]
+    unverified_reason: UnverifiedReason | None = None
 
 
 def needs_escalation(first: Outcome) -> bool:
@@ -87,17 +100,23 @@ def needs_escalation(first: Outcome) -> bool:
 def decide(first: Outcome, escalated: Outcome | None) -> Decision:
     """1차와 재판정에서 최종 분석·판정 방식·검토 표시를 정한다(R-5~R-7, R-13)."""
     if escalated is None:
-        return Decision(first.analysis, "vector+vlm", [first.record()], False, [])
+        return Decision(
+            first.analysis,
+            "vector+vlm",
+            [first.record()],
+            False,
+            [],
+            first.final_unverified_reason(),
+        )
     statuses = {first.analysis.verification_status, escalated.analysis.verification_status}
-    final = (
-        escalated.analysis if escalated.analysis.verification_status in _DECIDED else first.analysis
-    )
+    final = escalated if escalated.analysis.verification_status in _DECIDED else first
     # 두 모델이 정반대로 판정했으면 어느 쪽도 믿기 어려워 사람이 본다(R-7).
     disagreement = statuses == _DECIDED
     return Decision(
-        final,
+        final.analysis,
         "vector+vlm+escalate",
         [first.record(), escalated.record()],
         disagreement,
         ["judgment_disagreement"] if disagreement else [],
+        final.final_unverified_reason(),
     )

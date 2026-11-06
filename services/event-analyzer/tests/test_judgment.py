@@ -4,7 +4,7 @@ from uuid import UUID
 
 import pytest
 from event_analyzer.judgment import Outcome, decide, needs_escalation
-from vlm_contracts.events import Severity, VerificationStatus, VLMAnalysis
+from vlm_contracts.events import Severity, UnverifiedReason, VerificationStatus, VLMAnalysis
 
 CALL = UUID("0192f0e1-0000-7000-8000-000000000001")
 
@@ -163,3 +163,33 @@ def test_spec020_r7_agreement_or_undecided_needs_no_review(
     )
 
     assert (decision.review_required, decision.review_reasons) == (False, [])
+
+
+@pytest.mark.parametrize("reason", ["budget_exceeded", "model_unavailable"])
+def test_spec020_r21_unverified_final_carries_response_reason(reason: UnverifiedReason) -> None:
+    unverified = Outcome.called(
+        "judge",
+        CALL,
+        None,
+        "event_judge@0123456789ab",
+        _analysis("unverified", severity=None, detected=None),
+        unverified_reason=reason,
+    )
+
+    decision = decide(unverified, None)
+
+    assert decision.unverified_reason == reason
+
+
+def test_spec020_r21_decided_final_has_no_unverified_reason() -> None:
+    first = Outcome.called(
+        "judge",
+        CALL,
+        None,
+        "event_judge@0123456789ab",
+        _analysis(severity="high"),
+        unverified_reason="budget_exceeded",
+    )
+
+    assert decide(first, None).unverified_reason is None
+    assert decide(_failed_judge(), None).unverified_reason is None

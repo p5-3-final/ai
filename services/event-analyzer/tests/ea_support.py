@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from functools import cache
 from pathlib import Path
+from typing import Literal
 from uuid import UUID, uuid5
 
 from jsonschema import Draft202012Validator
@@ -115,6 +116,8 @@ class FakeGateway:
     requests: list[tuple[AnalyzeRequest, str | None]] = field(default_factory=list)
     in_flight: int = 0
     max_in_flight: int = 0
+    # unverified 응답에 싣는 사유(SPEC-016 R-22)
+    unverified_reason: Literal["budget_exceeded", "model_unavailable"] | None = None
 
     async def analyze(
         self, request: AnalyzeRequest, *, traceparent: str | None = None
@@ -138,6 +141,7 @@ class FakeGateway:
             model_id=model,
             prompt_version=f"{request.task_type}@0123456789ab",
             taxonomy_version="v2",
+            unverified_reason=self.unverified_reason if unverified else None,
             output=output,
         )
 

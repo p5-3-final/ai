@@ -142,7 +142,12 @@ class EventAnalyzerService:
             )
             return Outcome.failed(stage, candidate.event_type, e.code)
         return Outcome.called(
-            stage, response.call_id, response.model_id, response.prompt_version, analysis
+            stage,
+            response.call_id,
+            response.model_id,
+            response.prompt_version,
+            analysis,
+            unverified_reason=response.unverified_reason,
         )
 
     def _analyzed(
@@ -153,6 +158,8 @@ class EventAnalyzerService:
             occurred_at=self._clock(),
             source_id=message.source_id,
             owner_id=message.owner_id,
+            # SPEC-020 R-22: 소비자가 Job 유형별로 처리를 나누므로 받은 값을 그대로 옮긴다.
+            job_type=message.job_type,
             job_id=message.job_id,
             chunk_id=message.chunk_id,
             execution_id=message.execution_id,
@@ -174,6 +181,7 @@ class EventAnalyzerService:
             judgments=decision.judgments,
             review_required=decision.review_required,
             review_reasons=decision.review_reasons,
+            unverified_reason=decision.unverified_reason,
         )
 
     def _publish(self, event: Event, traceparent: str | None) -> None:
