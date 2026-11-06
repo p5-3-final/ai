@@ -97,6 +97,9 @@ class AnalyzeService:
         settings = self._profile.tasks[command.task_type]
         if len(command.image_keys) > settings.max_images:
             raise TooManyImagesError(f"at most {settings.max_images} images are allowed")
+        if len(command.image_keys) < settings.min_images:
+            message = f"at least {settings.min_images} images are required"
+            raise InvalidRequestError(message, [("images", message)])
         self._image_policy.check(command.source_id, command.image_keys)
         images = await self._images.read(command.image_keys)
 

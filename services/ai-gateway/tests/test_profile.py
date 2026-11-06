@@ -383,3 +383,28 @@ def test_spec016_r21_caller_without_limit_uses_global_only(tmp_path: Path) -> No
     assert profile.budget is not None
     assert profile.budget.limit_for("search-service") is None
     assert profile.budget.limit_for("event-analyzer") == Decimal("5.0")
+
+
+def test_spec024_r11_min_images_defaults_to_zero(tmp_path: Path) -> None:
+    """[SPEC-024 R-11] 하한을 적지 않은 기존 taskType은 이미지가 없어도 받는다(동작 유지)."""
+    assert _load(tmp_path, VALID).tasks["event_judge"].min_images == 0
+
+
+@pytest.mark.parametrize(
+    ("old", "new"),
+    [
+        ("max_images = 12", "max_images = 12\nmin_images = -1"),
+        ("max_images = 12", "max_images = 12\nmin_images = 13"),
+    ],
+)
+def test_spec024_r11_invalid_min_images_fails(tmp_path: Path, old: str, new: str) -> None:
+    with pytest.raises(ProfileError):
+        _load(tmp_path, VALID.replace(old, new))
+
+
+@pytest.mark.parametrize("task_type", ["track_attribute", "object_question"])
+@pytest.mark.parametrize("name", ["local.toml", "local-mock.toml"])
+def test_spec024_r11_r12_committed_profiles_need_one_image(name: str, task_type: str) -> None:
+    path = Path(__file__).resolve().parents[1] / "profiles" / name
+
+    assert load_profile(path, GatewayProfile).tasks[task_type].min_images == 1

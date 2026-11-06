@@ -718,3 +718,16 @@ async def test_spec024_r13_invalid_output_returns_unknown(
     }
     [entry] = gw.call_log.entries
     assert entry.status == "invalid_output"
+
+
+@pytest.mark.parametrize("task_type", sorted(_TRACK_VARIABLES))
+async def test_spec024_r11_r12_too_few_images_is_rejected(
+    registry_dir: Path, task_type: str
+) -> None:
+    """[SPEC-024 R-11·R-12] 이미지가 하한보다 적으면 모델을 부르지 않고 400이다."""
+    async with gateway(registry_dir, profile(min_images=1)) as gw:
+        response = await post_analyze(gw.client, _track_body(task_type, images=[]))
+
+    problem = _problem(response, 400, "AI_INVALID_REQUEST")
+    assert problem["errors"] == [{"field": "images", "message": ANY}]
+    assert gw.adapter.calls == []

@@ -119,7 +119,7 @@ ai-gateway에는 두 taskType의 Registry 폴더(입력·출력 스키마, 자�
 - `prompt.md`: 동작 확인용 자리 표시 문장. 문안은 AI 담당자 몫이다.
 - 프로필: `max_images`는 `track_attribute` 3, `object_question` 11(크롭 3 + 장면 8). `local.toml`은 로컬 Ollama의 같은 모델(`qwen3-vl:4b-instruct`), `local-mock.toml`은 mock. 출력 토큰·제한 시간은 `event_judge`와 같은 자리값이다.
 - 계약 파일 배치: 테스트 `conftest.py`의 registry 배치와 Dockerfile COPY에 `events/_track-attribute.schema.json`·`_object-answer.schema.json`을 더한다. `registry_bundle._REGISTRY_FOLDERS`는 이미 `events`를 담는다. 테스트 도우미 `gateway_support.profile()`의 tasks에도 두 taskType을 더한다(프로필·Registry 목록이 다르면 `check_tasks`가 기동을 막는다).
-- 이미지 하한(R-11 "1~3장", R-12 "1~11장"): ai-gateway는 지금 상한(`max_images`)만 검사한다. 하한 검사를 더하려면 프로필 스키마에 `min_images`를 더해야 한다(사용자 확인 필요 1). 기본안은 `TaskProfile`에 `min_images`(기본 0, 기존 taskType 동작 유지)를 더하고 두 taskType은 1로 둔다. 모자라면 400 `AI_INVALID_REQUEST`다. 확인 전까지 해당 태스크(T009)는 보류한다.
+- 이미지 하한(R-11 "1~3장", R-12 "1~11장"): ai-gateway는 지금 상한(`max_images`)만 검사한다. 하한 검사를 위해 `TaskProfile`에 `min_images`(기본 0, 기존 taskType 동작 유지, `max_images` 이하)를 더하고 두 taskType은 1로 둔다. 모자라면 400 `AI_INVALID_REQUEST`(`errors[].field` = `images`)다(D-11, 2026-11-07 기본안으로 결정).
 
 ### 상호작용
 
@@ -149,7 +149,7 @@ sequenceDiagram
 | 4xx도 FAILED로 발행 | 화면이 기다리지 않음(spec 목적, R-4) | 설정 오류가 DLQ에 쌓이지 않고 결과로 보임 | ☑ |
 | SPEC-020처럼 4xx는 DLQ | 설정 오류가 눈에 띔 | 화면이 무한정 기다림. R-4와 다름 | |
 | 출력 형식 파일을 Registry에 하나씩 복사 | 프롬프트와 관계없는 이벤트 스키마가 섞이지 않음(SPEC-020 선택 유지) | 복사 목록이 세 곳에서 늘어남 | ☑ |
-| 프로필에 `min_images` 추가 | 하한을 ai-gateway가 지킴 | 프로필 스키마 변경 | 확인 필요 1 |
+| 프로필에 `min_images` 추가 | 하한을 ai-gateway가 지킴 | 프로필 스키마 변경 | ☑ (D-11) |
 | 하한을 호출자 계약(`crops` 1개 이상)에 맡김 | 변경 없음 | ai-gateway가 R-11·R-12의 하한을 보장하지 않음 | |
 
 ## 6. 테스트 전략

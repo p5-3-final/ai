@@ -49,6 +49,7 @@ adapter = "ollama"
 model = "qwen3-vl:4b-instruct"
 max_output_tokens = 800
 # 트랙 대표 크롭 1~3장
+min_images = 1
 max_images = 3
 timeout_s = 120
 max_retries = 1
@@ -61,6 +62,7 @@ adapter = "ollama"
 model = "qwen3-vl:4b-instruct"
 max_output_tokens = 800
 # 크롭 1~3장 + 장면 프레임 0~8장
+min_images = 1
 max_images = 11
 timeout_s = 120
 max_retries = 1
