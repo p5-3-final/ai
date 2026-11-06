@@ -27,10 +27,10 @@ updated: 2026-11-07
 
 ## Phase 1: 규칙 (US-2·US-3, P1)
 
-- [ ] T006 [P] [R-3] 쿨다운 병합: 같은 트랙·같은 유형, 간격 = 쿨다운이면 병합·초과면 분리, 트랙 null은 병합 안 함, 동점은 이른 시작·candidateId 순, 나머지 ID는 시작 시각순 — 테스트 `t/test_analyzer_merge.py`, 구현 `ea/merge.py`
-- [ ] T007 [P] [R-4] 규칙 후보의 템플릿 `VLMAnalysis`(구역 이름 치환, 구역 null이면 프로필 자리값, 시각은 초) — 테스트 `t/test_analyzer_rules.py`, 구현 `ea/rules.py`
-- [ ] T008 [P] [R-6] 재판정 조건에 애매 구간(경계 포함). 1차 실패·`unverified`면 애매해도 부르지 않음 — 테스트 `t/test_judgment.py`, 구현 `ea/judgment.py`
-- [ ] T009 [R-7] `decide`가 판정 경로를 받아 `rule+vlm`·`rule+vlm+escalate`를 고름. 벡터 경로 기존 테스트 유지 — 테스트 `t/test_judgment.py`, 구현 `ea/judgment.py`
+- [x] T006 [P] [R-3] 쿨다운 병합: 같은 트랙·같은 유형, 간격 = 쿨다운이면 병합·초과면 분리, 트랙 null은 병합 안 함, 동점은 이른 시작·candidateId 순, 나머지 ID는 시작 시각순 — 테스트 `t/test_analyzer_merge.py`, 구현 `ea/merge.py`
+- [x] T007 [P] [R-4] 규칙 후보의 템플릿 `VLMAnalysis`(구역 이름 치환, 구역 null이면 프로필 자리값, 시각은 초) — 테스트 `t/test_analyzer_rules.py`, 구현 `ea/rules.py`
+- [x] T008 [P] [R-6] 재판정 조건에 애매 구간(경계 포함). 1차 실패·`unverified`면 애매해도 부르지 않음 — 테스트 `t/test_judgment.py`, 구현 `ea/judgment.py`
+- [x] T009 [R-7] `decide`가 판정 경로를 받아 `rule+vlm`·`rule+vlm+escalate`를 고름. 벡터 경로 기존 테스트 유지 — 테스트 `t/test_judgment.py`, 구현 `ea/judgment.py`
 
 ## Phase 2: 핸들러 (US-1·US-2·US-3, P1)
 

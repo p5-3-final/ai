@@ -1,4 +1,4 @@
-"""판정 결과와 재판정·최종 판정 규칙(SPEC-020 R-3~R-7, R-12, R-13).
+"""판정 결과와 재판정·최종 판정 규칙(SPEC-020 R-3~R-7, R-12, R-13, SPEC-023 R-6·R-7).
 
 I/O 없는 규칙만 둔다. 호출과 발행은 `service`가 한다.
 """
@@ -10,12 +10,20 @@ from uuid import UUID
 from vlm_contracts.events import DetectableEventType, Judgment, UnverifiedReason, VLMAnalysis
 
 type Stage = Literal["judge", "escalate"]
-type Method = Literal["vector+vlm", "vector+vlm+escalate"]
+# 후보가 어느 경로에서 왔는지. 판정 방식의 접두가 된다(벡터 SPEC-020, 탐지기·규칙 SPEC-023).
+type Path = Literal["vector", "rule"]
+type Method = Literal["vector+vlm", "vector+vlm+escalate", "rule+vlm", "rule+vlm+escalate"]
 type ReviewReason = Literal["judgment_disagreement"]
 
 _TASK_TYPES: dict[Stage, Literal["event_judge", "event_judge_escalate"]] = {
     "judge": "event_judge",
     "escalate": "event_judge_escalate",
+}
+_METHODS: dict[tuple[Path, bool], Method] = {
+    ("vector", False): "vector+vlm",
+    ("vector", True): "vector+vlm+escalate",
+    ("rule", False): "rule+vlm",
+    ("rule", True): "rule+vlm+escalate",
 }
 # 판정이 정해진 상태. 나머지(unverified·unknown)는 모델이 판단하지 못한 것이다.
 _DECIDED = frozenset({"confirmed", "rejected"})
@@ -87,22 +95,26 @@ class Decision:
     unverified_reason: UnverifiedReason | None = None
 
 
-def needs_escalation(first: Outcome) -> bool:
-    """1차 판정을 더 강한 모델로 다시 볼지(R-3, R-4).
+def needs_escalation(first: Outcome, *, ambiguous: bool = False) -> bool:
+    """1차 판정을 더 강한 모델로 다시 볼지(SPEC-020 R-3·R-4, SPEC-023 R-6).
 
-    호출 실패나 모델 미설정은 다시 불러도 같은 이유로 판정하지 못하므로 올리지 않는다.
+    `ambiguous`는 탐지 점수가 프로필의 애매 구간 안이라는 뜻이다. 호출 실패나 모델 미설정은 다시
+    불러도 같은 이유로 판정하지 못하므로 애매해도 올리지 않는다.
     """
     if first.error_code is not None or first.analysis.verification_status == "unverified":
         return False
-    return first.analysis.severity == "high" or first.analysis.event_detected is None
+    return ambiguous or first.analysis.severity == "high" or first.analysis.event_detected is None
 
 
-def decide(first: Outcome, escalated: Outcome | None) -> Decision:
-    """1차와 재판정에서 최종 분석·판정 방식·검토 표시를 정한다(R-5~R-7, R-13)."""
+def decide(first: Outcome, escalated: Outcome | None, path: Path = "vector") -> Decision:
+    """1차와 재판정에서 최종 분석·판정 방식·검토 표시를 정한다(R-5~R-7, R-13).
+
+    판정 규칙은 두 경로가 같고 판정 방식의 접두만 `path`로 다르다(SPEC-023 R-7).
+    """
     if escalated is None:
         return Decision(
             first.analysis,
-            "vector+vlm",
+            _METHODS[(path, False)],
             [first.record()],
             False,
             [],
@@ -114,7 +126,7 @@ def decide(first: Outcome, escalated: Outcome | None) -> Decision:
     disagreement = statuses == _DECIDED
     return Decision(
         final.analysis,
-        "vector+vlm+escalate",
+        _METHODS[(path, True)],
         [first.record(), escalated.record()],
         disagreement,
         ["judgment_disagreement"] if disagreement else [],

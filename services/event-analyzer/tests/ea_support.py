@@ -19,9 +19,15 @@ from vlm_ai_client.client import AiGatewayError
 from vlm_ai_client.models import AnalyzeRequest, AnalyzeResponse
 from vlm_contracts.events import (
     DetectableEventType,
+    DetectorCandidate,
+    DetectorInfo,
+    DetectorModel,
     Event,
+    EventCandidate,
     EventCandidateVector,
+    JobType,
     Severity,
+    TimeRange,
     VectorCandidate,
     VerificationStatus,
 )
@@ -38,6 +44,8 @@ EMBEDDING_MODEL = "open_clip:MobileCLIP2-S0:dfndr2b:mean-4"
 PROTOTYPE_VERSION = "local-1"
 PREFIX = f"sources/{SOURCE}/jobs/{JOB}/chunks/{CHUNK}/executions/{EXECUTION}/"
 TRACEPARENT = "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01"
+DETECTOR_PROFILE = "industrial-default@1"
+ZONE = UUID("0192f100-0000-7000-8000-0000000000f1")
 
 
 def frame_key(segment: int, frame: int) -> str:
@@ -56,6 +64,64 @@ def candidate(index: int, event_type: DetectableEventType = "fall") -> VectorCan
         score=0.31,
         threshold=0.25,
         frame_keys=[frame_key(index, f) for f in range(4)],
+    )
+
+
+def detected(
+    number: int,
+    event_type: DetectableEventType = "ppe_missing",
+    *,
+    start_s: float = 0,
+    end_s: float | None = None,
+    score: float = 0.7,
+    track: str | None = "t1",
+    judgment: Literal["rule", "vlm"] = "vlm",
+    zone_name: str | None = None,
+    frames: int = 2,
+) -> DetectorCandidate:
+    """탐지기 후보. 끝을 주지 않으면 시작 + 1초다. ID는 번호로 정한다."""
+    start_ms = int(start_s * 1000)
+    return DetectorCandidate(
+        candidate_id=UUID(int=0xD000 + number),
+        event_type=event_type,
+        start_ms=start_ms,
+        end_ms=int(end_s * 1000) if end_s is not None else start_ms + 1000,
+        judgment=judgment,
+        trigger_class="no_helmet",
+        score=score,
+        observation_count=3,
+        track_local_id=track,
+        zone_id=ZONE if zone_name is not None else None,
+        zone_name=zone_name,
+        evidence_frame_keys=[f"{PREFIX}blurred/cand{number}-{i}.jpg" for i in range(frames)],
+    )
+
+
+def detector_message(
+    *candidates: DetectorCandidate,
+    job_type: JobType | None = None,
+    owned_ms: tuple[int, int] = (0, 120_000),
+) -> EventCandidate:
+    """후보를 메시지에 실은 `event.candidate`."""
+    return EventCandidate(
+        event_id=MESSAGE_ID,
+        occurred_at=NOW,
+        source_id=SOURCE,
+        owner_id=OWNER,
+        job_type=job_type,
+        job_id=JOB,
+        chunk_id=CHUNK,
+        execution_id=EXECUTION,
+        normalization_id=NORMALIZATION,
+        owned_range=TimeRange(start_ms=owned_ms[0], end_ms=owned_ms[1]),
+        detector=DetectorInfo(
+            detector_profile=DETECTOR_PROFILE,
+            models=[DetectorModel(model_id="ultralytics:yolo26n:coco", available=True)],
+            supported_events=["ppe_missing", "fire_or_smoke", "hazard_zone_access"],
+        ),
+        unsupported_events={"fall": "자세 추정 탐지기 없음"},
+        candidate_count=len(candidates),
+        candidates=list(candidates),
     )
 
 
