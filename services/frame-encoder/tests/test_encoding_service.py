@@ -1,12 +1,15 @@
 from uuid import UUID
 
+import pytest
 from fe_support import (
     DIMENSION,
     MODEL_ID,
     NOW,
     PREFIX,
     RecordingPublisher,
+    crop_key,
     encoder,
+    frame_key,
     image_bytes,
     segment_ready,
     storage_with_images,
@@ -15,7 +18,8 @@ from frame_encoder.service import EncoderConfig, FrameEncoderService
 from frame_encoder.vectors import segment_vector
 from vlm_contracts.events import SegmentEmbedded, SegmentReady
 from vlm_contracts.vectors import VectorFile
-from vlm_messaging.worker import MessageContext
+from vlm_encoders.base import ImageDecodeError, Vector
+from vlm_messaging.worker import MessageContext, NonRetryableError
 from vlm_storage.memory import InMemoryStorage
 
 CTX = MessageContext(
@@ -152,3 +156,54 @@ async def test_spec_019_r6_empty_message_stores_empty_file_and_publishes() -> No
     [event] = publisher.events("segment.embedded")
     assert isinstance(event, SegmentEmbedded)
     assert (event.segment_count, event.crop_count) == (0, 0)
+
+
+class UnreadableImageEncoder:
+    """특정 이미지 바이트를 디코딩하지 못하는 인코더."""
+
+    def __init__(self, unreadable: bytes) -> None:
+        self._inner = encoder()
+        self._unreadable = unreadable
+
+    @property
+    def model_id(self) -> str:
+        return self._inner.model_id
+
+    @property
+    def dimension(self) -> int:
+        return self._inner.dimension
+
+    def encode_texts(self, texts: list[str]) -> list[Vector]:
+        return self._inner.encode_texts(texts)
+
+    def encode_images(self, images: list[bytes]) -> list[Vector]:
+        if self._unreadable in images:
+            raise ImageDecodeError("cannot decode image")
+        return self._inner.encode_images(images)
+
+
+async def test_spec_019_r17_missing_image_goes_to_dlq_without_output() -> None:
+    ready = segment_ready()
+    storage = storage_with_images(ready)
+    storage.delete_prefix(crop_key(1))
+    publisher = RecordingPublisher()
+
+    with pytest.raises(NonRetryableError):
+        await _service(storage, publisher).handle(ready, CTX)
+
+    assert not storage.exists(VECTORS_KEY)
+    assert publisher.published == []
+
+
+async def test_spec_019_r17_undecodable_image_goes_to_dlq_without_output() -> None:
+    ready = segment_ready()
+    storage = storage_with_images(ready)
+    publisher = RecordingPublisher()
+    bad = UnreadableImageEncoder(image_bytes(frame_key(1, 2)))
+    service = FrameEncoderService(storage, bad, publisher, EncoderConfig(batch_size=3))
+
+    with pytest.raises(NonRetryableError):
+        await service.handle(ready, CTX)
+
+    assert not storage.exists(VECTORS_KEY)
+    assert publisher.published == []

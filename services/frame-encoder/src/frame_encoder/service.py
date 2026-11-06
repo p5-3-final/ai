@@ -8,10 +8,10 @@ from typing import Protocol
 
 from vlm_contracts.events import Event, SegmentEmbedded, SegmentReady
 from vlm_contracts.vectors import CropVector, SegmentVector, VectorFile
-from vlm_encoders.base import ImageTextEncoder, Vector
+from vlm_encoders.base import ImageDecodeError, ImageTextEncoder, Vector
 from vlm_messaging.publisher import prepare_event
-from vlm_messaging.worker import MessageContext
-from vlm_storage.storage import ObjectStorage
+from vlm_messaging.worker import MessageContext, NonRetryableError
+from vlm_storage.storage import ObjectNotFoundError, ObjectStorage
 
 from frame_encoder import ids
 from frame_encoder.vectors import segment_vector
@@ -122,11 +122,20 @@ class FrameEncoderService:
         self._publish(embedded, traceparent)
 
     def _encode(self, keys: list[str]) -> list[Vector]:
+        """이미지를 묶음으로 나눠 읽고 인코딩한다.
+
+        Raises:
+            NonRetryableError: 이미지가 없거나 디코딩할 수 없을 때(SPEC-019 R-17). 다시 시도해도
+                결과가 같아 DLQ로 보낸다. 저장소 일시 오류는 그대로 던져 재시도한다(R-18).
+        """
         vectors: list[Vector] = []
         size = self._config.batch_size
         for start in range(0, len(keys), size):
-            images = [self._storage.get_bytes(k) for k in keys[start : start + size]]
-            vectors.extend(self._encoder.encode_images(images))
+            try:
+                images = [self._storage.get_bytes(k) for k in keys[start : start + size]]
+                vectors.extend(self._encoder.encode_images(images))
+            except (ObjectNotFoundError, ImageDecodeError) as e:
+                raise NonRetryableError(f"input image is unusable: {e.code}") from e
         return vectors
 
     def _publish(self, event: Event, traceparent: str | None) -> None:
