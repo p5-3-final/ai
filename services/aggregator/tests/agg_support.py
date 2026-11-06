@@ -1,6 +1,7 @@
 """aggregator 테스트가 함께 쓰는 입력 빌더·계약 검증 도우미."""
 
 import json
+from dataclasses import dataclass, field
 from functools import cache
 from pathlib import Path
 from uuid import UUID
@@ -12,6 +13,15 @@ from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings
 from referencing import Registry, Resource
 from referencing.jsonschema import DRAFT202012, Schema
+from vlm_analysis_client.client import (
+    AnalysisApiError,
+    EventPage,
+    PresencePage,
+    TrackPage,
+    ZoneList,
+)
+from vlm_analysis_client.models import FinalState
+from vlm_common.http_call import Deadline, Failure
 from vlm_contracts.aggregates import CarriedRisk, InitialState, ZoneState
 from vlm_contracts.events import EventType, SessionRef, VLMAnalysis
 
@@ -212,3 +222,135 @@ RESULT_ID = "https://vlm.example/contracts/aggregates/v1/source-result.schema.js
 def event_errors(event: BaseModel, topic: str) -> list[str]:
     body = json.loads(event.model_dump_json(by_alias=True))
     return contract_errors(f"{EVENTS_ID}{topic}.schema.json", body)
+
+
+# ---- 가짜 analysis-api(읽기 클라이언트 프로토콜) ----
+
+
+def api_error(status: int, code: str) -> AnalysisApiError:
+    return AnalysisApiError(
+        code, code, status=status, retryable=status == 503, failure=Failure("status", status)
+    )
+
+
+def job_event_json(e: InputEvent) -> dict[str, object]:
+    """InputEvent를 `listJobEvents` 항목 JSON으로 바꾼다."""
+    return {
+        "eventId": str(e.event_id),
+        "chunkId": str(e.chunk_id) if e.chunk_id else None,
+        "eventType": e.event_type,
+        "startMs": e.start_ms,
+        "endMs": e.end_ms,
+        "trackId": str(e.track_id) if e.track_id else None,
+        "zoneId": str(e.zone_id) if e.zone_id else None,
+        "zoneName": e.zone_name,
+        "judgmentMethod": e.judgment_method,
+        "score": e.score,
+        "reviewRequired": False,
+        "analysis": json.loads(e.analysis.model_dump_json(by_alias=True)),
+    }
+
+
+@dataclass
+class FakeAnalysisApi:
+    """쪽 크기(`page_size`)로 나눠 돌려주는 가짜 analysis-api. 받은 호출과 마감을 남긴다."""
+
+    events: list[dict[str, object]] = field(default_factory=list)
+    tracks: list[TrackSpan] = field(default_factory=list)
+    presences: list[Presence] = field(default_factory=list)
+    zones: tuple[ZoneInfo, ...] = ZONES
+    final_state: FinalState | AnalysisApiError | None = None
+    page_size: int = 2
+    fail: dict[str, AnalysisApiError] = field(default_factory=dict)
+    calls: list[tuple[str, int, str | None]] = field(default_factory=list)
+
+    def _page(
+        self, name: str, items: list[dict[str, object]], cursor: str | None, deadline: Deadline
+    ) -> dict[str, object]:
+        self.calls.append((name, deadline.at_ms, cursor))
+        if name in self.fail:
+            raise self.fail[name]
+        start = int(cursor or 0)
+        end = start + self.page_size
+        return {
+            "items": items[start:end],
+            "nextCursor": str(end) if end < len(items) else None,
+        }
+
+    async def list_job_events(
+        self,
+        source_id: UUID,
+        job_id: UUID,
+        *,
+        deadline: Deadline,
+        cursor: str | None = None,
+        limit: int | None = None,
+        traceparent: str | None = None,
+    ) -> EventPage:
+        return EventPage.model_validate(self._page("events", self.events, cursor, deadline))
+
+    async def list_job_tracks(
+        self,
+        source_id: UUID,
+        job_id: UUID,
+        *,
+        deadline: Deadline,
+        cursor: str | None = None,
+        limit: int | None = None,
+        traceparent: str | None = None,
+    ) -> TrackPage:
+        items: list[dict[str, object]] = [
+            {
+                "trackId": str(t.track_id),
+                "className": t.class_name,
+                "startMs": t.start_ms,
+                "endMs": t.end_ms,
+            }
+            for t in self.tracks
+        ]
+        return TrackPage.model_validate(self._page("tracks", items, cursor, deadline))
+
+    async def list_job_zone_presences(
+        self,
+        source_id: UUID,
+        job_id: UUID,
+        *,
+        deadline: Deadline,
+        cursor: str | None = None,
+        limit: int | None = None,
+        traceparent: str | None = None,
+    ) -> PresencePage:
+        items: list[dict[str, object]] = [
+            {
+                "trackId": str(p.track_id),
+                "zoneId": str(p.zone_id),
+                "enterMs": p.enter_ms,
+                "exitMs": p.exit_ms,
+            }
+            for p in self.presences
+        ]
+        return PresencePage.model_validate(self._page("presences", items, cursor, deadline))
+
+    async def list_source_zones(
+        self, source_id: UUID, *, deadline: Deadline, traceparent: str | None = None
+    ) -> ZoneList:
+        self.calls.append(("zones", deadline.at_ms, None))
+        if "zones" in self.fail:
+            raise self.fail["zones"]
+        return ZoneList.model_validate(
+            {
+                "items": [
+                    {"zoneId": str(z.zone_id), "name": z.name, "kind": z.kind} for z in self.zones
+                ]
+            }
+        )
+
+    async def get_source_final_state(
+        self, source_id: UUID, *, deadline: Deadline, traceparent: str | None = None
+    ) -> FinalState:
+        self.calls.append(("final-state", deadline.at_ms, None))
+        if isinstance(self.final_state, AnalysisApiError):
+            raise self.final_state
+        if self.final_state is None:
+            raise api_error(404, "ANALYSIS_NO_ACTIVE_VERSION")
+        return self.final_state
