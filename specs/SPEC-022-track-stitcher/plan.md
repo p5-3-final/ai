@@ -4,7 +4,7 @@ repo: ai
 status: Approved
 owner: <이름>
 created: 2026-11-06
-updated: 2026-11-06
+updated: 2026-11-07
 ---
 
 # Plan: SPEC-022 track-stitcher 경계 트랙 연결과 재등장 연결(Re-ID) — ai
@@ -12,6 +12,8 @@ updated: 2026-11-06
 - spec: docs 레포 `docs/specs/SPEC-022-track-stitcher/spec.md`
 - 계약: `events/chunk.boundary`·`track.detected`·`track.manifest`·`segment.embedded`·`video.deleted`, `tracks/v1/chunk-tracks`·`track-mapping`, `vectors/v1/vector-file`, `asyncapi/track-stitcher.yaml` 1.0.0, `stages/v1/stages.schema.json` (계약 묶음 3.14.0)
 - 근거: docs `architecture/overview.md` 분석 처리 흐름 7단계·"여러 Pod 운영 원칙", ADR-0009, ADR-0010, SPEC-013(단계 측정), SPEC-019(크롭 벡터 파일)
+
+- v5.1(계약 묶음 4.0.0, 2026-11-07, ADR-0015): `chunk.boundary`·`segment.embedded`·`track.detected`에 선택 필드 `jobType`, `track.detected`에 `trackIdEpoch`가 더해졌다. 실시간 창은 stream-ingestor가 세션 전체에서 같은 트랙 ID를 유지하므로 `jobType: STREAM`이면 건너뛴다(R-23). 잠금은 4.0.0으로 올린다.
 
 ## 1. 요약
 
@@ -49,6 +51,7 @@ updated: 2026-11-06
 | R-20 | 워커 재시도(SPEC-013 공통). 저장소·Redis·발행 오류를 그대로 던짐 | `t/test_stitcher_service.py` |
 | R-21 | `ts/service.py`·`ts/finalize.py` 단계 블록 | `t/test_stitcher_service.py` |
 | R-22 | `ts/profile.py`, `ts/__main__.py` | `t/test_stitcher_profile.py`, `t/test_stitcher_main.py` |
+| R-23 | `ts/service.py`(`job_type == "STREAM"`이면 상태 없이 돌아옴, 건너뛴 수 계수), `vlm_contracts.events.ChunkBoundary`·`SegmentEmbedded`·`TrackDetected` | `t/test_stitcher_service.py::test_spec022_r23_*`(Redis 호출 0회, 발행 0건), `libs/contracts/tests/test_event_contracts.py` |
 | NFR-1 | 순수 함수 계산, `asyncio.to_thread` | `t/test_stitcher_scale.py`(합성 1시간 영상) |
 | NFR-2 | 순수 함수 + Redis 원자 기록 | `t/test_stitcher_redis.py`(두 서비스 인스턴스), `t/test_stitcher_service.py`(입력 순서 섞기) |
 | NFR-3 | `ts/redis_state.py` 키 TTL 7일 | `t/test_stitcher_redis.py` |
@@ -261,3 +264,9 @@ ADR이 필요한 결정은 없다. Redis는 기존 구성요소이고 키 접두
 - 로컬 compose(docs `local/`, 별도 PR): track-stitcher 서비스(256M), 토픽 `chunk.boundary`, `track.detected`, `track.manifest`, `chunk.boundary.track-stitcher.retry`, `segment.embedded.track-stitcher.retry`, `video.deleted.track-stitcher.retry`, `track-stitcher.dlq`, `local/README.md` 표.
 - 운영 배포·토픽·Redis 접근은 사용자 지시 시 infra·gitops에서 한다.
 - 배포 순서: 계약 수정(8절 1·2번) → 묶음 버전 → ai 잠금 → 구현. 소비자(analysis-api·pipeline-service)는 아직 없으므로 발행 순서 제약은 없다.
+
+## 10. v5.1 추가 설계(계약 묶음 4.0.0, 2026-11-07)
+
+- `on_chunk_boundary`·`on_segment_embedded` 첫 줄에서 `job_type == "STREAM"`이면 Redis·저장소를 건드리지 않고 돌아온다. 워커가 커밋한다(최소 한 번 전달에서도 상태가 남지 않으므로 중복이 무해하다).
+- 건너뛴 수는 단계 측정이 아니라 구조화 로그 `stitcher.skipped_stream`(sourceId·jobId·토픽)과 프로세스 계수(`SkipCounter`, health 응답의 처리 통계)에 남긴다. 측정 단계는 메시지를 처리한 경우에만 뜻이 있다.
+- `TrackDetected.track_id_epoch`는 모델에만 두고 track-stitcher는 읽지 않는다(stream-ingestor가 발행, aggregator가 소비). `jobType`이 없으면 `FULL`로 보고 기존 경로를 탄다.

@@ -1,7 +1,7 @@
 ---
 spec: SPEC-024
 repo: ai
-updated: 2026-11-06
+updated: 2026-11-07
 ---
 
 # Tasks: SPEC-024 track-analyzer 트랙 속성 분석과 객체 자유 질문 — ai
@@ -19,11 +19,11 @@ updated: 2026-11-06
 
 ## Phase 0: 준비
 
-- [ ] T001 [R-10] 계약 잠금 3.14.0(`scripts/fetch-service-contracts.sh --update 3.14.0`)과 그 때문에 깨지는 계약 테스트 맞춤: `StageId` 전체 목록(`track-analyzer.*`·`attribute.call` 포함), `EventAnalyzed`의 판정 방식 5종·`DetectorEvidence`·`judgments` 개수 규칙. 잠금이 이미 3.14.0이고 이 테스트가 통과하면 건너뛴다(SPEC-023 T001과 같은 태스크) — 테스트 `lc/tests/test_stage_contracts.py`, `lc/tests/test_event_contracts.py`, `lc/tests/test_analysis_contracts.py`, 구현 `service-contracts.lock`, `vlm_contracts/{stages,events}.py`
+- [ ] T001 [R-10] 계약 잠금 4.0.0(`scripts/fetch-service-contracts.sh --update 4.0.0`)과 그 때문에 깨지는 계약 테스트 맞춤: `StageId` 전체 목록(`track-analyzer.*`·`attribute.call` 포함), `EventAnalyzed`의 판정 방식 5종·`DetectorEvidence`·`judgments` 개수 규칙. 잠금이 이미 3.14.0이고 이 테스트가 통과하면 건너뛴다(SPEC-023 T001과 같은 태스크) — 테스트 `lc/tests/test_stage_contracts.py`, `lc/tests/test_event_contracts.py`, `lc/tests/test_analysis_contracts.py`, 구현 `service-contracts.lock`, `vlm_contracts/{stages,events}.py`
 - [ ] T002 [R-3] `PpeState`·`WorkerRole`, `TrackAttribute`, `ObjectAnswer`, `TrackAnalyzed`(READY·FAILED와 reason별 결과 규칙), `EVENT_MODELS` 등록 — 테스트 `lc/tests/test_event_contracts.py`(자동 계약 검사), `lc/tests/test_track_attribute_contracts.py`, 구현 `vlm_contracts/events.py`
 - [ ] T003 [R-7] `AttributeRequested`(`question`이면 질문 필수, 아니면 질문 null·장면 프레임 없음), `EVENT_MODELS` 등록 — 테스트 `lc/tests/test_event_contracts.py`, `lc/tests/test_track_attribute_contracts.py`
 - [ ] T004 [R-6] 크롭·장면 프레임 경로가 `sources/<sourceId>/` 밖이거나 `.`·`..`·빈 조각이 있으면 검증 실패 — 테스트 `lc/tests/test_track_attribute_contracts.py`, 구현 `vlm_contracts/events.py`
-- [ ] T005 [P] 트랙 요약 파일 모델에 `representativeCrops`. SPEC-022 모델이 아직 없으면 건너뛰고 SPEC-022가 3.14.0 계약대로 넣는다 — 테스트 SPEC-022의 트랙 파일 계약 테스트, 구현 `vlm_contracts/tracks.py`
+- [ ] T005 [P] 트랙 요약 파일 모델에 `representativeCrops`. SPEC-022 모델이 아직 없으면 건너뛰고 SPEC-022가 4.0.0 계약대로 넣는다 — 테스트 SPEC-022의 트랙 파일 계약 테스트, 구현 `vlm_contracts/tracks.py`
 - [ ] T006 `services/track-analyzer` 패키지 뼈대(pyproject, `.gitkeep` 삭제, 루트 `members`·mypy `files`·`mypy_path`·pytest `pythonpath` 등록, `ta_support.py`)
 
 ## Phase 1: ai-gateway (US-1·US-2·US-3, P1)

@@ -4,7 +4,7 @@ repo: ai
 status: Approved
 owner: <이름>
 created: 2026-11-06
-updated: 2026-11-06
+updated: 2026-11-07
 ---
 
 # Plan: SPEC-027 aggregator 영상 단위 병합·시간 규칙·위험 상태·노출 지표·요약 — ai
@@ -12,6 +12,8 @@ updated: 2026-11-06
 - spec: docs 레포 `docs/specs/SPEC-027-aggregator/spec.md`
 - 계약(계약 묶음 3.14.0): `events/analysis.completed`·`source.completed`·`_source-summary`·`_vlm-analysis`, `aggregates/v1/source-result`, `openapi/analysis-service.yaml` 0.4.0(내부 `/internal/v1` 경로 5개), `openapi/ai-gateway.yaml` 1.4.0(taskType `source_summary`), `asyncapi/aggregator.yaml` 1.1.0, `stages/v1`
 - 선행: SPEC-021(ai-client 생성 모델·`X-Request-Deadline`·호출 종류별 재시도)이 먼저 구현된다고 본다.
+
+- v5.1(계약 묶음 4.0.0, 2026-11-07, ADR-0015·ADR-0016): 상태 전이를 `fold` 한 함수로 두고 업로드 완료·실시간 창·늦은 벡터 이벤트가 같은 함수를 지난다. R-4 개정(`rule*`만 대조, `partial`·`missingCounts`), R-25~R-28(늦은 벡터 이벤트 대기 집합·`revision` 재발행), R-29~R-32(`STREAM` 창 증분 fold·`state.updated`·세션 마무리), R-33(stream-service 내부 구역 API), R-34(단계 `aggregate.fold`)를 더한다. 계약은 `events/analysis.completed`(`jobType: STREAM`, `scope`, `chunkId`, `partial`, `session.role: ROTATION`), `source.completed`(`revision`·`partial`·`missingCounts`), `state.updated`(신규), `event.analyzed`·`track.detected` 소비, `asyncapi/aggregator.yaml` 1.2.0, `openapi/stream-service.yaml` 1.0.0, `stages/v1`(`aggregate.fold`)이다. 잠금은 T001에서 4.0.0으로 올린다.
 
 ## 1. 요약
 
@@ -23,7 +25,7 @@ ai-gateway에는 `source_summary` Registry 폴더(입력·출력 스키마, 자�
 
 ## 2. 담당 요구사항
 
-경로의 `agg/`는 `services/aggregator/src/aggregator/`, `t/`는 `services/aggregator/tests/`, `ac/`는 `libs/analysis-client/`다.
+경로의 `agg/`는 `services/aggregator/src/aggregator/`, `t/`는 `services/aggregator/tests/`, `ac/`는 `libs/analysis-client/`다, `sc/`는 `libs/stream-client/`다
 
 | 요구사항 | 담당 모듈 / 컴포넌트 | 검증 테스트 |
 | --- | --- | --- |
@@ -44,6 +46,15 @@ ai-gateway에는 `source_summary` Registry 폴더(입력·출력 스키마, 자�
 | R-22 | `agg/service.py`(재시도 가능 오류는 그대로 던짐) | `t/test_aggregator_service.py`, `t/test_aggregator_worker_e2e.py` |
 | R-23 | `agg/service.py`(`NonRetryableError`), `vlm_contracts.events.AnalysisCompleted` 검증 → 워커 DLQ | `t/test_aggregator_service.py`, `t/test_aggregator_worker_e2e.py` |
 | R-24 | `agg/service.py` 단계 블록, `vlm_contracts.stages` | `t/test_aggregator_service.py`, `libs/contracts/tests/test_stage_contracts.py` |
+| R-4(v5.1: `rule*`만 대조, `partial`) | `agg/reader.py`(판정 방식 `rule*` 수·트랙 수 대조, 재시도 상한 뒤 `partial`·`missingCounts`) | `t/test_aggregator_reader.py::test_spec027_r4_*`, `t/test_aggregator_service.py::test_spec027_r4_partial` |
+| R-25, R-26 | `agg/pending.py` `PendingVectors`(Redis `pending-vector:<jobId>`, TTL 7일), `agg/service.py` `on_event_analyzed`, `agg/reader.py`(읽은 이벤트와 합치기, eventId 중복 제거) | `t/test_aggregator_pending.py`(integration, Redis), `t/test_aggregator_service.py::test_spec027_r25_*`·`r26_*` |
+| R-27, R-28 | `agg/revision.py` `recompute_with_late_event`, `agg/result.py`(`inputEventIds`·`revision`), `agg/ids.py`(`source.completed` eventId = `uuid5(jobId, revision)`) | `t/test_aggregator_revision.py`, `t/test_aggregator_service.py::test_spec027_r27_*` |
+| R-29 | `agg/pending.py` `PendingWindow`(Redis `pending:<sourceId>:<chunkId>`, TTL 1시간), `agg/service.py` `on_track_detected`·`on_event_analyzed`(`STREAM` 분기) | `t/test_aggregator_pending.py`, `t/test_aggregator_stream_service.py::test_spec027_r29_*` |
+| R-30 | `agg/fold.py` `fold`(R-11~R-17을 상태 입력·출력으로 감쌈), `agg/stream.py` `WindowFolder`, `agg/session_state.py`(Redis·S3 스냅샷·직전 세션·빈 상태) | `t/test_aggregator_fold.py`(업로드 한 번 fold = 창 단위 fold 누적), `t/test_aggregator_stream_service.py::test_spec027_r30_*`, `t/test_aggregator_session_state.py`(integration) |
+| R-31 | `agg/stream.py`(`hazard_zone_access` 재판정), `agg/judge_budget.py`(Redis 계수 `agg:judge-calls:<jobId>`, SPEC-028 `judge_call_limit` 공유) | `t/test_aggregator_stream_service.py::test_spec027_r31_*`, `t/test_aggregator_judge_budget.py`(integration) |
+| R-32 | `agg/stream.py` `finish_session`, `agg/result.py` | `t/test_aggregator_stream_service.py::test_spec027_r32_*`(결과 파일·`source.completed` 계약 통과) |
+| R-33 | `sc/`(`openapi/stream-service.yaml` 생성 모델, `StreamApiClient.get_session_zones`), `agg/stream.py`(세션당 1회, Redis 캐시) | `sc/tests/test_stream_client.py`, `t/test_aggregator_stream_service.py::test_spec027_r33_*` |
+| R-34 | `agg/stream.py` 단계 블록, `vlm_contracts.stages.StageId`(`aggregate.fold`) | `t/test_aggregator_stream_service.py::test_spec027_r34_*`, `libs/contracts/tests/test_stage_contracts.py` |
 | NFR-1 | `agg/compute.py` | `t/test_aggregator_performance.py`(생성 입력 2,000·5,000·20,000건, p95 5초) |
 | NFR-2 | 전체 | 로컬 compose 측정(256M 컨테이너, tasks.md 측정 기록) |
 | NFR-3 | `agg/service.py`·`agg/summary.py` 로그 필드 | `t/test_aggregator_service.py`(caplog에 요약·설명 원문 없음) |
@@ -69,7 +80,7 @@ ai-gateway에는 `source_summary` Registry 폴더(입력·출력 스키마, 자�
 
 | 경로 | 변경 |
 | --- | --- |
-| `service-contracts.lock` | 3.14.0 |
+| `service-contracts.lock` | 4.0.0 |
 | `libs/contracts/.../events.py` | `AnalysisCompleted`, `SourceCompleted`, `SessionRef`, 개수 모델 |
 | `libs/contracts/.../aggregates.py` (새 파일) | 결과 파일 `SourceResult`와 하위 모델(`MergeGroup`, `RuleEvent`, `Snapshot`, `Risk`, `Exposure`, `TimelineItem`, `Summary`, `InitialState`) |
 | `libs/contracts/.../stages.py` | 단계 ID 6개(`aggregator.queue_wait`·`aggregator.handle`·`aggregate.read`·`compute`·`summary`·`store`) |
@@ -265,3 +276,49 @@ analysis-api 자리 표시 서버(로컬 compose, spec 성공 지표)는 **사�
 - 환경변수: aggregator 레포 `.env.example`(새 서비스 README 표), 루트 `local/.env.example`은 비밀값이 없어 바꿀 것이 없다. 운영은 gitops ConfigMap(사용자 지시 시).
 - 로컬 compose(docs 레포 PR): aggregator(256M), 토픽 `analysis.completed`, `source.completed`, `analysis.completed.aggregator.retry`, `aggregator.dlq`, `local/README.md` 표. analysis-api 자리 표시 서버는 5절 선택 뒤.
 - 순서: 계약 잠금 → SPEC-021 구현 → 이 plan. ai-gateway `source_summary` 폴더는 aggregator보다 먼저 머지해도 된다.
+
+## 9. v5.1 추가 설계(계약 묶음 4.0.0, 2026-11-07)
+
+### fold 정의(R-30, ADR-0016)
+
+- `fold(state: SessionState, events: Sequence[ConfirmedEvent], zones: ZoneList, window: Range) -> tuple[SessionState, FoldDelta]`. 순수 함수이고 `asyncio.to_thread`로 돌린다.
+- `SessionState`: 활성 위험(구역·유형·시작 시각), 마지막 스냅샷, 노출 누적(트랙·구역별), 처리한 창 수(`lastSequence`)와 마지막 창 끝 시각, 재고(SPEC-028), 세션 동안의 규칙 이벤트 수. 이벤트 본문은 두지 않는다.
+- `FoldDelta`: 바뀐 스냅샷, 위험 전이, 노출 증분, 이 창의 규칙 이벤트. `state.updated` 본문이 된다.
+- 기존 R-11~R-17 순수 함수(`run_state`, `dwell_events`·`loiter_events`, `exposure_of`, `build_timeline`)를 fold가 호출하도록 옮긴다. 업로드 경로(R-1)는 `fold(직전 세션 상태 또는 빈 상태, 이벤트 전체)` 한 번이고 결과는 지금과 같다(기존 테스트 유지). 창 단위 fold를 누적한 결과가 한 번 fold와 같음을 테스트로 고정한다.
+
+### R-4 개정과 늦은 벡터 이벤트(R-25~R-28)
+
+- 대조는 판정 방식이 `rule`로 시작하는 이벤트 수와 트랙 수만 한다(벡터 이벤트는 완료 뒤에도 올 수 있다). 재시도 상한(기본 5회)을 넘으면 `partial: true`, `missingCounts: {events, tracks}`를 실어 발행한다.
+- 워커가 `event.analyzed`(소비 그룹 aggregator)를 받으면 `jobType != STREAM`이고 판정 방식이 `vector`로 시작할 때 Redis 해시 `pending-vector:<jobId>`에 `eventId → 요약(JSON)`을 넣는다(HSET, TTL 7일). 그 밖의 업로드 이벤트는 무시한다.
+- `analysis.completed(job)` 처리는 R-3 읽기 결과와 이 해시를 eventId로 중복 제거해 합친다(R-26). 결과 파일에 `inputEventIds`(정렬)와 `revision`(처음 1)을 기록하고 `source.completed.revision`을 싣는다(R-28). `source.completed`의 eventId는 `uuid5(vlm:source.completed:<jobId>:<revision>)`이라 재발행도 결정적이다.
+- 이미 발행한 job(Redis `agg:published:<jobId>` = `{revision, resultKey}`, TTL 7일. 없으면 S3 결과 파일로 판단)에 `vector*`·`confirmed` 이벤트가 오고 그 eventId가 결과 파일의 `inputEventIds`에 없으면(R-27): R-3 읽기 + 대기 집합 + 이 이벤트로 전체를 다시 계산해 같은 경로에 저장하고 `revision + 1`로 `source.completed`를 낸다. `confirmed`가 아닌 늦은 이벤트는 대기 집합에만 둔다.
+
+### `STREAM` 창 처리(R-29~R-32)
+
+1. `track.detected`·`event.analyzed`에 `jobType: STREAM`이면 Redis 해시 `pending:<sourceId>:<chunkId>`에 모은다(TTL 1시간). `chunk.manifest`(SPEC-028 경로)의 `ownedRange`·`last`·`gapMs`도 같은 키에 둔다.
+2. `analysis.completed(scope: chunk)`를 받으면 대기 집합의 `rule*` 이벤트 수를 `counts`와 대조한다(R-4와 같은 재시도·`partial`). `partial`이면 `state.updated.partial: true`.
+3. 이전 상태는 Redis `agg:state:<sourceId>`(TTL 48시간) → 없으면 S3 `sources/<sourceId>/state/` 최신 스냅샷 → 없으면 `session.previousSourceId`의 Redis·S3 상태 → 없으면 빈 상태 순으로 찾는다. 구역은 R-33으로 받는다.
+4. `fold`를 돌리고 `state.updated`를 1건 낸다. `sequence`는 이전 상태의 `lastSequence + 1`, `windowStartMs`·`windowEndMs`는 `chunk.manifest.ownedRange`, `gapMs`는 manifest 값, `activeRiskZoneIds`는 fold 뒤 활성 위험의 구역이다. 새 상태를 Redis에 쓰고 30창마다 S3 `sources/<sourceId>/state/<sequence>.json`에 저장한다. 창의 `FoldDelta`는 `sources/<sourceId>/jobs/<jobId>/aggregate/windows/<sequence>.json`에 남긴다(R-32의 입력).
+5. 같은 창이 다시 오면(`chunkId`가 이미 처리한 창이면) 다시 계산하지 않고 저장된 `state.updated`를 다시 낸다(최소 한 번 전달).
+6. R-31: fold 입력의 `hazard_zone_access` 규칙 이벤트 구간이 같은 구역의 활성 위험 구간과 겹치면 그 트랙의 대표 프레임(대기 집합의 `track.detected` 트랙 파일 `representativeCrops`)으로 `event_judge`를 부르고 결과를 `analysis`, 판정 방식 `rule+vlm`으로 기록한다. 호출 수는 Redis 계수 `agg:judge-calls:<jobId>`로 세고 SPEC-028 `judge_call_limit`(기본 20, 세션당)을 넘으면 부르지 않는다. 창이 직렬이라 계수는 결정적이다.
+7. `analysis.completed(scope: job)`를 받으면(R-32) 세션 상태와 창 `FoldDelta` 전체로 R-16~R-18(노출 합계, 타임라인, 요약)을 계산해 결과 파일을 저장하고 `source.completed(revision 1)`를 낸다. 재고 비교·요약·예측은 창마다 하지 않는다(SPEC-028 R-19).
+
+### R-33 구역 읽기
+
+- 새 lib `libs/stream-client`(`vlm-stream-client`): `openapi/stream-service.yaml`에서 datamodel-code-generator로 생성한 모델과 얇은 호출부 `StreamApiClient.get_session_zones(session_id)`. `libs/analysis-client`와 같은 방식이고 CI의 생성 코드 비교에 `stream-service.yaml`을 더한다. `sessionId`는 `sourceId`와 같다(계약 설명).
+- 세션당 한 번 읽어 Redis `agg:zones:<sourceId>`(TTL 48시간)에 둔다. 호출 실패는 재시도 가능 오류다(구역 없이 fold하지 않는다).
+
+### 설정·워커
+
+- `AGGREGATOR_REDIS_URL`은 운영 필수다. 없으면 업로드 기본 경로만 동작하고 `event.analyzed`·`track.detected`·`STREAM` 창은 재시도 가능 오류로 둔다(로컬 compose에는 Redis가 있다). `redis` 패키지는 workspace에 이미 있다.
+- 워커 경로에 `event.analyzed`·`track.detected`를 더한다(같은 소비 그룹 aggregator). 대기 집합 쓰기는 eventId 키라 멱등이다.
+- 단계: `aggregate.fold`(count = 입력 이벤트 수), 기존 `aggregate.read`·`compute`·`summary`·`store`는 그대로다.
+
+### plan에서 정한 것(보고 대상)
+
+| 항목 | plan의 선택 |
+| --- | --- |
+| 창 순번(`sequence`) | 이전 상태의 `lastSequence + 1`. 창은 stream-service가 순서대로 완료 판정한다(SPEC-036 R-8). `ownedRange.startMs`가 마지막 창 끝보다 앞이면 이미 처리한 창으로 보고 다시 낸다 |
+| 늦은 벡터 이벤트 재계산 범위 | 전체 재계산(R-3 다시 읽기). 증분 fold는 순서가 바뀐 이벤트를 넣을 수 없다 |
+| `STREAM`의 R-5 직전 영상 상태 | `session.previousSourceId`(회전)의 Redis·S3 마지막 상태. analysis-api `final-state`는 부르지 않는다 |
+| 창 `FoldDelta` 저장 | 세션 마무리(R-32) 입력으로 S3에 창마다 남긴다. 대기 집합(TTL 1시간)만으로는 24시간 세션을 마무리할 수 없다 |

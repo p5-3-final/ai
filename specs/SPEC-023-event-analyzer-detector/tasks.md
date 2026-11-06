@@ -1,7 +1,7 @@
 ---
 spec: SPEC-023
 repo: ai
-updated: 2026-11-06
+updated: 2026-11-07
 ---
 
 # Tasks: SPEC-023 event-analyzer 탐지기·규칙 후보 판정과 event.manifest — ai
@@ -19,7 +19,7 @@ updated: 2026-11-06
 
 ## Phase 0: 준비
 
-- [ ] T001 [R-9] [R-13] 계약 잠금 3.14.0(`scripts/fetch-service-contracts.sh --update 3.14.0`)과 그 때문에 깨지는 계약 테스트 맞춤: `StageId` 전체 목록(`analyzer.merge` 포함), `EventAnalyzed`의 판정 방식 5종·`DetectorEvidence`·`judgments` 개수 규칙(`rule`은 0개, 그 밖은 1개 이상)·`rule*`이면 `detectorCandidate` 필수. 잠금이 이미 3.14.0이고 이 테스트가 통과하면 건너뛴다(SPEC-024 T001과 같은 태스크) — 테스트 `lc/tests/test_stage_contracts.py`, `lc/tests/test_event_contracts.py`, `lc/tests/test_analysis_contracts.py`, 구현 `service-contracts.lock`, `vlm_contracts/{stages,events}.py`
+- [ ] T001 [R-9] [R-13] 계약 잠금 4.0.0(`scripts/fetch-service-contracts.sh --update 4.0.0`)과 그 때문에 깨지는 계약 테스트 맞춤: `StageId` 전체 목록(`analyzer.merge` 포함), `EventAnalyzed`의 판정 방식 5종·`DetectorEvidence`·`judgments` 개수 규칙(`rule`은 0개, 그 밖은 1개 이상)·`rule*`이면 `detectorCandidate` 필수. 잠금이 이미 3.14.0이고 이 테스트가 통과하면 건너뛴다(SPEC-024 T001과 같은 태스크) — 테스트 `lc/tests/test_stage_contracts.py`, `lc/tests/test_event_contracts.py`, `lc/tests/test_analysis_contracts.py`, 구현 `service-contracts.lock`, `vlm_contracts/{stages,events}.py`
 - [ ] T002 [R-14] `DetectorCandidate`·`DetectorInfo`·`EventCandidate`(`candidates`·`candidatesKey` 중 하나, `candidatesKey`가 메시지 실행 폴더의 `candidates.json`), `EventManifest`, `EVENT_MODELS` 등록. 근거 프레임 실행 폴더 검사는 plan의 사용자 확인 3 결과에 따른다 — 테스트 `lc/tests/test_event_contracts.py`(자동 계약 검사), `lc/tests/test_analysis_contracts.py`, 구현 `vlm_contracts/events.py`
 - [ ] T003 [P] [R-1] 후보 파일 `CandidateFile` 모델 — 테스트 `lc/tests/test_candidate_file_contract.py`, 구현 `vlm_contracts/candidates.py`
 - [ ] T004 `services/event-analyzer/pyproject.toml`에 `vlm-storage` 워크스페이스 의존 추가, `uv.lock` 갱신(새 외부 패키지 없음)
@@ -56,6 +56,19 @@ updated: 2026-11-06
 - [ ] T023 [R-14] [R-2] [NFR-2] 워커 e2e: `event.candidate` 정상 발행(분석 + manifest), 잘못된 메시지·없는 후보 파일 DLQ, 긴 판정 중 커밋(구현 뒤 작성, Red 없음) — 테스트 `t/test_analyzer_worker_e2e.py`
 - [ ] T024 Dockerfile(`profiles` 복사, `EVENT_ANALYZER_PROFILE_PATH`), README(경로·환경변수·프로필 표), 레포 `.env.example`
 - [ ] T025 [NFR-1] 로컬 compose 측정: VLM 후보 50개 메시지 10초 안, 성공 지표 묶음(VLM 3, 규칙 1, 병합될 후보 2) → 분석 4건·`mergedCount: 2`(docs compose PR 뒤)
+
+## Phase 8: v5.1 추가(계약 묶음 4.0.0)
+
+- [ ] T026 [R-20] [R-21] 4.0.0 계약 모델: `AlertCandidate`, `AlertRaised`, `EventManifest` 계수 필드, `EventCandidate.job_type`, `EventAnalyzed`의 `rule+carry`·`unverified_reason`, 프로필 `[rejudge]`와 분류 체계 대조 — 테스트 `lc/tests/test_event_contracts.py`, `lc/tests/test_taxonomy_contracts.py`, `t/test_analyzer_profile.py`, 구현 `vlm_contracts/events.py`, `ea/profile.py`
+- [ ] T027 [R-17] `plan_carry`: 상태형 묶음·간격 규칙·carry 목록(순수 함수, 같은 입력 같은 결과) — 테스트 `t/test_analyzer_carry.py`, 구현 `ea/carry.py`
+- [ ] T028 [R-17] `handle_detector`가 판정 대상만 호출하고 carry는 결과 복사로 `rule+carry`·빈 호출 기록 발행 — 테스트 `t/test_analyzer_detector_service.py`, 구현 `ea/service.py`
+- [ ] T029 [R-19] `call_cap`과 순서 기반 상한, 넘는 후보는 `call_cap_reached`, 재판정은 남은 횟수 안에서만 — 테스트 `t/test_analyzer_cap.py`, `t/test_analyzer_detector_service.py`, 구현 `ea/cap.py`, `ea/service.py`, `ea/profile.py`
+- [ ] T030 [R-20] `event.manifest`에 `carriedCount`·`capReachedCount`·`budgetExceededCount`·`jobType` — 테스트 `t/test_analyzer_detector_service.py`, 구현 `ea/service.py`
+- [ ] T031 [R-18] `RejudgeState`(Redis 키 읽기·갱신·TTL, 미설정이면 판정), `STREAM`에서 창 넘김 carry — 테스트 `t/test_analyzer_rejudge_state.py`(integration), `t/test_analyzer_detector_service.py`, 구현 `ea/rejudge_state.py`, `ea/settings.py`, `ea/__main__.py`, `.env.example`
+- [ ] T032 [R-21] [R-23] `alert.candidate` 핸들러: pending 즉시 발행 → `event_judge` → confirmed 또는 dismissed(`not_detected`·`unverified`·`unknown`), `event.analyzed` 없음 — 테스트 `t/test_analyzer_alert_service.py`, 구현 `ea/alerts.py`, `ea/ids.py`
+- [ ] T033 [R-22] 같은 candidateId의 `alert.candidate`·`event.candidate` 요청 본문이 같음(이미지 순서·변수) — 테스트 `t/test_analyzer_alert_service.py`, 구현 `ea/service.py`(`_detector_request` 공유)
+- [ ] T034 [R-24] 단계 `analyzer.alert`, 워커 경로 `alert.candidate` 추가와 e2e(pending → confirmed 2건, 잘못된 메시지 DLQ) — 테스트 `t/test_analyzer_alert_service.py`, `t/test_analyzer_worker_e2e.py`, 구현 `ea/alerts.py`, `ea/__main__.py`
+- [ ] T035 README(carry·상한·Redis·긴급 경로), 로컬 compose 측정: `alert.candidate` 받은 뒤 pending 발행 p95(목표 500ms), 창 2개에 걸친 carry 확인. 측정 기록에 남긴다
 
 ## 완료 조건
 

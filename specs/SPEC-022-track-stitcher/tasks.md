@@ -1,7 +1,7 @@
 ---
 spec: SPEC-022
 repo: ai
-updated: 2026-11-06
+updated: 2026-11-07
 ---
 
 # Tasks: SPEC-022 track-stitcher 경계 트랙 연결과 재등장 연결(Re-ID) — ai
@@ -19,7 +19,7 @@ updated: 2026-11-06
 
 ## Phase 0: 준비
 
-- [ ] T001 계약 잠금 3.14.0: `scripts/fetch-service-contracts.sh --update 3.14.0`(SPEC-021 T001이 먼저 끝났으면 버전·단계 ID만 확인). 8절 계약 수정이 나오면 그 버전으로 다시 올린다 — 테스트 `ct/test_stage_contracts.py`, 구현 `service-contracts.lock`, `vlm_contracts/stages.py`
+- [ ] T001 계약 잠금 4.0.0: `scripts/fetch-service-contracts.sh --update 4.0.0`(SPEC-021 T001이 먼저 끝났으면 버전·단계 ID만 확인). 8절 계약 수정이 나오면 그 버전으로 다시 올린다 — 테스트 `ct/test_stage_contracts.py`, 구현 `service-contracts.lock`, `vlm_contracts/stages.py`
 - [ ] T002 [R-1] `ChunkBoundary` 이벤트 모델과 트랙 요약 파일 모델 `ChunkTracks`(경계 박스 좌표 0~1·`x1<x2`·`y1<y2`, 대표 크롭) — 테스트 `ct/test_event_contracts.py`(`EVENT_MODELS`에 추가), `ct/test_track_file_contracts.py`, 구현 `vlm_contracts/events.py`, `vlm_contracts/tracks.py`
 - [ ] T003 [P] [R-5] `TrackDetected` 모델: origin `chunk`·`stitcher`별 필수 필드, `stitched[].members` 2개 이상 — 테스트 `ct/test_event_contracts.py`, 구현 `vlm_contracts/events.py`
 - [ ] T004 [P] [R-12] [R-13] `TrackManifest` 이벤트와 번역표 파일 모델 `TrackMapping`(links의 `gapMs`는 reid만) — 테스트 `ct/test_event_contracts.py`, `ct/test_track_file_contracts.py`, 구현 `vlm_contracts/events.py`, `vlm_contracts/tracks.py`
@@ -68,6 +68,10 @@ updated: 2026-11-06
 - [ ] T032 [R-18] [R-20] 워커 e2e(Kafka·SeaweedFS·Redis testcontainer): 청크 5개와 벡터 5개 → `track.detected` 4건 + `track.manifest` 1건(계약 스키마 통과), 잘못된 메시지·없는 트랙 파일은 DLQ — 테스트 `t/test_stitcher_worker_e2e.py`
 - [ ] T033 Dockerfile(멀티스테이지, non-root), README, CI `service-images`에 runtime 이미지 빌드, `services/track-stitcher/.env.example`
 - [ ] T034 로컬 compose 확인(docs `local/` PR 뒤): 성공 지표 두 가지(이벤트 수·스키마, 섞은 순서의 같은 번역표). 결과를 아래 "측정 기록"에 남긴다
+
+## Phase 9: v5.1 추가(계약 묶음 4.0.0)
+
+- [ ] T035 [R-23] 잠금 4.0.0, `ChunkBoundary`·`SegmentEmbedded`·`TrackDetected`의 선택 필드(`jobType`, `trackIdEpoch`), `STREAM`이면 상태 없이 건너뛰고 로그·계수 — 테스트 `libs/contracts/tests/test_event_contracts.py`, `t/test_stitcher_service.py`, 구현 `vlm_contracts/events.py`, `ts/service.py`
 
 ## 완료 조건 (Definition of Done)
 

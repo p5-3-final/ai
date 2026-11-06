@@ -4,14 +4,16 @@ repo: ai
 status: Approved
 owner: <이름>
 created: 2026-11-06
-updated: 2026-11-06
+updated: 2026-11-07
 ---
 
 # Plan: SPEC-024 track-analyzer 트랙 속성 분석과 객체 자유 질문 — ai
 
 - spec: docs 레포 `docs/specs/SPEC-024-track-analyzer/spec.md`
-- 계약: `events/attribute.requested`·`track.analyzed`·`_track-attribute`·`_object-answer`, `taxonomy/v2`(`ppeState`·`workerRole`), `tracks/v1/chunk-tracks`(`representativeCrops`), `openapi/ai-gateway.yaml`(`TaskType` `track_attribute`·`object_question`), `asyncapi/track-analyzer.yaml` 1.0.0, `stages/v1` (docs #119, 계약 묶음 3.4.0. 구현은 잠금 3.14.0으로 한다)
+- 계약: `events/attribute.requested`·`track.analyzed`·`_track-attribute`·`_object-answer`, `taxonomy/v2`(`ppeState`·`workerRole`), `tracks/v1/chunk-tracks`(`representativeCrops`), `openapi/ai-gateway.yaml`(`TaskType` `track_attribute`·`object_question`), `asyncapi/track-analyzer.yaml` 1.0.0, `stages/v1` (docs #119, 계약 묶음 3.4.0. 구현은 잠금 4.0.0으로 한다)
 - 앞선 구현: SPEC-020(event-analyzer 워커 구조, ai #38), SPEC-021(생성 클라이언트·재시도 규칙·`X-Request-Deadline`)
+
+- v5.1(계약 묶음 4.0.0, 2026-11-07): 이 spec의 호출·응답 형식은 바뀌지 않는다. `ppe_missing` 확정 이벤트를 보호구 상태로 우선 표시하는 것은 화면(SPEC-032 R-15)의 몫이다. 잠금 태스크(T001)는 4.0.0으로 한다.
 
 ## 1. 요약
 
@@ -64,16 +66,16 @@ ai-gateway에는 두 taskType의 Registry 폴더(입력·출력 스키마, 자�
   - `libs/ai-client` 요청·응답 모델이 계약에서 생성된 코드다. 아래의 `AnalyzeRequest`·`ImageRef`(`storageKey`·`ptsSec`) 같은 이름은 SPEC-021 plan이 정한 생성 모델 이름을 따른다.
   - analyze는 연결 실패만 재시도하고 502·503·504·시간 초과는 바로 `AiGatewayError`다(SPEC-021 R-9). 오류 코드 규칙은 SPEC-021 R-12다.
   - 클라이언트가 모든 호출에 `X-Request-Deadline`(첫 시도 시각 + 설정 제한 시간)을 싣는다(SPEC-021 R-8). track-analyzer는 제한 시간만 설정으로 넘긴다(R-9).
-- 계약 잠금은 지금 3.0.0이다. 첫 태스크에서 `scripts/fetch-service-contracts.sh --update 3.14.0`으로 올린다. 이미 3.14.0이면 건너뛴다.
-  - 3.14.0으로 올리면 지금 코드의 계약 테스트 4개가 깨진다(작업 공간 계약으로 확인함): `StageId` 목록, `EventAnalyzed`의 필드·enum·예시 왕복(SPEC-023이 바꾼 `event.analyzed`). 잠금 태스크에서 같이 맞춘다. 이 태스크는 SPEC-023 plan의 T001과 같은 태스크이고, 먼저 구현하는 쪽이 한다(handoff 6절 순서상 이 spec이 먼저다).
+- 계약 잠금은 지금 3.0.0이다. 첫 태스크에서 `scripts/fetch-service-contracts.sh --update 4.0.0`으로 올린다. 이미 4.0.0이면 건너뛴다.
+  - 4.0.0으로 올리면 지금 코드의 계약 테스트 4개가 깨진다(작업 공간 계약으로 확인함): `StageId` 목록, `EventAnalyzed`의 필드·enum·예시 왕복(SPEC-023이 바꾼 `event.analyzed`). 잠금 태스크에서 같이 맞춘다. 이 태스크는 SPEC-023 plan의 T001과 같은 태스크이고, 먼저 구현하는 쪽이 한다(handoff 6절 순서상 이 spec이 먼저다).
 
 ### 패키지
 
 | 경로 | 내용 |
 | --- | --- |
 | `lc/.../events.py` | `PpeState`·`WorkerRole`, `TrackAttribute`, `ObjectAnswer`, `AttributeCrop`, `AttributeRequested`, `TrackAnalyzed`. `EVENT_MODELS`에 `attribute.requested`·`track.analyzed` |
-| `lc/.../stages.py` | 3.14.0 단계 ID 전체(이 spec은 `track-analyzer.queue_wait`·`track-analyzer.handle`·`attribute.call`) |
-| `lc/.../tracks.py` | 트랙 요약 파일 모델의 `representativeCrops`. 모델은 SPEC-022(track-stitcher)가 만든다. 그 모델이 아직 없으면 이 태스크는 건너뛰고 SPEC-022가 3.14.0 계약대로 필드를 넣는다. ai 레포에서 이 필드를 읽는 서비스는 없다 |
+| `lc/.../stages.py` | 4.0.0 단계 ID 전체(이 spec은 `track-analyzer.queue_wait`·`track-analyzer.handle`·`attribute.call`) |
+| `lc/.../tracks.py` | 트랙 요약 파일 모델의 `representativeCrops`. 모델은 SPEC-022(track-stitcher)가 만든다. 그 모델이 아직 없으면 이 태스크는 건너뛰고 SPEC-022가 4.0.0 계약대로 필드를 넣는다. ai 레포에서 이 필드를 읽는 서비스는 없다 |
 | `ta/settings.py` | 환경변수 `TRACK_ANALYZER_`: 소비 그룹, ai-gateway 주소, 호출 제한 시간, 연결 실패 재시도 횟수·대기 |
 | `ta/service.py` | 핸들러 |
 | `ta/ids.py` | eventId = uuid5(`vlm:track.analyzed:<requestId>`) |
@@ -176,3 +178,7 @@ sequenceDiagram
 - 로컬 compose(docs 레포, 별도 PR): track-analyzer 서비스(메모리 256M), `kafka-init`에 `attribute.requested`·`track.analyzed`·`attribute.requested.track-analyzer.retry`·`track-analyzer.dlq`, `local/README.md` 표.
 - ai-gateway 프로필의 `[callers] allowed`에는 이미 `track-analyzer`가 있다.
 - 운영 배포·토픽·ConfigMap은 사용자 지시 시 infra·gitops에서 한다.
+
+## 9. v5.1 추가 설계(계약 묶음 4.0.0, 2026-11-07)
+
+바뀐 요구사항이 없다. 잠금을 4.0.0으로 올리면 깨지는 계약 테스트(`StageId` 목록, `EventAnalyzed`)는 T001에서 SPEC-023 T001과 같은 방식으로 맞춘다.
