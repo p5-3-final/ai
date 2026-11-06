@@ -230,3 +230,107 @@ def test_unverified_reason_and_job_type_round_trip(load_schema: SchemaLoader) ->
     parsed = EVENT_MODELS["event.analyzed"].model_validate(message)
 
     assert json.loads(parsed.model_dump_json(by_alias=True)) == message
+
+
+# SPEC-022 track-stitcher 입력·출력 이벤트
+
+
+def test_spec022_track_events_are_registered() -> None:
+    assert {"chunk.boundary", "track.detected", "track.manifest"} <= set(EVENT_MODELS)
+
+
+def _example(load_schema: SchemaLoader, topic: str, index: int = 0) -> JsonObject:
+    return cast(list[JsonObject], load_schema(topic)["examples"])[index]
+
+
+def test_spec022_r18_chunk_boundary_tracks_key_must_be_in_execution_folder(
+    load_schema: SchemaLoader,
+) -> None:
+    example = _example(load_schema, "chunk.boundary")
+    other = str(example["tracksKey"]).replace(
+        str(example["chunkId"]), "0" * 8 + "-0000-7000-8000-" + "0" * 12
+    )
+
+    with pytest.raises(ValidationError, match="execution folder"):
+        EVENT_MODELS["chunk.boundary"].model_validate({**example, "tracksKey": other})
+
+
+@pytest.mark.parametrize("missing", ["chunkId", "executionId", "tracksKey", "detectionsKey"])
+def test_spec022_r5_chunk_origin_requires_chunk_fields(
+    load_schema: SchemaLoader, missing: str
+) -> None:
+    chunk = _example(load_schema, "track.detected", 0)
+
+    with pytest.raises(ValidationError, match="origin chunk"):
+        EVENT_MODELS["track.detected"].model_validate(
+            {k: v for k, v in chunk.items() if k != missing}
+        )
+
+
+@pytest.mark.parametrize("missing", ["earlierChunkId", "laterChunkId", "stitched"])
+def test_spec022_r5_stitcher_origin_requires_pair_fields(
+    load_schema: SchemaLoader, missing: str
+) -> None:
+    stitcher = _example(load_schema, "track.detected", 1)
+
+    with pytest.raises(ValidationError, match="origin stitcher"):
+        EVENT_MODELS["track.detected"].model_validate(
+            {k: v for k, v in stitcher.items() if k != missing}
+        )
+
+
+def test_spec022_r5_stitcher_origin_allows_empty_stitched(load_schema: SchemaLoader) -> None:
+    stitcher = {**_example(load_schema, "track.detected", 1), "stitched": []}
+
+    parsed = EVENT_MODELS["track.detected"].model_validate(stitcher)
+
+    assert json.loads(parsed.model_dump_json(by_alias=True)) == stitcher
+
+
+def test_spec022_r5_stitched_track_needs_two_members(load_schema: SchemaLoader) -> None:
+    stitcher = _example(load_schema, "track.detected", 1)
+    [track] = cast(list[JsonObject], stitcher["stitched"])
+    single = {**track, "members": cast(list[JsonObject], track["members"])[:1]}
+
+    with pytest.raises(ValidationError, match="members"):
+        EVENT_MODELS["track.detected"].model_validate({**stitcher, "stitched": [single]})
+
+
+def test_spec022_r12_manifest_mapping_key_must_belong_to_job(load_schema: SchemaLoader) -> None:
+    example = _example(load_schema, "track.manifest")
+    other = str(example["mappingKey"]).replace(str(example["jobId"]), str(example["sourceId"]))
+
+    with pytest.raises(ValidationError, match="mappingKey"):
+        EVENT_MODELS["track.manifest"].model_validate({**example, "mappingKey": other})
+
+
+def test_spec022_r15_manifest_complete_means_no_missing_ranges(load_schema: SchemaLoader) -> None:
+    example = _example(load_schema, "track.manifest")
+    gap = [{"startMs": 0, "endMs": 1000}]
+
+    with pytest.raises(ValidationError, match="missingRanges"):
+        EVENT_MODELS["track.manifest"].model_validate({**example, "missingRanges": gap})
+
+
+def test_spec022_r11_manifest_keeps_null_reason_and_model(load_schema: SchemaLoader) -> None:
+    example = {
+        **_example(load_schema, "track.manifest"),
+        "reidSkippedReason": "embedding_model_mismatch",
+        "embeddingModel": None,
+    }
+
+    parsed = EVENT_MODELS["track.manifest"].model_validate(example)
+
+    assert json.loads(parsed.model_dump_json(by_alias=True)) == example
+
+
+@pytest.mark.parametrize("topic", ["chunk.boundary", "track.detected"])
+def test_spec022_r23_job_type_and_epoch_round_trip(load_schema: SchemaLoader, topic: str) -> None:
+    extra: JsonObject = {"jobType": "STREAM"}
+    if topic == "track.detected":
+        extra["trackIdEpoch"] = 3
+    message = {**_example(load_schema, topic), **extra}
+
+    parsed = EVENT_MODELS[topic].model_validate(message)
+
+    assert json.loads(parsed.model_dump_json(by_alias=True)) == message

@@ -511,6 +511,138 @@ class EventAnalyzed(_Execution):
         return self
 
 
+_TRACK_LOCAL_ID = r"^[A-Za-z0-9_-]{1,64}$"
+_DETECTOR_PROFILE = r"^[A-Za-z0-9][A-Za-z0-9._:@-]{0,99}$"
+_TRACKS_KEY = _EXECUTION_PREFIX + r"tracks[.]json$"
+
+
+class ChunkBoundary(_Execution):
+    """청크 실행 하나의 트랙 요약 준비 완료. 발행: chunk-processor, 소비: track-stitcher."""
+
+    event_type: Literal["chunk.boundary"] = "chunk.boundary"
+    schema_version: Literal[1] = 1
+    owned_range: TimeRange
+    processing_range: TimeRange
+    source_duration_ms: int = Field(ge=1, le=9223372036854775807)
+    tracks_key: str = Field(pattern=_TRACKS_KEY)
+    track_count: int = Field(ge=0)
+    boundary_track_count: int = Field(ge=0)
+    detector_profile: str = Field(pattern=_DETECTOR_PROFILE)
+
+    @model_validator(mode="after")
+    def _inside_execution_folder(self) -> Self:
+        # SPEC-022 R-18: 다른 영상·실행의 트랙 파일을 읽지 않는다. 패턴은 형식만 본다.
+        if self.tracks_key != self.execution_prefix() + "tracks.json":
+            raise ValueError("tracksKey is outside the execution folder of this message")
+        return self
+
+
+class TrackMember(_Part):
+    """최종·경계 트랙을 이루는 로컬 트랙 하나(청크 실행 안에서만 고유한 ID)."""
+
+    chunk_id: UUID
+    execution_id: UUID
+    track_local_id: str = Field(pattern=_TRACK_LOCAL_ID)
+
+
+class StitchedTrack(_Part):
+    """경계 한 쌍에서 이어진 트랙. 구성원은 앞 청크 트랙과 뒤 청크 트랙이다."""
+
+    track_id: UUID
+    class_name: ClassName
+    start_ms: int = _MS
+    end_ms: int = _MS
+    members: list[TrackMember] = Field(min_length=2)
+
+
+TrackOrigin = Literal["chunk", "stitcher"]
+
+
+class TrackDetected(Event):
+    """트랙 준비. origin `chunk`는 chunk-processor가 실행마다, `stitcher`는 track-stitcher가 인접
+    청크 한 쌍마다 발행한다(SPEC-022 R-5). origin에 해당하지 않는 필드는 None이고 JSON에서 뺀다.
+    """
+
+    event_type: Literal["track.detected"] = "track.detected"
+    schema_version: Literal[1] = 1
+    job_type: JobType | None = Field(default=None, exclude_if=lambda v: v is None)
+    # 실시간 트랙 ID 대역 번호(v5.1, SPEC-037). stream-ingestor만 싣는다.
+    track_id_epoch: int | None = Field(default=None, ge=0, exclude_if=lambda v: v is None)
+    job_id: UUID
+    normalization_id: UUID
+    origin: TrackOrigin
+    chunk_id: UUID | None = Field(default=None, exclude_if=lambda v: v is None)
+    execution_id: UUID | None = Field(default=None, exclude_if=lambda v: v is None)
+    tracks_key: str | None = Field(
+        default=None, pattern=_TRACKS_KEY, exclude_if=lambda v: v is None
+    )
+    detections_key: str | None = Field(
+        default=None,
+        pattern=_EXECUTION_PREFIX + r"detections[.]json$",
+        exclude_if=lambda v: v is None,
+    )
+    track_count: int | None = Field(default=None, ge=0, exclude_if=lambda v: v is None)
+    earlier_chunk_id: UUID | None = Field(default=None, exclude_if=lambda v: v is None)
+    later_chunk_id: UUID | None = Field(default=None, exclude_if=lambda v: v is None)
+    stitched: list[StitchedTrack] | None = Field(
+        default=None, max_length=1024, exclude_if=lambda v: v is None
+    )
+
+    @model_validator(mode="after")
+    def _origin_fields(self) -> Self:
+        # 계약의 oneOf: origin마다 필수 필드가 다르다.
+        if self.origin == "chunk":
+            chunk = (
+                self.chunk_id,
+                self.execution_id,
+                self.tracks_key,
+                self.detections_key,
+                self.track_count,
+            )
+            if None in chunk:
+                raise ValueError(
+                    "origin chunk requires chunkId, executionId, tracksKey, detectionsKey and "
+                    "trackCount"
+                )
+        elif None in (self.earlier_chunk_id, self.later_chunk_id, self.stitched):
+            raise ValueError("origin stitcher requires earlierChunkId, laterChunkId and stitched")
+        return self
+
+
+ReidSkippedReason = Literal["embedding_model_mismatch", "disabled"]
+
+
+class TrackManifest(Event):
+    """Job 하나의 트랙 연결 완료. Job마다 한 번. 발행: track-stitcher(SPEC-022 R-12)."""
+
+    event_type: Literal["track.manifest"] = "track.manifest"
+    schema_version: Literal[1] = 1
+    job_id: UUID
+    normalization_id: UUID
+    complete: bool
+    missing_ranges: list[TimeRange]
+    chunk_count: int = Field(ge=0)
+    local_track_count: int = Field(ge=0)
+    track_count: int = Field(ge=0)
+    boundary_link_count: int = Field(ge=0)
+    reid_link_count: int = Field(ge=0)
+    # Re-ID를 했으면 None(JSON null). 계약은 null을 값으로 요구하므로 빼지 않는다.
+    reid_skipped_reason: ReidSkippedReason | None
+    mapping_key: str = Field(
+        pattern=r"^sources/[0-9a-f-]{36}/jobs/[0-9a-f-]{36}/tracks/mapping[.]json$"
+    )
+    stitch_profile: str = Field(pattern=_DETECTOR_PROFILE)
+    embedding_model: str | None = Field(pattern=_MODEL_ID)
+
+    @model_validator(mode="after")
+    def _consistent(self) -> Self:
+        if self.mapping_key != f"sources/{self.source_id}/jobs/{self.job_id}/tracks/mapping.json":
+            raise ValueError("mappingKey must be the mapping file of this job")
+        if self.complete == bool(self.missing_ranges):
+            raise ValueError("missingRanges must be empty exactly when complete is true")
+        return self
+
+
 EVENT_MODELS: dict[str, type[Event]] = {
     "chunk.requested": ChunkRequested,
     "chunk.execution.finished": ChunkExecutionFinished,
@@ -522,5 +654,8 @@ EVENT_MODELS: dict[str, type[Event]] = {
     "segment.embedded": SegmentEmbedded,
     "event.candidate.vector": EventCandidateVector,
     "event.analyzed": EventAnalyzed,
+    "chunk.boundary": ChunkBoundary,
+    "track.detected": TrackDetected,
+    "track.manifest": TrackManifest,
 }
 """토픽 이름 → 이벤트 모델. 계약 테스트는 여기 등록된 모델을 모두 검증한다."""
