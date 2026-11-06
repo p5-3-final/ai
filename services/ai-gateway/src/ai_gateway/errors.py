@@ -47,6 +47,18 @@ class ModelNotConfiguredError(GatewayRequestError):
     title = "Service Unavailable"
 
 
+class BudgetExceededError(GatewayRequestError):
+    """호출 서비스나 전체의 하루 예산을 넘었다. 다음 날(UTC)이나 한도를 늘린 뒤 다시 보낸다.
+
+    `/v1/analyze`·`/v1/parse`는 미설정과 같은 200 결과를 돌려주고, `embed_text`만 이 오류다
+    (SPEC-016 R-11).
+    """
+
+    code = "AI_BUDGET_EXCEEDED"
+    status = 503
+    title = "Service Unavailable"
+
+
 class CallerForbiddenError(GatewayRequestError):
     code = "AI_CALLER_FORBIDDEN"
     status = 403

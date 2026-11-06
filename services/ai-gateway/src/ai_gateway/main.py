@@ -89,7 +89,13 @@ def create_app(build: Callable[[], Awaitable[GatewayDeps]]) -> FastAPI:
             gate,
         )
         app.state.embed = EmbedService(
-            deps.profile, deps.encoder, ImageReader(deps.storage), deps.embedders, deps.call_log
+            deps.profile,
+            deps.encoder,
+            ImageReader(deps.storage),
+            deps.embedders,
+            deps.call_log,
+            gate,
+            deps.cache,
         )
         app.state.parse = ParseService(
             deps.profile, deps.dictionary, deps.prompts, deps.adapters, deps.call_log, gate

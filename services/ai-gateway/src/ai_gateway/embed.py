@@ -6,6 +6,7 @@ import math
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
+from decimal import Decimal
 from uuid import UUID
 
 from vlm_encoders.base import ImageDecodeError, ImageTextEncoder, Vector
@@ -18,6 +19,7 @@ from ai_gateway.adapters.base import (
 from ai_gateway.analyze import CallLogWriter
 from ai_gateway.call_log import CallLogEntry, CallStatus, new_call_id
 from ai_gateway.errors import (
+    BudgetExceededError,
     CallerForbiddenError,
     ImageUnreadableError,
     InvalidRequestError,
@@ -25,6 +27,7 @@ from ai_gateway.errors import (
     TooManyInputsError,
     UnknownTaskTypeError,
 )
+from ai_gateway.gate import CacheStore, GateCall, ModelGate, Produced, cache_key
 from ai_gateway.images import ImageReader, QueryImagePolicy
 from ai_gateway.profile import EncoderProfile, GatewayProfile
 
@@ -81,12 +84,16 @@ class EmbedService:
         images: ImageReader,
         embedders: dict[str, TextEmbeddingAdapter],
         call_log: CallLogWriter,
+        gate: ModelGate,
+        cache: CacheStore,
     ) -> None:
         self._profile = profile
         self._encoder = encoder
         self._images = images
         self._embedders = embedders
         self._call_log = call_log
+        self._gate = gate
+        self._cache = cache
 
     async def embed(self, command: EmbedCommand) -> EmbedResult:
         call = _Call(command, time.perf_counter())
@@ -104,6 +111,9 @@ class EmbedService:
             raise TooManyInputsError(f"at most {plan.max_inputs} inputs are allowed")
         if plan.max_text_chars is not None and any(len(t) > plan.max_text_chars for t in inputs):
             raise InvalidRequestError(f"each text must be at most {plan.max_text_chars} characters")
+        if command.task_type == "embed_text":
+            # 외부 공급자를 부르는 경로만 캐시·예산·분당 한도를 거친다(SPEC-016).
+            return await self._embed_text(command, call, plan, inputs)
 
         try:
             produced = await plan.run(inputs)
@@ -128,6 +138,127 @@ class EmbedService:
             dimension=plan.dimension,
             vectors=vectors,
         )
+
+    async def _embed_text(
+        self, command: EmbedCommand, call: "_Call", plan: _Plan, inputs: list[str]
+    ) -> EmbedResult:
+        """문장마다 캐시를 찾고, 없는 문장만 공급자에 보낸다(SPEC-016 R-5)."""
+        keys = [
+            cache_key(
+                command.task_type,
+                plan.adapter,
+                plan.model_id,
+                None,
+                {"text": text, "dimension": plan.dimension},
+            )
+            for text in inputs
+        ]
+        vectors: list[Vector | None] = [_vector(await self._cache.get(k)) for k in keys]
+        missing = [i for i, v in enumerate(vectors) if v is None]
+        settings = self._profile.embed.embed_text
+        timeout_s = settings.timeout_s if settings else 0.0
+        locked: list[str] = []
+        try:
+            mine = await self._claim(missing, keys, vectors, locked, timeout_s)
+            if not mine:
+                await self._record(call.entry("success", plan, cache_hit=True, costs=_Costs.free()))
+                return _result(call, command, plan, vectors)
+            texts = [inputs[i] for i in mine]
+
+            async def invoke() -> Produced[_Produced]:
+                produced = await plan.run(texts)
+                return Produced(produced, produced.input_tokens, None, None)
+
+            per_text = settings.estimated_tokens_per_text if settings else 0
+            gated = await self._gate.run(
+                GateCall(
+                    caller=command.caller,
+                    task_type=command.task_type,
+                    adapter=plan.adapter,
+                    model=plan.model_id,
+                    # 문장 묶음 하나에는 키가 없다. 캐시와 동시 호출 합치기는 위에서 문장마다 했다.
+                    cache_key=None,
+                    source_id=None,
+                    input_tokens=per_text * len(texts),
+                    output_tokens=0,
+                    timeout_s=timeout_s,
+                ),
+                invoke,
+            )
+            costs = _Costs(gated.reserved_usd, gated.settled_usd)
+            if gated.kind == "budget_exceeded":
+                await self._record(call.entry("budget_exceeded", plan, cache_hit=False))
+                raise BudgetExceededError("daily AI budget is exhausted")
+            if gated.kind == "failed" and gated.error is not None:
+                error = gated.error
+                status: CallStatus = (
+                    "unavailable" if isinstance(error, ProviderUnavailableError) else "failed"
+                )
+                code = getattr(error, "log_code", None) or getattr(error, "code", None)
+                await self._record(
+                    call.entry(status, plan, error_code=code, cache_hit=False, costs=costs)
+                )
+                raise error
+            if gated.value is None:
+                raise RuntimeError("model gate returned no result")
+            produced = gated.value
+            checked = _checked_unit_vectors(produced.vectors, len(texts), plan.dimension)
+            if checked is None:
+                mismatch = ProviderFailedError(
+                    "provider returned vectors that do not match the profile"
+                )
+                await self._record(
+                    call.entry(
+                        "invalid_output",
+                        plan,
+                        error_code=mismatch.code,
+                        produced=produced,
+                        cache_hit=False,
+                        costs=costs,
+                    )
+                )
+                raise mismatch
+            for i, vector in zip(mine, checked, strict=True):
+                vectors[i] = vector
+                await self._cache.put(keys[i], command.task_type, None, {"vector": vector})
+            await self._record(
+                call.entry("success", plan, produced=produced, cache_hit=False, costs=costs)
+            )
+            return _result(call, command, plan, vectors)
+        finally:
+            for key in locked:
+                await self._cache.release(key)
+
+    async def _claim(
+        self,
+        missing: list[int],
+        keys: list[str],
+        vectors: list[Vector | None],
+        locked: list[str],
+        timeout_s: float,
+    ) -> list[int]:
+        """다른 요청이 같은 문장을 보내는 중이면 그 결과를 기다리고, 직접 보낼 문장을 돌려준다.
+
+        SPEC-016 R-7, R-8. 잠근 키는 `locked`에 더해 호출이 끝나면 푼다.
+        """
+        mine: list[int] = []
+        waiting: list[int] = []
+        for i in missing:
+            got = await self._cache.try_lock(keys[i], timeout_s)
+            if got:
+                locked.append(keys[i])
+            (waiting if got is False else mine).append(i)
+        if waiting:
+            awaited = await asyncio.gather(
+                *(self._cache.wait_for(keys[i], timeout_s) for i in waiting)
+            )
+            for i, value in zip(waiting, awaited, strict=True):
+                vector = _vector(value)
+                if vector is None:
+                    mine.append(i)
+                else:
+                    vectors[i] = vector
+        return sorted(mine)
 
     def _plan(self, command: EmbedCommand) -> _Plan | None:
         """프로필에서 taskType의 실행 방법을 만든다. 모델이 없으면 None이다(SPEC-011 R-14)."""
@@ -263,6 +394,8 @@ class _Call:
         *,
         error_code: str | None = None,
         produced: _Produced | None = None,
+        cache_hit: bool | None = None,
+        costs: "_Costs | None" = None,
     ) -> CallLogEntry:
         inputs = self.command.texts or self.command.image_keys or []
         return CallLogEntry(
@@ -285,4 +418,39 @@ class _Call:
             output_tokens=None,
             trace_id=self.command.traceparent.split("-")[1] if self.command.traceparent else None,
             input_count=len(inputs),
+            cache_hit=cache_hit,
+            reserved_cost_usd=costs.reserved if costs else None,
+            settled_cost_usd=costs.settled if costs else None,
         )
+
+
+@dataclass(frozen=True, slots=True)
+class _Costs:
+    """호출 로그에 남길 예산 예약·정산 비용(SPEC-016 R-19)."""
+
+    reserved: Decimal | None
+    settled: Decimal | None
+
+    @classmethod
+    def free(cls) -> "_Costs":
+        # 캐시 적중은 비용 0이다(SPEC-016 R-14).
+        return cls(Decimal(0), Decimal(0))
+
+
+def _vector(value: object) -> Vector | None:
+    if not isinstance(value, dict):
+        return None
+    vector = value.get("vector")
+    return [float(x) for x in vector] if isinstance(vector, list) else None
+
+
+def _result(
+    call: _Call, command: EmbedCommand, plan: _Plan, vectors: list[Vector | None]
+) -> EmbedResult:
+    return EmbedResult(
+        call_id=call.call_id,
+        task_type=command.task_type,
+        model_id=plan.model_id,
+        dimension=plan.dimension,
+        vectors=[v for v in vectors if v is not None],
+    )
