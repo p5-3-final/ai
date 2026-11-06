@@ -364,3 +364,22 @@ async def test_spec_019_r5_r14_candidate_ids_are_deterministic() -> None:
     assert len({c.candidate_id for c in first.candidates}) == 2
     embedded = publisher.events("segment.embedded")[0]
     assert first.event_id != embedded.event_id
+
+
+async def test_spec_019_r13_no_prototypes_publishes_only_segment_embedded() -> None:
+    ready = segment_ready()
+
+    _, publisher = await _run(ready)
+
+    assert [t for t, _, _, _ in publisher.published] == ["segment.embedded"]
+
+
+async def test_spec_019_r13_zero_candidates_publishes_only_segment_embedded() -> None:
+    # 임계값 1이면 프로토타입과 방향이 같은 구간만 후보다. mock 이미지 벡터는 그렇지 않다.
+    ready = segment_ready()
+    storage = storage_with_images(ready)
+    publisher = RecordingPublisher()
+
+    await _with_prototypes(storage, publisher, _prototypes(1.0)).handle(ready, CTX)
+
+    assert [t for t, _, _, _ in publisher.published] == ["segment.embedded"]

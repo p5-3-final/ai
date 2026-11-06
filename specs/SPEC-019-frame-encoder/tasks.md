@@ -38,7 +38,7 @@ updated: 2026-11-06
 - [x] T013 [R-15] 프로필: 유형이 분류 체계 v2 밖·문장 없음·임계값 범위 밖이면 거절 — 테스트 `t/test_prototype_profile.py`, 구현 `fe/profile.py`
 - [x] T014 [R-10] [R-11] 프로토타입 벡터와 후보(점수 ≥ 임계값) — 테스트 `t/test_prototypes.py`, 구현 `fe/prototypes.py`
 - [x] T015 [R-12] [R-14] 후보가 있으면 `segment.embedded` 뒤에 `event.candidate.vector` 1건(계약 스키마 통과) — 테스트 `t/test_encoding_service.py`
-- [ ] T016 [R-13] 프로토타입이 없거나 후보 0개면 발행 안 함 — 테스트 `t/test_encoding_service.py`
+- [x] T016 [R-13] 프로토타입이 없거나 후보 0개면 발행 안 함 — 테스트 `t/test_encoding_service.py`
 - [ ] T017 [R-19] 단계 블록 `encoder.prototype` — 테스트 `t/test_encoding_service.py`
 
 ## Phase 3: 워커와 배포
