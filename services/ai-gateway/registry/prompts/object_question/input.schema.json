@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vlm.example/contracts/prompts/object_question/input.schema.json",
+  "title": "ObjectQuestionInput",
+  "description": "/v1/analyze 요청의 variables(taskType object_question). 트랙 크롭 다음에 장면 프레임을 붙인 이미지 1~11장은 요청의 images로 따로 보낸다 (SPEC-024 R-12).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["className", "question"],
+  "properties": {
+    "className": {
+      "$ref": "../../taxonomy/v2/taxonomy.schema.json#/$defs/className",
+      "description": "질문 대상 객체의 탐지 클래스"
+    },
+    "question": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 500,
+      "description": "사용자 질문"
+    }
+  },
+  "examples": [{"className": "person", "question": "이 사람이 손에 무엇을 들고 있나요?"}]
+}

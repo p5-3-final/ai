@@ -25,6 +25,7 @@ from gateway_support import (
     post_analyze,
     profile,
 )
+from vlm_common.profile import load_profile
 
 
 async def test_spec009_r1_returns_validated_output(registry_dir: Path) -> None:
@@ -116,7 +117,7 @@ async def test_spec009_r2_variables_must_match_input_schema(registry_dir: Path) 
 
 async def test_spec009_r3_unknown_task_type_is_rejected(registry_dir: Path) -> None:
     async with gateway(registry_dir) as gw:
-        response = await post_analyze(gw.client, analyze_body(taskType="track_attribute"))
+        response = await post_analyze(gw.client, analyze_body(taskType="not_registered_task"))
 
     _problem(response, 400, "AI_UNKNOWN_TASK_TYPE")
     assert gw.adapter.calls == []
@@ -562,3 +563,171 @@ async def test_spec016_r23_other_results_have_no_reason(registry_dir: Path, repl
 
     assert "unverifiedReason" not in first
     assert "unverifiedReason" not in second
+
+
+# SPEC-024: 트랙 속성·객체 질문. taskType별 코드 없이 Registry 폴더와 프로필로만 동작한다.
+_TRACK_VARIABLES: dict[str, dict[str, object]] = {
+    "track_attribute": {"className": "person"},
+    "object_question": {"className": "person", "question": "손에 무엇을 들고 있나요?"},
+}
+_TRACK_OUTPUTS: dict[str, dict[str, object]] = {
+    "track_attribute": {
+        "verificationStatus": "confirmed",
+        "helmet": "worn",
+        "vest": "not_worn",
+        "role": "worker",
+        "equipment": ["ladder"],
+        "description": "사다리를 든 작업자",
+    },
+    "object_question": {"verificationStatus": "confirmed", "answerable": True, "answer": "사다리"},
+}
+
+
+def _track_body(task_type: str, **changes: object) -> dict[str, object]:
+    return analyze_body(taskType=task_type, variables=_TRACK_VARIABLES[task_type], **changes)
+
+
+@pytest.mark.parametrize("task_type", sorted(_TRACK_VARIABLES))
+async def test_spec024_r11_r12_track_task_returns_validated_output(
+    registry_dir: Path, task_type: str
+) -> None:
+    good = _TRACK_OUTPUTS[task_type]
+    adapter = FakeAdapter(reply=json.dumps(good, ensure_ascii=False))
+    task = PromptRegistry.load(registry_dir).get(task_type)
+    assert task is not None
+
+    async with gateway(registry_dir, adapter=adapter) as gw:
+        response = await post_analyze(gw.client, _track_body(task_type))
+
+    assert response.status_code == 200
+    body = response.json()
+    assert (body["taskType"], body["promptVersion"], body["taxonomyVersion"]) == (
+        task_type,
+        task.version,
+        "v2",
+    )
+    assert body["output"] == good
+    [call] = adapter.calls
+    assert call.message.task_type == task_type
+    assert [i.data for i in call.images] == [b"jpeg-0", b"jpeg-1"]
+
+
+@pytest.mark.parametrize("task_type", sorted(_TRACK_VARIABLES))
+async def test_spec024_r11_r12_mock_output_matches_contract(
+    registry_dir: Path, task_type: str
+) -> None:
+    """[SPEC-024 R-11·R-12] mock Adapter가 돌려주는 출력 예시도 계약 결과 형식이다."""
+    prompts = PromptRegistry.load(registry_dir)
+
+    async with gateway(registry_dir, adapters={"fake": MockAdapter(prompts)}) as gw:
+        response = await post_analyze(gw.client, _track_body(task_type))
+
+    assert response.status_code == 200
+    task = prompts.get(task_type)
+    assert task is not None
+    assert task.output_errors(response.json()["output"]) == []
+    assert response.json()["output"]["verificationStatus"] == "confirmed"
+
+
+@pytest.mark.parametrize(("task_type", "limit"), [("track_attribute", 3), ("object_question", 11)])
+@pytest.mark.parametrize("name", ["local.toml", "local-mock.toml"])
+def test_spec024_r11_r12_committed_profiles_set_image_limits(
+    name: str, task_type: str, limit: int
+) -> None:
+    path = Path(__file__).resolve().parents[1] / "profiles" / name
+
+    loaded = load_profile(path, GatewayProfile)
+
+    assert loaded.tasks[task_type].max_images == limit
+
+
+async def test_spec024_r11_too_many_crops_is_rejected(registry_dir: Path) -> None:
+    images = [{"storageKey": IMAGE_KEYS[i % 2], "ptsSec": None} for i in range(4)]
+    async with gateway(registry_dir, profile(max_images=3)) as gw:
+        response = await post_analyze(gw.client, _track_body("track_attribute", images=images))
+
+    _problem(response, 400, "AI_TOO_MANY_IMAGES")
+    assert gw.adapter.calls == []
+
+
+async def test_spec024_r12_too_long_question_is_rejected(registry_dir: Path) -> None:
+    variables = {"className": "person", "question": "가" * 501}
+    async with gateway(registry_dir) as gw:
+        response = await post_analyze(
+            gw.client, analyze_body(taskType="object_question", variables=variables)
+        )
+
+    problem = _problem(response, 400, "AI_INVALID_REQUEST")
+    assert problem["errors"] == [{"field": "variables/question", "message": ANY}]
+    assert gw.adapter.calls == []
+
+
+_EMPTY_RESULTS: dict[str, dict[str, object]] = {
+    "track_attribute": {
+        "helmet": None,
+        "vest": None,
+        "role": None,
+        "equipment": [],
+        "description": None,
+    },
+    "object_question": {"answerable": None, "answer": None},
+}
+
+
+@pytest.mark.parametrize("task_type", sorted(_TRACK_VARIABLES))
+async def test_spec024_r13_unconfigured_model_returns_unverified(
+    registry_dir: Path, task_type: str
+) -> None:
+    async with gateway(registry_dir, profile(adapter=None, model=None)) as gw:
+        response = await post_analyze(gw.client, _track_body(task_type))
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["output"] == {"verificationStatus": "unverified", **_EMPTY_RESULTS[task_type]}
+    assert (body["modelId"], body["unverifiedReason"]) == (None, "model_unavailable")
+    assert gw.adapter.calls == []
+
+
+@pytest.mark.parametrize("task_type", sorted(_TRACK_VARIABLES))
+async def test_spec024_r13_budget_exceeded_returns_unverified(
+    registry_dir: Path, task_type: str
+) -> None:
+    exhausted = MemoryBudget(limits={"*": Decimal(0)})
+    priced = profile(extra={"prices": PRICES})
+    async with gateway(registry_dir, priced, budget=exhausted) as gw:
+        response = await post_analyze(gw.client, _track_body(task_type))
+
+    body = response.json()
+    assert body["output"] == {"verificationStatus": "unverified", **_EMPTY_RESULTS[task_type]}
+    assert body["unverifiedReason"] == "budget_exceeded"
+    assert gw.adapter.calls == []
+
+
+@pytest.mark.parametrize("task_type", sorted(_TRACK_VARIABLES))
+@pytest.mark.parametrize("reply", ["판단할 수 없습니다.", '{"verificationStatus": "rejected"}'])
+async def test_spec024_r13_invalid_output_returns_unknown(
+    registry_dir: Path, task_type: str, reply: str
+) -> None:
+    async with gateway(registry_dir, adapter=FakeAdapter(reply=reply)) as gw:
+        response = await post_analyze(gw.client, _track_body(task_type))
+
+    assert response.status_code == 200
+    assert response.json()["output"] == {
+        "verificationStatus": "unknown",
+        **_EMPTY_RESULTS[task_type],
+    }
+    [entry] = gw.call_log.entries
+    assert entry.status == "invalid_output"
+
+
+@pytest.mark.parametrize("task_type", sorted(_TRACK_VARIABLES))
+async def test_spec024_r11_r12_too_few_images_is_rejected(
+    registry_dir: Path, task_type: str
+) -> None:
+    """[SPEC-024 R-11·R-12] 이미지가 하한보다 적으면 모델을 부르지 않고 400이다."""
+    async with gateway(registry_dir, profile(min_images=1)) as gw:
+        response = await post_analyze(gw.client, _track_body(task_type, images=[]))
+
+    problem = _problem(response, 400, "AI_INVALID_REQUEST")
+    assert problem["errors"] == [{"field": "images", "message": ANY}]
+    assert gw.adapter.calls == []

@@ -20,10 +20,10 @@ from vlm_storage.memory import InMemoryStorage
 def test_spec009_r14_profile_task_must_have_prompt(registry_dir: Path) -> None:
     registry = PromptRegistry.load(registry_dir)
     with_extra = profile().model_copy(
-        update={"tasks": {**profile().tasks, "track_attribute": profile().tasks["event_judge"]}}
+        update={"tasks": {**profile().tasks, "not_registered_task": profile().tasks["event_judge"]}}
     )
 
-    with pytest.raises(ProfileError, match="track_attribute"):
+    with pytest.raises(ProfileError, match="not_registered_task"):
         check_tasks(with_extra, registry)
 
 
