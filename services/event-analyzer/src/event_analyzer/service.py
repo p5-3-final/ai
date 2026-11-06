@@ -24,8 +24,9 @@ from event_analyzer import ids
 from event_analyzer.judgment import Decision, Outcome, Stage, decide, needs_escalation
 
 _TASK_TYPES: dict[Stage, str] = {"judge": "event_judge", "escalate": "event_judge_escalate"}
-# 이미지가 지워졌거나 아직 없으면 다시 불러도 같다. 그 후보만 판정 실패로 남긴다(SPEC-020 R-14).
-_RECORDED_CLIENT_ERRORS = frozenset({"AI_IMAGE_NOT_FOUND"})
+# 이미지가 없거나 분당 한도 차례를 얻지 못하면 그 후보만 판정 실패로 남긴다(SPEC-020 R-14).
+# 분당 한도는 메시지 전체의 문제가 아니라서 DLQ로 보내지 않는다.
+_RECORDED_CLIENT_ERRORS = frozenset({"AI_IMAGE_NOT_FOUND", "AI_RATE_LIMITED"})
 _INVALID_RESPONSE = "AI_INVALID_RESPONSE"
 
 logger = logging.getLogger(__name__)
@@ -121,7 +122,8 @@ class EventAnalyzerService:
         """판정 호출 하나. 결과를 못 받은 호출은 `Outcome.failed`로 남긴다(R-12~R-14).
 
         Raises:
-            NonRetryableError: ai-gateway가 `AI_IMAGE_NOT_FOUND` 외의 4xx로 거절했을 때(R-15).
+            NonRetryableError: ai-gateway가 `AI_IMAGE_NOT_FOUND`·`AI_RATE_LIMITED` 외의 4xx로
+                거절했을 때(R-15).
                 호출자·경로·taskType 설정 문제라 같은 메시지의 다른 후보도 같이 거절된다.
         """
         try:

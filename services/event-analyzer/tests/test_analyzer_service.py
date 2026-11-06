@@ -246,6 +246,7 @@ async def test_spec020_r8_every_candidate_is_published(count: int) -> None:
         (gateway_error("AI_PROVIDER_UNAVAILABLE", 503, retryable=True), "AI_PROVIDER_UNAVAILABLE"),
         (gateway_error("AI_TIMEOUT", None, retryable=True), "AI_TIMEOUT"),
         (gateway_error("AI_IMAGE_NOT_FOUND", 404), "AI_IMAGE_NOT_FOUND"),
+        (gateway_error("AI_RATE_LIMITED", 429), "AI_RATE_LIMITED"),
         (gateway_error("AI_INVALID_RESPONSE", 200), "AI_INVALID_RESPONSE"),
     ],
 )

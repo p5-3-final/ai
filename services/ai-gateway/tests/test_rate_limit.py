@@ -72,7 +72,7 @@ async def test_spec016_r16_no_turn_within_timeout_fails() -> None:
     with pytest.raises(RateLimitedError) as caught:
         await limiter.acquire("fake", "fake-vlm", 10, timeout_s=5)
 
-    assert caught.value.code == "AI_PROVIDER_UNAVAILABLE"
+    assert (caught.value.status, caught.value.code) == (429, "AI_RATE_LIMITED")
     assert caught.value.log_code == "AI_RATE_LIMITED"
     assert sum(t.slept) <= 5
 

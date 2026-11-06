@@ -330,7 +330,7 @@ async def test_spec012_contract_parse_errors_are_problem_details(
 async def test_spec016_contract_budget_exceeded_is_problem_detail(
     registry_dir: Path, registry: Registry[Schema]
 ) -> None:
-    """[SPEC-016 R-11] embed_text 예산 초과는 계약의 503 ProblemDetail이다."""
+    """[SPEC-016 R-11] embed_text 예산 초과는 계약의 429 ProblemDetail이다."""
     settings = embed_settings()
     priced = profile(
         {**settings, "prices": {"fake": {"fake-embedding": {"input_per_million_usd": 1}}}}
@@ -352,7 +352,7 @@ async def test_spec016_contract_budget_exceeded_is_problem_detail(
     ) as gw:
         response = await post_embed(gw.client, {"taskType": "embed_text", "texts": ["a"]})
 
-    assert response.status_code == 503
+    assert response.status_code == 429
     assert response.json()["code"] == "AI_BUDGET_EXCEEDED"
     _assert_matches_contract(registry, response)
 
