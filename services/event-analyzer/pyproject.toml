@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "이벤트 후보 VLM 판정, event.analyzed·event.manifest·alert.raised 발행 (SPEC-020, SPEC-023)"
 requires-python = ">=3.12,<3.13"
 dependencies = [
+    "redis>=5",
     "vlm-ai-client",
     "vlm-common",
     "vlm-contracts",

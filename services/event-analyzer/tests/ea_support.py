@@ -2,7 +2,7 @@
 
 import asyncio
 import json
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from functools import cache
@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Literal
 from uuid import UUID, uuid5
 
+from event_analyzer.rejudge_state import Prior
 from jsonschema import Draft202012Validator
 from pydantic import Field
 from pydantic_settings import BaseSettings
@@ -296,3 +297,23 @@ def event_errors(event: Event) -> list[str]:
     validator = Draft202012Validator({"$ref": schema_id}, registry=registry)
     body = json.loads(event.model_dump_json(by_alias=True))
     return [e.message for e in validator.iter_errors(body)]
+
+
+@dataclass
+class MemoryRejudgeState:
+    """Redis 대신 쓰는 재판정 간격 상태. 쓴 값과 TTL을 남긴다."""
+
+    values: dict[tuple[UUID, str, str], Prior] = field(default_factory=dict)
+    ttls: dict[tuple[UUID, str, str], float] = field(default_factory=dict)
+
+    async def read(
+        self, source_id: UUID, keys: Sequence[tuple[str, DetectableEventType]]
+    ) -> dict[tuple[str, DetectableEventType], Prior]:
+        found = {k: self.values.get((source_id, *k)) for k in keys}
+        return {k: v for k, v in found.items() if v is not None}
+
+    async def write(
+        self, source_id: UUID, key: tuple[str, DetectableEventType], prior: Prior, ttl_s: float
+    ) -> None:
+        self.values[(source_id, *key)] = prior
+        self.ttls[(source_id, *key)] = ttl_s

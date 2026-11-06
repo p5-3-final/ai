@@ -11,6 +11,7 @@ from ea_support import (
     SOURCE,
     TRACEPARENT,
     FakeGateway,
+    MemoryRejudgeState,
     RecordingPublisher,
     candidate_file,
     detected,
@@ -28,6 +29,7 @@ from vlm_ai_client.client import AiGatewayError
 from vlm_ai_client.models import AnalyzeRequest
 from vlm_common.profile import load_profile
 from vlm_contracts.events import (
+    DetectorCandidate,
     Event,
     EventAnalyzed,
     EventCandidate,
@@ -52,6 +54,7 @@ def _service(
     profile: EventAnalyzerProfile = PROFILE,
     storage: InMemoryStorage | None = None,
     concurrency: int = 4,
+    rejudge: MemoryRejudgeState | None = None,
 ) -> DetectorAnalyzerService:
     return DetectorAnalyzerService(
         gateway,
@@ -59,6 +62,7 @@ def _service(
         storage or InMemoryStorage(),
         profile,
         AnalyzerConfig(concurrency=concurrency),
+        rejudge=rejudge or MemoryRejudgeState(),
         clock=lambda: NOW,
     )
 
@@ -70,10 +74,12 @@ async def _run(
     ctx: MessageContext = CTX,
     profile: EventAnalyzerProfile = PROFILE,
     storage: InMemoryStorage | None = None,
+    rejudge: MemoryRejudgeState | None = None,
 ) -> tuple[FakeGateway, list[EventAnalyzed], list[EventManifest]]:
     fake = gateway or FakeGateway()
     publisher = RecordingPublisher()
-    await _service(fake, publisher, profile=profile, storage=storage).handle(message, ctx)
+    service = _service(fake, publisher, profile=profile, storage=storage, rejudge=rejudge)
+    await service.handle(message, ctx)
     analyzed: list[EventAnalyzed] = []
     manifests: list[EventManifest] = []
     for topic, event, key, traceparent in publisher.published:
@@ -525,3 +531,59 @@ async def test_spec023_r20_counts_are_zero_not_missing() -> None:
     body = manifest.model_dump(by_alias=True, mode="json")
     assert (body["carriedCount"], body["capReachedCount"], body["budgetExceededCount"]) == (0, 0, 0)
     assert "jobType" not in body
+
+
+def _window(index: int, *candidates: DetectorCandidate) -> EventCandidate:
+    """실시간 20초 창 `index`."""
+    return detector_message(
+        *candidates, job_type="STREAM", owned_ms=(index * 20_000, (index + 1) * 20_000)
+    )
+
+
+async def test_spec023_r18_stream_carries_across_windows_from_last_confirmed() -> None:
+    state = MemoryRejudgeState()
+    first_window = _window(0, detected(1, start_s=5))
+    second = _window(1, detected(2, start_s=25))
+
+    gateway1, [judged_event], _ = await _run(first_window, rejudge=state)
+    gateway2, [carried], [manifest] = await _run(second, rejudge=state)
+
+    assert len(gateway1.requests) == 1
+    assert gateway2.requests == []
+    assert carried.judgment_method == "rule+carry"
+    assert carried.carried_from_event_id == judged_event.event_id
+    assert carried.analysis == judged_event.analysis
+    assert manifest.carried_count == 1
+    key = (SOURCE, "t1", "ppe_missing")
+    assert state.values[key].start_ms == 5000
+    # TTL은 재판정 간격(120초)의 두 배다.
+    assert state.ttls[key] == 240
+
+
+async def test_spec023_r18_stream_judges_again_after_interval() -> None:
+    state = MemoryRejudgeState()
+    await _run(_window(0, detected(1, start_s=5)), rejudge=state)
+    late = _window(7, detected(2, start_s=145))
+
+    gateway, [event], _ = await _run(late, rejudge=state)
+
+    assert len(gateway.requests) == 1
+    assert event.judgment_method == "rule+vlm"
+    assert state.values[(SOURCE, "t1", "ppe_missing")].start_ms == 145_000
+
+
+async def test_spec023_r18_only_confirmed_judgments_update_the_state() -> None:
+    state = MemoryRejudgeState()
+    gateway = FakeGateway(reply=lambda r: judged("ppe_missing", "rejected", severity="low"))
+
+    await _run(_window(0, detected(1, start_s=5)), gateway, rejudge=state)
+
+    assert state.values == {}
+
+
+async def test_spec023_r18_upload_jobs_do_not_use_the_state() -> None:
+    state = MemoryRejudgeState()
+
+    await _run(detector_message(detected(1, start_s=5)), rejudge=state)
+
+    assert state.values == {}

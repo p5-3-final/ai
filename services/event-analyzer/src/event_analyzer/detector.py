@@ -20,6 +20,7 @@ from vlm_contracts.events import (
     EventCandidate,
     EventManifest,
     UnverifiedReason,
+    VLMAnalysis,
 )
 from vlm_messaging.worker import MessageContext
 from vlm_storage.storage import ObjectStorage
@@ -28,10 +29,11 @@ from event_analyzer import ids
 from event_analyzer.calls import AnalyzeClient, EventPublisher, judge, publish
 from event_analyzer.candidates import load_candidates
 from event_analyzer.cap import call_cap
-from event_analyzer.carry import plan_carry
+from event_analyzer.carry import TrackKey, plan_carry
 from event_analyzer.judgment import Decision, Outcome, Stage, decide, needs_escalation
 from event_analyzer.merge import Kept, merge_candidates
 from event_analyzer.profile import EventAnalyzerProfile
+from event_analyzer.rejudge_state import NoRejudgeState, Prior, RejudgeState
 from event_analyzer.rules import rule_analysis
 from event_analyzer.service import AnalyzerConfig
 
@@ -58,6 +60,10 @@ def detector_request(candidate: DetectorCandidate, source: EventCandidate) -> An
     )
 
 
+# 재판정 간격 상태의 TTL은 간격의 두 배다(SPEC-023 R-18). 다음 창이 늦어도 간격 안의 판정을 잇는다.
+_STATE_TTL_INTERVALS = 2
+
+
 @dataclass(frozen=True, slots=True)
 class _Result:
     """남은 후보 하나의 발행할 판정."""
@@ -82,6 +88,8 @@ class DetectorAnalyzerService:
         storage: ObjectStorage,
         profile: EventAnalyzerProfile,
         config: AnalyzerConfig,
+        *,
+        rejudge: RejudgeState | None = None,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
     ) -> None:
         self._client = client
@@ -89,6 +97,7 @@ class DetectorAnalyzerService:
         self._storage = storage
         self._profile = profile
         self._config = config
+        self._rejudge: RejudgeState = rejudge or NoRejudgeState()
         self._clock = clock
 
     async def handle(self, message: EventCandidate, ctx: MessageContext) -> None:
@@ -102,19 +111,66 @@ class DetectorAnalyzerService:
                 for k in kept
                 if k.candidate.judgment == "rule"
             }
-            carry = plan_carry([k.candidate for k in kept], self._profile.rejudge)
             block.count = len(candidates)
+        # 실시간은 창을 넘어 직전 판정을 잇고, 업로드는 메시지 안에서만 잇는다(R-17, R-18).
+        stream = message.job_type == "STREAM"
+        priors = await self._read_priors(message, kept) if stream else {}
+        carry = plan_carry(
+            [k.candidate for k in kept],
+            self._profile.rejudge,
+            {key: prior.start_ms for key, prior in priors.items()},
+        )
         targets = [
             k
             for k in kept
             if k.candidate.judgment == "vlm" and k.candidate.candidate_id not in carry
         ]
         decisions |= await self._judge_all(message, targets, ctx)
-        analyzed = [self._analyzed(message, _result(k, decisions, carry)) for k in kept]
+        results = [_result(k, decisions, carry, priors) for k in kept]
+        analyzed = [self._analyzed(message, r) for r in results]
         for event in analyzed:
             await asyncio.to_thread(self._publish, event, ctx.traceparent)
         manifest = self._manifest(message, len(candidates), analyzed)
         await asyncio.to_thread(self._publish, manifest, ctx.traceparent)
+        # 발행 뒤에 쓴다. 발행이 실패해 다시 처리할 때 이번 판정을 직전 판정으로 읽지 않는다.
+        if stream:
+            await self._remember(message, results)
+
+    async def _read_priors(
+        self, message: EventCandidate, kept: list[Kept]
+    ) -> dict[TrackKey, Prior]:
+        keys = sorted(
+            {
+                (k.candidate.track_local_id, k.candidate.event_type)
+                for k in kept
+                if self._stateful(k.candidate) and k.candidate.track_local_id is not None
+            }
+        )
+        return await self._rejudge.read(message.source_id, keys)
+
+    async def _remember(self, message: EventCandidate, results: list[_Result]) -> None:
+        """같은 (트랙, 유형)의 가장 늦은 `confirmed` 판정을 남긴다(R-18)."""
+        latest: dict[TrackKey, Prior] = {}
+        for result in sorted(results, key=lambda r: _start_order(r.kept)):
+            candidate = result.kept.candidate
+            judged = result.decision.method in {"rule+vlm", "rule+vlm+escalate"}
+            confirmed = result.decision.analysis.verification_status == "confirmed"
+            track = candidate.track_local_id
+            if judged and confirmed and track is not None and self._stateful(candidate):
+                latest[(track, candidate.event_type)] = Prior(
+                    candidate.start_ms,
+                    ids.analyzed_event_id(candidate.candidate_id),
+                    result.decision.analysis,
+                )
+        for key, prior in latest.items():
+            ttl_s = self._profile.rejudge[key[1]] * _STATE_TTL_INTERVALS
+            await self._rejudge.write(message.source_id, key, prior, ttl_s)
+
+    def _stateful(self, candidate: DetectorCandidate) -> bool:
+        return (
+            candidate.judgment == "vlm"
+            and self._profile.rejudge_interval_s(candidate.event_type) is not None
+        )
 
     async def _judge_all(
         self, message: EventCandidate, targets: list[Kept], ctx: MessageContext
@@ -261,14 +317,21 @@ def _start_order(kept: Kept) -> tuple[int, str]:
     return kept.candidate.start_ms, str(kept.candidate.candidate_id)
 
 
-def _result(kept: Kept, decisions: dict[UUID, Decision], carry: dict[UUID, UUID | None]) -> _Result:
-    candidate_id = kept.candidate.candidate_id
-    if candidate_id not in carry:
-        return _Result(kept, decisions[candidate_id])
-    source = carry[candidate_id]
-    if source is None:
-        raise RuntimeError("carry from a prior judgment needs rejudge state")
-    return _Result(kept, _carried(decisions[source]), ids.analyzed_event_id(source))
+def _result(
+    kept: Kept,
+    decisions: dict[UUID, Decision],
+    carry: dict[UUID, UUID | None],
+    priors: dict[TrackKey, Prior],
+) -> _Result:
+    candidate = kept.candidate
+    if candidate.candidate_id not in carry:
+        return _Result(kept, decisions[candidate.candidate_id])
+    source = carry[candidate.candidate_id]
+    if source is not None:
+        return _Result(kept, _carried(decisions[source]), ids.analyzed_event_id(source))
+    # plan_carry는 직전 판정이 있는 (트랙, 유형)에만 None을 준다.
+    prior = priors[(candidate.track_local_id or "", candidate.event_type)]
+    return _Result(kept, _rule_carry(prior.analysis), prior.event_id)
 
 
 def _carried(source: Decision) -> Decision:
@@ -277,6 +340,11 @@ def _carried(source: Decision) -> Decision:
     직전 판정이 unverified·unknown이어도 같은 상태를 복사하고 다음 간격에서 다시 판정한다.
     """
     return replace(source, method="rule+carry", judgments=[])
+
+
+def _rule_carry(analysis: VLMAnalysis) -> Decision:
+    """창을 넘어 이은 직전 `confirmed` 판정(R-18)."""
+    return Decision(analysis, "rule+carry", [], False, [])
 
 
 def _rule_decision(candidate: DetectorCandidate, profile: EventAnalyzerProfile) -> Decision:
