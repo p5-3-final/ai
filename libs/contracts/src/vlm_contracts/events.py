@@ -768,6 +768,260 @@ class TrackManifest(Event):
         return self
 
 
+# ---- aggregator(SPEC-027)가 소비·발행하는 이벤트 ----
+_PROFILE_VERSION = r"^[A-Za-z0-9][A-Za-z0-9._:@-]{0,99}$"
+SessionRole = Literal["BEFORE", "DURING", "AFTER", "ROTATION"]
+
+
+class SessionRef(_Part):
+    """작업 세션(SPEC-017) 또는 실시간 회전(SPEC-036)에서 이 영상의 자리."""
+
+    session_id: UUID
+    role: SessionRole
+    previous_source_id: UUID | None
+
+
+class SourceSessionRef(_Part):
+    """`source.completed`·결과 파일의 세션. 계약은 실시간 회전(ROTATION)을 담지 않는다."""
+
+    session_id: UUID
+    role: Literal["BEFORE", "DURING", "AFTER"]
+    previous_source_id: UUID | None
+
+
+class AnalysisCounts(_Part):
+    """완료 판정에 쓴 manifest 합계. aggregator가 읽은 수와 맞춰 본다(SPEC-027 R-4)."""
+
+    chunks: int = Field(ge=0)
+    segments: int = Field(ge=0)
+    events: int = Field(ge=0)
+    tracks: int = Field(ge=0)
+
+
+class AnalysisCompleted(Event):
+    """job(또는 실시간 창 하나)의 적재가 끝났다. 발행: pipeline-service, stream-service(STREAM).
+
+    소비: aggregator(SPEC-027 R-1, R-30, R-32).
+    """
+
+    event_type: Literal["analysis.completed"] = "analysis.completed"
+    schema_version: Literal[1] = 1
+    job_id: UUID
+    job_type: JobType
+    # 없으면 job이다. 받은 메시지 모양을 바꾸지 않도록 None이면 뺀다.
+    scope: Literal["job", "chunk"] | None = Field(default=None, exclude_if=lambda v: v is None)
+    chunk_id: UUID | None = Field(default=None, exclude_if=lambda v: v is None)
+    partial: bool | None = Field(default=None, exclude_if=lambda v: v is None)
+    normalization_id: UUID
+    duration_ms: int = Field(ge=1, le=9223372036854775807)
+    session: SessionRef | None
+    counts: AnalysisCounts
+
+    @model_validator(mode="after")
+    def _chunk_scope_has_window(self) -> Self:
+        # 계약 설명: scope가 chunk면 창 ID가 있다. 없으면 대기 집합을 찾을 수 없다.
+        if self.scope == "chunk" and self.chunk_id is None:
+            raise ValueError("chunkId is required when scope is chunk")
+        return self
+
+
+class SourceCompletedCounts(_Part):
+    """결과 파일의 항목 수."""
+
+    input_events: int = Field(ge=0)
+    confirmed_events: int = Field(ge=0)
+    merge_groups: int = Field(ge=0)
+    rule_events: int = Field(ge=0)
+    snapshots: int = Field(ge=0)
+    risks: int = Field(ge=0)
+    active_risks_at_end: int = Field(ge=0)
+    # SPEC-028이 채운다. 없으면 JSON에서 뺀다.
+    inventory_events: int | None = Field(default=None, ge=0, exclude_if=lambda v: v is None)
+    forecasts: int | None = Field(default=None, ge=0, exclude_if=lambda v: v is None)
+
+
+class MissingCounts(_Part):
+    """개수 대조에서 빠진 수(SPEC-027 R-4)."""
+
+    events: int | None = Field(default=None, ge=0, exclude_if=lambda v: v is None)
+    tracks: int | None = Field(default=None, ge=0, exclude_if=lambda v: v is None)
+
+
+SummaryStatus = Literal["generated", "not_configured", "failed", "empty"]
+
+
+class SourceCompleted(Event):
+    """영상 단위 집계 완료. 본문은 결과 파일에 있다. 발행: aggregator(SPEC-027 R-1, R-20, R-27)."""
+
+    event_type: Literal["source.completed"] = "source.completed"
+    schema_version: Literal[1] = 1
+    job_type: JobType | None = Field(default=None, exclude_if=lambda v: v is None)
+    job_id: UUID
+    normalization_id: UUID
+    revision: int | None = Field(default=None, ge=1, exclude_if=lambda v: v is None)
+    partial: bool | None = Field(default=None, exclude_if=lambda v: v is None)
+    missing_counts: MissingCounts | None = Field(default=None, exclude_if=lambda v: v is None)
+    result_key: str = Field(
+        pattern=rf"^sources/{_UUID36}/jobs/{_UUID36}/aggregate/source-result[.]json$"
+    )
+    aggregate_profile: str = Field(pattern=_PROFILE_VERSION)
+    session: SourceSessionRef | None
+    counts: SourceCompletedCounts
+    summary_status: SummaryStatus
+
+
+class RuleEvent(_Part):
+    """시간 기준 규칙이 만든 템플릿 이벤트(결과 파일 `ruleEvents`, `state.updated.ruleEvents`)."""
+
+    event_id: UUID
+    event_type: Literal["hazard_zone_access"] = "hazard_zone_access"
+    rule: Literal["dwell", "loiter"]
+    track_id: UUID
+    zone_id: UUID
+    start_ms: int = _MS
+    end_ms: int = _MS
+    description: str = Field(min_length=1, max_length=500)
+    severity: Literal["medium", "high"]
+    verification_status: Literal["confirmed"] = "confirmed"
+    judgment_method: Literal["rule"] = "rule"
+
+
+class StateSnapshotDelta(_Part):
+    """창 하나에서 바뀐 구역 상태(`state.updated.snapshots`)."""
+
+    snapshot_id: UUID
+    zone_id: str
+    timestamp_ms: int = _MS
+    previous_state: str | None = Field(max_length=500)
+    current_state: str = Field(max_length=500)
+    related_event_id: UUID
+
+
+class RiskTransition(_Part):
+    """창 하나의 위험 전이."""
+
+    risk_id: UUID
+    zone_id: str
+    risk_type: str = Field(max_length=64)
+    transition: Literal["activated", "updated", "resolved"]
+    timestamp_ms: int = _MS
+    reason: str | None = Field(max_length=500)
+    related_event_ids: list[UUID]
+
+
+class ExposureDelta(_Part):
+    """창 하나의 노출 증분."""
+
+    risk_id: UUID
+    active_seconds_delta: float = Field(ge=0)
+    exposure_count_delta: int = Field(ge=0)
+    exposure_seconds_delta: float = Field(ge=0)
+
+
+class StateCounts(_Part):
+    input_events: int = Field(ge=0)
+    confirmed_events: int = Field(ge=0)
+    active_risks: int = Field(ge=0)
+
+
+class StateUpdated(Event):
+    """실시간 창 하나의 증분 fold 결과. 발행: aggregator(SPEC-027 R-30, ADR-0016)."""
+
+    event_type: Literal["state.updated"] = "state.updated"
+    schema_version: Literal[1] = 1
+    job_id: UUID
+    job_type: Literal["STREAM"] = "STREAM"
+    chunk_id: UUID
+    sequence: int = Field(ge=1)
+    window_start_ms: int = _MS
+    window_end_ms: int = _MS
+    partial: bool
+    gap_ms: int = Field(ge=0)
+    snapshots: list[StateSnapshotDelta] = Field(max_length=500)
+    risk_transitions: list[RiskTransition] = Field(max_length=500)
+    rule_events: list[RuleEvent] = Field(max_length=500)
+    exposure_deltas: list[ExposureDelta] = Field(max_length=500)
+    active_risk_zone_ids: list[str]
+    counts: StateCounts
+    aggregate_profile: str = Field(pattern=_PROFILE_VERSION)
+    taxonomy_version: Literal["v2"] = "v2"
+
+    @model_validator(mode="after")
+    def _unique_zones(self) -> Self:
+        if len(set(self.active_risk_zone_ids)) != len(self.active_risk_zone_ids):
+            raise ValueError("activeRiskZoneIds must be unique")
+        return self
+
+
+class ManifestCounts(_Part):
+    segments: int = Field(ge=0)
+    candidates: int = Field(ge=0)
+    tracks: int = Field(ge=0)
+
+
+class DetectorModel(_Part):
+    model_id: str = Field(max_length=128)
+    available: bool
+
+
+class DetectorCapability(_Part):
+    """실행 하나의 탐지기 능력 선언."""
+
+    detector_profile: str = Field(pattern=_PROFILE_VERSION)
+    models: list[DetectorModel]
+    supported_events: list[DetectableEventType]
+
+
+class NormBox(_Part):
+    """프레임 크기로 나눈 0~1 좌표, 왼쪽 위 기준."""
+
+    x: float = Field(ge=0, le=1)
+    y: float = Field(ge=0, le=1)
+    w: float = Field(ge=0, le=1)
+    h: float = Field(ge=0, le=1)
+
+
+class StaticObject(_Part):
+    """소유 범위 안에서 움직이지 않은 객체(SPEC-028)."""
+
+    object_local_id: str = Field(pattern=_TRACK_LOCAL_ID)
+    class_name: ClassName
+    box: NormBox
+    zone_id: UUID | None
+    first_seen_ms: int = _MS
+    last_seen_ms: int = _MS
+    observation_count: int = Field(ge=1)
+    frame_key: str = Field(pattern=_BLURRED_IMAGE)
+
+
+class ReferenceFrame(_Part):
+    pts_ms: int = _MS
+    key: str = Field(pattern=_BLURRED_IMAGE)
+
+
+class ChunkManifest(Event):
+    """청크 실행 하나의 산출물 개수·탐지기 능력·정적 객체 재고. 발행: chunk-processor,
+    stream-ingestor(STREAM). aggregator는 STREAM 창의 범위·빈 시간을 여기서 얻는다(SPEC-027 R-30).
+    """
+
+    event_type: Literal["chunk.manifest"] = "chunk.manifest"
+    schema_version: Literal[1] = 1
+    job_type: JobType | None = Field(default=None, exclude_if=lambda v: v is None)
+    track_id_epoch: int | None = Field(default=None, ge=0, exclude_if=lambda v: v is None)
+    last: bool | None = Field(default=None, exclude_if=lambda v: v is None)
+    gap_ms: int | None = Field(default=None, ge=0, exclude_if=lambda v: v is None)
+    job_id: UUID
+    chunk_id: UUID
+    execution_id: UUID
+    normalization_id: UUID
+    owned_range: TimeRange
+    counts: ManifestCounts
+    detector: DetectorCapability
+    unsupported_events: dict[DetectableEventType, Annotated[str, Field(max_length=200)]]
+    static_objects: list[StaticObject] = Field(max_length=500)
+    reference_frames: list[ReferenceFrame] = Field(min_length=1, max_length=8)
+
+
 EVENT_MODELS: dict[str, type[Event]] = {
     "chunk.requested": ChunkRequested,
     "chunk.execution.finished": ChunkExecutionFinished,
@@ -784,5 +1038,9 @@ EVENT_MODELS: dict[str, type[Event]] = {
     "chunk.boundary": ChunkBoundary,
     "track.detected": TrackDetected,
     "track.manifest": TrackManifest,
+    "analysis.completed": AnalysisCompleted,
+    "source.completed": SourceCompleted,
+    "state.updated": StateUpdated,
+    "chunk.manifest": ChunkManifest,
 }
 """토픽 이름 → 이벤트 모델. 계약 테스트는 여기 등록된 모델을 모두 검증한다."""

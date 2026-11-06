@@ -79,8 +79,9 @@ select = [
 [tool.ruff.lint.per-file-ignores]
 "**/tests/**" = ["S101"]
 # 계약에서 생성한 클라이언트 모델은 손으로 고치지 않는다. 계약 description이 Field 문자열로 들어가
-# 줄 길이만 넘는다(SPEC-021, #44). 나머지 규칙은 그대로 검사한다(.claude/rules/lint.md).
-"libs/*-client/src/*/models.py" = ["E501"]
+# 줄 길이를 넘고(SPEC-021, #44), 설명 속 수식 기호(−)가 모호한 문자로 잡힌다(SPEC-027). 나머지 규칙은
+# 그대로 검사한다(.claude/rules/lint.md).
+"libs/*-client/src/*/models.py" = ["E501", "RUF001"]
 
 [tool.mypy]
 strict = true

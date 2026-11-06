@@ -18,19 +18,19 @@ updated: 2026-11-07
 
 ## Phase 0: 준비
 
-- [ ] T001 계약 잠금 4.0.0(`scripts/fetch-service-contracts.sh --update 4.0.0`). 이미 4.0.0이면 건너뛴다 — `service-contracts.lock`
-- [ ] T002 [R-24] 단계 ID 6개(`aggregator.queue_wait`·`aggregator.handle`·`aggregate.read`·`compute`·`summary`·`store`) — 테스트 `libs/contracts/tests/test_stage_contracts.py`, 구현 `vlm_contracts/stages.py`
-- [ ] T003 [P] [R-1] `AnalysisCompleted`·`SourceCompleted` 모델(세션 null·`previousSourceId` null, 개수, 예시 왕복) — 테스트 `libs/contracts/tests/test_event_contracts.py`, 구현 `vlm_contracts/events.py`
-- [ ] T004 [P] [R-20] 결과 파일 `SourceResult` 모델(필드·필수·enum을 `aggregates/v1/source-result`와 비교, 예시 왕복) — 테스트 `libs/contracts/tests/test_aggregate_contracts.py`, 구현 `vlm_contracts/aggregates.py`
-- [ ] T005 재시도·마감 도우미를 ai-client에서 `libs/common`으로 옮김(동작 변경 없는 리팩터링, 기존 ai-client 테스트 통과로 확인) — 구현 `libs/common/src/vlm_common/http_call.py`, `libs/ai-client/src/vlm_ai_client/client.py`
+- [x] T001 계약 잠금 4.0.0(`scripts/fetch-service-contracts.sh --update 4.0.0`). 이미 4.0.0이면 건너뛴다 — `service-contracts.lock`
+- [x] T002 [R-24] 단계 ID 6개(`aggregator.queue_wait`·`aggregator.handle`·`aggregate.read`·`compute`·`summary`·`store`) — 테스트 `libs/contracts/tests/test_stage_contracts.py`, 구현 `vlm_contracts/stages.py`
+- [x] T003 [P] [R-1] `AnalysisCompleted`·`SourceCompleted` 모델(세션 null·`previousSourceId` null, 개수, 예시 왕복) — 테스트 `libs/contracts/tests/test_event_contracts.py`, 구현 `vlm_contracts/events.py`
+- [x] T004 [P] [R-20] 결과 파일 `SourceResult` 모델(필드·필수·enum을 `aggregates/v1/source-result`와 비교, 예시 왕복) — 테스트 `libs/contracts/tests/test_aggregate_contracts.py`, 구현 `vlm_contracts/aggregates.py`
+- [x] T005 재시도·마감 도우미를 ai-client에서 `libs/common`으로 옮김(동작 변경 없는 리팩터링, 기존 ai-client 테스트 통과로 확인) — 구현 `libs/common/src/vlm_common/http_call.py`, `libs/ai-client/src/vlm_ai_client/client.py`
 - [ ] T006 `libs/analysis-client`·`services/aggregator` 패키지 뼈대(pyproject, 워크스페이스 등록, mypy·pytest 대상, `NotImplementedError` 인터페이스)
-- [ ] T007 [R-3] analysis-client 생성 모델과 생성 코드 비교 CI에 `analysis-service.yaml` 추가 — 테스트 CI 비교 단계, 구현 `ac/src/vlm_analysis_client/models.py`(생성), 생성 스크립트·`.github/workflows/checks.yml`
+- [x] T007 [R-3] analysis-client 생성 모델과 생성 코드 비교 CI에 `analysis-service.yaml` 추가 — 테스트 CI 비교 단계, 구현 `ac/src/vlm_analysis_client/models.py`(생성), 생성 스크립트·`.github/workflows/checks.yml`
 
 ## Phase 1: analysis-api 읽기 클라이언트
 
-- [ ] T008 [R-3] 내부 operation 5개 호출: 경로, `X-Caller`·`X-Request-Deadline`·`traceparent`, `cursor`·`limit`, 응답 모델 — 테스트 `ac/tests/test_analysis_client.py`, 구현 `ac/src/vlm_analysis_client/client.py`
-- [ ] T009 [R-22] 503·연결 실패만 2회 지수 대기 재시도, 다음 대기가 마감을 넘기면 마지막 오류 — 같은 테스트
-- [ ] T010 [R-23] ProblemDetail → `AnalysisApiError(code, status)`, 시간 초과·연결 실패·계약과 맞지 않는 응답 코드 — 같은 테스트
+- [x] T008 [R-3] 내부 operation 5개 호출: 경로, `X-Caller`·`X-Request-Deadline`·`traceparent`, `cursor`·`limit`, 응답 모델 — 테스트 `ac/tests/test_analysis_client.py`, 구현 `ac/src/vlm_analysis_client/client.py`
+- [x] T009 [R-22] 503·연결 실패만 2회 지수 대기 재시도, 다음 대기가 마감을 넘기면 마지막 오류 — 같은 테스트
+- [x] T010 [R-23] ProblemDetail → `AnalysisApiError(code, status)`, 시간 초과·연결 실패·계약과 맞지 않는 응답 코드 — 같은 테스트
 
 ## Phase 2: US-2 병합 (P1)
 
