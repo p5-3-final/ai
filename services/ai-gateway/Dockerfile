@@ -43,11 +43,13 @@ RUN groupadd --system --gid 10001 app \
     && useradd --system --uid 10001 --gid app --no-create-home app \
     && install -d -o 10001 -g 10001 /var/cache/vlm-models
 COPY --from=build /opt/venv /opt/venv
-# Prompt Registry(SPEC-009, SPEC-012). 프롬프트·질의 사전은 이 레포가 원본이고 분류 체계는 계약에서
+# Prompt Registry(SPEC-009, SPEC-012). 프롬프트·질의 사전은 이 레포가 원본이고 분류 체계·출력 형식은 계약에서
 # 가져와 합친다(docs ADR-0012).
 COPY services/ai-gateway/registry/prompts /app/registry/prompts
 COPY services/ai-gateway/registry/query /app/registry/query
 COPY --from=docs-contracts taxonomy /app/registry/taxonomy
+# 판정 출력 형식은 event.analyzed로 다른 레포에 나가므로 계약이 원본이다(SPEC-020).
+COPY --from=docs-contracts events/_vlm-analysis.schema.json /app/registry/events/
 COPY services/ai-gateway/profiles /app/profiles
 ENV AI_GATEWAY_REGISTRY_DIR=/app/registry \
     AI_GATEWAY_PROFILE_PATH=/app/profiles/local.toml

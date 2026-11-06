@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vlm.example/contracts/prompts/event_judge_escalate/input.schema.json",
+  "title": "EventJudgeEscalateInput",
+  "description": "/v1/analyze 요청의 variables(taskType event_judge_escalate). event_judge와 같은 형식이다(SPEC-020 R-20).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["eventType", "startSec", "endSec"],
+  "properties": {
+    "eventType": {
+      "$ref": "../../taxonomy/v2/taxonomy.schema.json#/$defs/eventType",
+      "description": "후보의 이벤트 유형"
+    },
+    "startSec": {
+      "type": "number",
+      "minimum": 0,
+      "description": "후보 시작 시각. 정규화 사본 기준 초"
+    },
+    "endSec": {
+      "type": "number",
+      "minimum": 0,
+      "description": "후보 끝 시각. 정규화 사본 기준 초"
+    },
+    "zoneName": {
+      "type": ["string", "null"],
+      "maxLength": 100,
+      "description": "후보가 난 구역 이름. 구역이 없으면 null"
+    },
+    "evidence": {
+      "type": "object",
+      "description": "탐지 근거(트리거 클래스, 점수, 관측 수 등). 구조는 event.candidate 계약에서 정한다. 모델에는 그대로 전달한다."
+    }
+  },
+  "examples": [
+    {
+      "eventType": "fall",
+      "startSec": 61.2,
+      "endSec": 66.2,
+      "zoneName": "A동 적재 구역",
+      "evidence": {"triggerClass": "fallen_person", "score": 0.82, "observations": 9}
+    }
+  ]
+}

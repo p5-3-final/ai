@@ -16,6 +16,7 @@ def copied(registry_dir: Path, tmp_path: Path) -> Path:
     target = tmp_path / "contracts"
     shutil.copytree(registry_dir / "prompts", target / "prompts")
     shutil.copytree(registry_dir / "taxonomy", target / "taxonomy")
+    shutil.copytree(registry_dir / "events", target / "events")
     return target
 
 
@@ -146,10 +147,11 @@ def test_issue17_prompt_includes_output_schema_with_taxonomy(registry_dir: Path)
 
 
 def _referenced_taxonomy(contracts: Path) -> str:
-    # 분류 체계 버전 폴더는 계약과 함께 바뀌므로 경로를 고정하지 않고 출력 스키마에서 찾는다.
-    schema = (contracts / "prompts/event_judge/output.schema.json").read_text(encoding="utf-8")
+    # 분류 체계 버전 폴더는 계약과 함께 바뀌므로 경로를 고정하지 않고 입력 스키마에서 찾는다.
+    # 출력 스키마는 계약 `_vlm-analysis`를 거쳐 같은 분류 체계를 참조한다(SPEC-020).
+    schema = (contracts / "prompts/event_judge/input.schema.json").read_text(encoding="utf-8")
     found = re.search(r'"\.\./\.\./(taxonomy/[^"#]+)#', schema)
-    assert found is not None, "출력 스키마가 분류 체계를 참조하지 않는다"
+    assert found is not None, "입력 스키마가 분류 체계를 참조하지 않는다"
     return found.group(1)
 
 
@@ -270,3 +272,49 @@ def test_spec012_r10_query_parse_prompt_loads(registry_dir: Path) -> None:
     assert task.output_errors({"targets": [], "eventTypes": []}) != []
     assert task.output_errors({"targets": ["person"], "eventTypes": ["other"]}) != []
     assert task.fallback({"query": "x"}, "unknown") == {"targets": ["person"], "eventTypes": []}
+
+
+def test_spec020_r20_judge_output_is_contract_vlm_analysis(copied: Path) -> None:
+    """[SPEC-020 R-20] 판정 출력 형식은 계약 `_vlm-analysis`가 원본이라 없으면 읽지 못한다."""
+    (copied / "events/_vlm-analysis.schema.json").unlink()
+
+    with pytest.raises(PromptRegistryError, match="_vlm-analysis"):
+        PromptRegistry.load(copied)
+
+
+def test_spec020_r20_contract_examples_pass_judge_output(registry_dir: Path) -> None:
+    contract = json.loads(
+        (registry_dir / "events/_vlm-analysis.schema.json").read_text(encoding="utf-8")
+    )
+    task = PromptRegistry.load(registry_dir).get("event_judge")
+    assert task is not None
+
+    for example in contract["examples"]:
+        assert task.output_errors(example) == []
+
+
+def _without_identity(schema: dict[str, object]) -> dict[str, object]:
+    # `$id`·제목·설명은 taskType마다 다르다. 검증 규칙만 비교한다.
+    return {k: v for k, v in schema.items() if k not in {"$id", "title", "description"}}
+
+
+@pytest.mark.parametrize("schema", ["input.schema.json", "output.schema.json", "fallback.json"])
+def test_spec020_r20_escalate_has_same_formats_as_judge(registry_dir: Path, schema: str) -> None:
+    """[SPEC-020 R-20] event_judge_escalate는 event_judge와 같은 입력·출력 형식이다."""
+    judge, escalate = (
+        json.loads((registry_dir / "prompts" / task / schema).read_text(encoding="utf-8"))
+        for task in ("event_judge", "event_judge_escalate")
+    )
+
+    assert _without_identity(escalate) == _without_identity(judge)
+
+
+def test_spec020_r20_escalate_has_its_own_prompt_version(registry_dir: Path) -> None:
+    registry = PromptRegistry.load(registry_dir)
+
+    task = registry.get("event_judge_escalate")
+
+    assert task is not None
+    assert re.fullmatch(r"event_judge_escalate@[0-9a-f]{12}", task.version)
+    assert task.taxonomy_version == "v2"
+    assert task.input_errors(CANDIDATE) == []

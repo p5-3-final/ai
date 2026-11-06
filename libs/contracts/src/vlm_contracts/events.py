@@ -4,7 +4,7 @@
 JSON 필드 이름은 camelCase, 파이썬 속성은 snake_case다.
 """
 
-from typing import Literal, Self
+from typing import Annotated, Literal, Self
 from uuid import UUID
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
@@ -243,6 +243,12 @@ type DetectableEventType = Literal[
     "equipment_abandoned",
     "object_moved",
 ]
+# 분류 체계 v2의 이벤트 유형(탐지 가능 유형과 목록 밖 사건 other)과 심각도
+type EventType = DetectableEventType | Literal["other"]
+type Severity = Literal["low", "medium", "high"]
+type VerificationStatus = Literal["confirmed", "rejected", "unverified", "unknown"]
+_MODEL_ID = r"^[^:\s]+:[^:\s]+:[^:\s]+:[^:\s]+$"
+_PROTOTYPE_VERSION = r"^[A-Za-z0-9][A-Za-z0-9._:@-]{0,99}$"
 
 
 class _Part(BaseModel):
@@ -320,7 +326,7 @@ class SegmentEmbedded(_Execution):
     vectors_key: str = Field(pattern=_EXECUTION_PREFIX + r"vectors[.]json$")
     segment_count: int = Field(ge=0)
     crop_count: int = Field(ge=0)
-    embedding_model: str = Field(pattern=r"^[^:\s]+:[^:\s]+:[^:\s]+:[^:\s]+$")
+    embedding_model: str = Field(pattern=_MODEL_ID)
     dimension: int = Field(ge=1, le=4096)
 
 
@@ -342,10 +348,111 @@ class EventCandidateVector(_Execution):
 
     event_type: Literal["event.candidate.vector"] = "event.candidate.vector"
     schema_version: Literal[1] = 1
-    embedding_model: str = Field(pattern=r"^[^:\s]+:[^:\s]+:[^:\s]+:[^:\s]+$")
-    prototype_version: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._:@-]{0,99}$")
+    embedding_model: str = Field(pattern=_MODEL_ID)
+    prototype_version: str = Field(pattern=_PROTOTYPE_VERSION)
     taxonomy_version: Literal["v2"] = "v2"
     candidates: list[VectorCandidate] = Field(min_length=1, max_length=512)
+
+
+class VLMAnalysis(_Part):
+    """이벤트 후보 판정 결과(`_vlm-analysis.schema.json`).
+
+    ai-gateway `event_judge`·`event_judge_escalate`의 출력이고 `event.analyzed`의 `analysis`다.
+    """
+
+    event_type: EventType
+    # None이면 판단할 수 없음
+    event_detected: bool | None
+    verification_status: VerificationStatus
+    description: str | None = Field(max_length=1000)
+    before_state: str | None = Field(max_length=500)
+    after_state: str | None = Field(max_length=500)
+    risk_detected: bool | None
+    risk_type: str | None = Field(max_length=100)
+    risk_reason: str | None = Field(max_length=500)
+    solution: str | None = Field(max_length=500)
+    severity: Severity | None
+    evidence_start: float | None = Field(ge=0)
+    evidence_end: float | None = Field(ge=0)
+
+    @model_validator(mode="after")
+    def _risk_explained(self) -> Self:
+        # 계약의 if/then: 위험이 있다고 했으면 무엇이 왜 위험한지도 있어야 한다.
+        if self.risk_detected and (self.risk_type is None or self.risk_reason is None):
+            raise ValueError("riskType and riskReason are required when riskDetected is true")
+        return self
+
+    @classmethod
+    def unknown(cls, event_type: EventType) -> "VLMAnalysis":
+        """판정하지 못한 결과. 확정값 없이 유형만 후보의 것이다(SPEC-020 R-12)."""
+        return cls(
+            event_type=event_type,
+            event_detected=None,
+            verification_status="unknown",
+            description=None,
+            before_state=None,
+            after_state=None,
+            risk_detected=None,
+            risk_type=None,
+            risk_reason=None,
+            solution=None,
+            severity=None,
+            evidence_start=None,
+            evidence_end=None,
+        )
+
+
+class VectorEvidence(_Part):
+    """벡터 후보의 근거(`event.analyzed`의 `vectorCandidate`)."""
+
+    segment_id: UUID
+    score: float = Field(ge=-1, le=1)
+    threshold: float = Field(gt=-1, le=1)
+    prototype_version: str = Field(pattern=_PROTOTYPE_VERSION)
+    embedding_model: str = Field(pattern=_MODEL_ID)
+
+
+class Judgment(_Part):
+    """판정 호출 하나의 기록."""
+
+    stage: Literal["judge", "escalate"]
+    task_type: Literal["event_judge", "event_judge_escalate"]
+    # 호출이 끝내 실패하면 None이다.
+    call_id: UUID | None
+    model_id: str | None = Field(max_length=200)
+    prompt_version: str | None = Field(max_length=200)
+    verification_status: VerificationStatus
+    error_code: str | None = Field(pattern=r"^[A-Z][A-Z0-9_]{1,63}$")
+
+
+class EventAnalyzed(_Execution):
+    """이벤트 후보 하나의 판정. 후보마다 한 건. 발행: event-analyzer(SPEC-020 R-8~R-10)."""
+
+    event_type: Literal["event.analyzed"] = "event.analyzed"
+    schema_version: Literal[1] = 1
+    candidate_id: UUID
+    candidate_event_type: DetectableEventType
+    start_ms: int = _MS
+    end_ms: int = _MS
+    evidence_frame_keys: list[Annotated[str, Field(pattern=_BLURRED_IMAGE)]] = Field(
+        min_length=1, max_length=12
+    )
+    judgment_method: Literal["vector+vlm", "vector+vlm+escalate"]
+    # 벡터 방식(지금은 전부)이면 있다. 탐지기 후보 방식이 생기면 그때 None이 된다.
+    vector_candidate: VectorEvidence | None = Field(default=None, exclude_if=lambda v: v is None)
+    analysis: VLMAnalysis
+    judgments: list[Judgment] = Field(min_length=1, max_length=2)
+    review_required: bool
+    review_reasons: list[Literal["judgment_disagreement"]]
+    taxonomy_version: Literal["v2"] = "v2"
+
+    @model_validator(mode="after")
+    def _vector_evidence(self) -> Self:
+        if self.judgment_method.startswith("vector") and self.vector_candidate is None:
+            raise ValueError("vectorCandidate is required for vector judgment methods")
+        if len(set(self.review_reasons)) != len(self.review_reasons):
+            raise ValueError("reviewReasons must be unique")
+        return self
 
 
 EVENT_MODELS: dict[str, type[Event]] = {
@@ -358,5 +465,6 @@ EVENT_MODELS: dict[str, type[Event]] = {
     "segment.ready": SegmentReady,
     "segment.embedded": SegmentEmbedded,
     "event.candidate.vector": EventCandidateVector,
+    "event.analyzed": EventAnalyzed,
 }
 """토픽 이름 → 이벤트 모델. 계약 테스트는 여기 등록된 모델을 모두 검증한다."""

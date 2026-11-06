@@ -28,6 +28,10 @@ type StageId = Literal[
     "encoder.crops",
     "encoder.store",
     "encoder.prototype",
+    "event-analyzer.queue_wait",
+    "event-analyzer.handle",
+    "analyzer.judge",
+    "analyzer.escalate",
 ]
 STAGE_IDS: frozenset[str] = frozenset(get_args(StageId.__value__))
 

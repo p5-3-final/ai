@@ -1,8 +1,9 @@
 """Prompt Registry: 프롬프트·입력·출력 스키마·대체 결과를 읽어 taskType별로 묶는다.
 
-원본은 `services/ai-gateway/registry/prompts/`이고 분류 체계는 서비스 간 계약에서 가져온다
-(docs ADR-0012). 버전 ID는 사람이 붙이지 않고 내용
-해시로 계산해, 내용을 바꾸고 버전을 올리지 않는 실수를 없앤다(R-13).
+원본은 `services/ai-gateway/registry/prompts/`이고 분류 체계와 다른 레포로 나가는 출력 형식
+(`events/_vlm-analysis.schema.json`)은 서비스 간 계약에서 가져온다(docs ADR-0012, SPEC-020).
+버전 ID는 사람이 붙이지 않고 내용 해시로 계산해, 내용을 바꾸고 버전을 올리지 않는 실수를 없앤다
+(R-13).
 
 taskType은 폴더만 더하면 추가된다(R-24). 대체 결과도 폴더의 `fallback.json`으로 정의하므로
 taskType별 코드가 없다(R-25).
@@ -277,7 +278,7 @@ def _input_names(node: object) -> set[str]:
 
 
 def load_schemas(
-    registry_dir: Path, folders: tuple[str, ...] = ("prompts", "taxonomy")
+    registry_dir: Path, folders: tuple[str, ...] = ("prompts", "events", "taxonomy")
 ) -> dict[Path, JsonObject]:
     """`registry_dir`의 `folders` 아래 `*.schema.json`을 읽어 형식을 검사한다.
 

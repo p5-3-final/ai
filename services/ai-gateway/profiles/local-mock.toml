@@ -17,6 +17,14 @@ max_images = 12
 timeout_s = 5
 max_retries = 0
 
+[tasks.event_judge_escalate]
+adapter = "mock"
+model = "mock"
+max_output_tokens = 800
+max_images = 12
+timeout_s = 5
+max_retries = 0
+
 # 의미 없는 결정적 벡터로 /v1/embed 흐름만 본다(SPEC-011). 실제 인코더는 local.toml을 쓴다.
 [encoder]
 kind = "mock"
