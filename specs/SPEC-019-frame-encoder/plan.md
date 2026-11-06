@@ -44,7 +44,7 @@ ai-gateway의 인코더 프로필·로드 코드(`EncoderProfile`, `load_encoder
 | R-19 | `fe/service.py` 단계 블록 | `t/test_encoding_service.py` |
 | NFR-1 | `KafkaWorker`(메시지를 하나씩 처리) | `t/test_encoder_worker_e2e.py` |
 | NFR-2 | open_clip 인코더 | 로컬 compose 측정(PR에 기록) |
-| NFR-3 | 핸들러가 `asyncio.to_thread`로 인코딩, 워커는 기다리는 동안 poll을 이어 감 | `t/test_encoder_worker_e2e.py` |
+| NFR-3 | 워커가 핸들러를 별도 스레드에서 기다리며 poll을 이어 감(`libs/messaging`). 핸들러는 인코딩을 `asyncio.to_thread`로 돌린다 | `t/test_encoder_worker_e2e.py`(인코딩이 `max.poll.interval.ms`보다 오래 걸려도 커밋) |
 
 ## 3. 원칙 점검
 

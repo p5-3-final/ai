@@ -76,7 +76,7 @@ class FrameEncoderService:
     async def handle(self, event: SegmentReady, ctx: MessageContext) -> None:
         """워커 경로 핸들러. 인코딩과 저장소 호출이 블로킹이라 스레드에서 처리한다.
 
-        이벤트 루프를 막지 않아야 처리 중에도 소비 그룹 하트비트가 이어진다(SPEC-019 NFR-3).
+        처리 중 소비 그룹 하트비트(SPEC-019 NFR-3)는 워커가 poll을 이어 가며 유지한다.
         """
         await asyncio.to_thread(self._process, event, ctx.traceparent, ctx.timing)
 

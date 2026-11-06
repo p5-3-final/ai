@@ -16,6 +16,7 @@ from referencing.jsonschema import DRAFT202012, Schema
 from vlm_contracts.events import Event, ReadyCrop, ReadySegment, SegmentFrame, SegmentReady
 from vlm_encoders.mock import MockEncoder
 from vlm_storage.memory import InMemoryStorage
+from vlm_storage.storage import ObjectStorage
 
 SOURCE = UUID("0192f0d2-1a2b-7c3d-8e4f-5a6b7c8d9e0f")
 OWNER = UUID("0192f0c4-6d1e-7a3b-9c2d-1e2f3a4b5c6d")
@@ -34,12 +35,12 @@ def encoder() -> MockEncoder:
     return MockEncoder(MODEL_ID, DIMENSION)
 
 
-def frame_key(segment: int, frame: int) -> str:
-    return f"{PREFIX}blurred/seg{segment:02d}_f{frame}.jpg"
+def frame_key(segment: int, frame: int, prefix: str = PREFIX) -> str:
+    return f"{prefix}blurred/seg{segment:02d}_f{frame}.jpg"
 
 
-def crop_key(crop: int) -> str:
-    return f"{PREFIX}blurred/crop{crop:03d}.jpg"
+def crop_key(crop: int, prefix: str = PREFIX) -> str:
+    return f"{prefix}blurred/crop{crop:03d}.jpg"
 
 
 def image_bytes(key: str) -> bytes:
@@ -47,15 +48,24 @@ def image_bytes(key: str) -> bytes:
     return f"image:{key}".encode()
 
 
-def segment_ready(segments: int = 2, crops: int = 3) -> SegmentReady:
+def segment_ready(
+    segments: int = 2,
+    crops: int = 3,
+    *,
+    source: UUID = SOURCE,
+    execution: UUID = EXECUTION,
+    event_id: UUID = READY_ID,
+) -> SegmentReady:
+    """구간·크롭 수를 정한 메시지. 이미지 키는 그 메시지의 실행 폴더 `blurred/` 아래다."""
+    prefix = f"sources/{source}/jobs/{JOB}/chunks/{CHUNK}/executions/{execution}/"
     return SegmentReady(
-        event_id=READY_ID,
+        event_id=event_id,
         occurred_at=NOW,
-        source_id=SOURCE,
+        source_id=source,
         owner_id=OWNER,
         job_id=JOB,
         chunk_id=CHUNK,
-        execution_id=EXECUTION,
+        execution_id=execution,
         normalization_id=NORMALIZATION,
         segments=[
             ReadySegment(
@@ -65,7 +75,7 @@ def segment_ready(segments: int = 2, crops: int = 3) -> SegmentReady:
                 # 두 번째 구간은 정적 구간이다(R-7).
                 static=s % 2 == 1,
                 frames=[
-                    SegmentFrame(pts_ms=s * 10_000 + f * 2_500, key=frame_key(s, f))
+                    SegmentFrame(pts_ms=s * 10_000 + f * 2_500, key=frame_key(s, f, prefix))
                     for f in range(4)
                 ],
             )
@@ -76,14 +86,14 @@ def segment_ready(segments: int = 2, crops: int = 3) -> SegmentReady:
                 crop_id=UUID(int=0x2000 + c),
                 track_local_id=f"t{c}",
                 pts_ms=c * 1_000,
-                key=crop_key(c),
+                key=crop_key(c, prefix),
             )
             for c in range(crops)
         ],
     )
 
 
-def put_images(storage: InMemoryStorage, ready: SegmentReady) -> InMemoryStorage:
+def put_images[S: ObjectStorage](storage: S, ready: SegmentReady) -> S:
     keys = [f.key for s in ready.segments for f in s.frames] + [c.key for c in ready.crops]
     for key in keys:
         storage.put_bytes(key, image_bytes(key), "image/jpeg")
@@ -148,7 +158,7 @@ def event_errors(event: Event) -> list[str]:
 ENCODER_MANIFEST_KEY = "models/mobileclip2-s0/dfndr2b/manifest.json"
 
 
-def put_encoder_model(models: InMemoryStorage, weights: bytes, dimension: int = 512) -> str:
+def put_encoder_model(models: ObjectStorage, weights: bytes, dimension: int = 512) -> str:
     """가중치와 manifest를 모델 버킷에 올리고 프로필에 적을 manifest sha256을 돌려준다."""
     name = "open_clip_model.safetensors"
     manifest = {

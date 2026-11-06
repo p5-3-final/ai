@@ -1,6 +1,7 @@
 """frame-encoder 워커 진입점. `python -m frame_encoder`."""
 
 import logging
+from collections.abc import Mapping
 from dataclasses import dataclass
 
 from vlm_common.health import HealthState, serve_health
@@ -62,13 +63,17 @@ def build_worker(
     storage: ObjectStorage,
     prepared: Prepared,
     health: HealthState,
+    kafka: Mapping[str, str] | None = None,
 ) -> KafkaWorker:
-    """설정과 저장소로 워커를 조립한다. 테스트는 저장소와 health를 바꿔 넣는다."""
+    """설정과 저장소로 워커를 조립한다. 테스트는 저장소·health·librdkafka 설정을 바꿔 넣는다."""
     publisher = KafkaPublisher(bootstrap=worker.kafka_bootstrap, client_id=SERVICE_NAME)
     service = FrameEncoderService(storage, prepared.encoder, publisher, prepared.config)
     return KafkaWorker(
         WorkerConfig(
-            bootstrap=worker.kafka_bootstrap, group_id=settings.group_id, service=SERVICE_NAME
+            bootstrap=worker.kafka_bootstrap,
+            group_id=settings.group_id,
+            kafka=kafka or {},
+            service=SERVICE_NAME,
         ),
         [route("segment.ready", SegmentReady, service.handle)],
         publisher,
