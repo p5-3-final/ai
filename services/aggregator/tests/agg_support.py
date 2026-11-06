@@ -13,6 +13,8 @@ from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings
 from referencing import Registry, Resource
 from referencing.jsonschema import DRAFT202012, Schema
+from vlm_ai_client.client import AiGatewayError
+from vlm_ai_client.models import AnalyzeRequest, AnalyzeResponse
 from vlm_analysis_client.client import (
     AnalysisApiError,
     EventPage,
@@ -354,3 +356,38 @@ class FakeAnalysisApi:
         if self.final_state is None:
             raise api_error(404, "ANALYSIS_NO_ACTIVE_VERSION")
         return self.final_state
+
+
+# ---- 가짜 ai-gateway(source_summary) ----
+
+SUMMARY_TEXT = "요약 문장 원문"
+
+
+@dataclass
+class FakeGateway:
+    """`source_summary` 응답을 정하는 가짜 ai-gateway. 받은 요청을 남긴다."""
+
+    output: dict[str, object] = field(
+        default_factory=lambda: {
+            "summary": SUMMARY_TEXT,
+            "highlights": [{"atMs": 0, "text": "시작"}],
+        }
+    )
+    model_id: str | None = "summary-m"
+    error: AiGatewayError | None = None
+    requests: list[tuple[AnalyzeRequest, str | None]] = field(default_factory=list)
+
+    async def analyze(
+        self, request: AnalyzeRequest, *, traceparent: str | None = None
+    ) -> AnalyzeResponse:
+        self.requests.append((request, traceparent))
+        if self.error is not None:
+            raise self.error
+        return AnalyzeResponse(
+            call_id=uid(0xCA11 + len(self.requests)),
+            task_type=request.task_type,
+            model_id=self.model_id,
+            prompt_version="source_summary@0123456789ab",
+            taxonomy_version="v2",
+            output=self.output,
+        )
