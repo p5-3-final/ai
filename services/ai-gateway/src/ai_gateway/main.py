@@ -243,6 +243,8 @@ async def build_production(settings: GatewaySettings) -> GatewayDeps:
         settings.group_id,
         database_url,
         health,
+        cache_settings=profile.cache,
+        redis_url=redis_url,
         publish_timing=settings.stage_timing_publish,
     )
 
