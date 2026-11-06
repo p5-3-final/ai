@@ -50,9 +50,15 @@ updated: 2026-11-06
 - [x] T019 기동 조립: 설정, 클라이언트, 워커 — 테스트 `t/test_analyzer_main.py`, 구현 `ea/{__main__,settings}.py`
 - [x] T020 [R-15] [R-16] [NFR-1] [NFR-2] 워커 e2e: 정상 발행, 잘못된 메시지·403 DLQ, 긴 판정 중 커밋 — 테스트 `t/test_analyzer_worker_e2e.py`
 - [x] T021 Dockerfile, README, CI 이미지 빌드
-- [ ] T022 [NFR-3] 로컬 compose 측정(docs compose PR 뒤)
+- [x] T022 [NFR-3] 로컬 compose 측정(docs compose PR 뒤)
+
+## 측정 기록 (T022, 2026-11-06)
+
+- 로컬 compose(ai-gateway mock 프로필, event-analyzer 256M): 후보 12개 메시지를 발행부터 `event.analyzed` 12건까지 0.87초(NFR-3 기준 10초)
+- mock 출력이 severity `high`라 12건 모두 `vector+vlm+escalate`, 실패 코드 없음
+- `event.candidate.vector`는 직접 넣었다. 근거 이미지는 실행 폴더 `blurred/`에 올린 단색 JPEG다
 
 ## 완료 조건
 
-- [ ] 모든 R-*, NFR-* 테스트 또는 측정 통과
-- [ ] ruff, mypy, pytest, test-in-docker 통과
+- [x] 모든 R-*, NFR-* 테스트 또는 측정 통과
+- [x] ruff, mypy, pytest, test-in-docker 통과
