@@ -121,7 +121,7 @@ class StitcherService:
             return False
         if not claimed.chunks or claimed.meta.source_duration_ms is None:
             logger.warning("job timed out without chunk boundary", extra=_job_fields(key))
-            self._store.release(key, keep_due=False)
+            self._store.release(key, retry_at_ms=None)
             return False
         return self._finalize(claimed, timing)
 
@@ -291,15 +291,15 @@ class StitcherService:
         try:
             manifest = self._finalizer.finalize(claimed, timing)
         except Exception:
-            # 임대를 풀어 재시도 메시지나 주기 확인이 바로 다시 확정할 수 있게 한다. 풀지 못해도
-            # 임대가 끝나면 주기 확인이 이어 받는다.
+            # 임대를 풀어 재시도 메시지나 다음 주기 확인이 바로 다시 확정할 수 있게 한다. 풀지
+            # 못해도 임대가 끝나면 주기 확인이 이어 받는다.
             try:
-                self._store.release(claimed.key, keep_due=True)
+                self._store.release(claimed.key, retry_at_ms=self._now_ms())
             except Exception:
                 logger.exception("finalize lease not released", extra=_job_fields(claimed.key))
             raise
         if manifest is None:
-            self._store.release(claimed.key, keep_due=False)
+            self._store.release(claimed.key, retry_at_ms=None)
             return False
         self._store.finish(claimed.key)
         return True

@@ -178,8 +178,11 @@ class JobStateStore(Protocol):
         """
         ...
 
-    def release(self, key: JobKey, *, keep_due: bool) -> None:
-        """확정을 포기하고 `open`으로 되돌린다. `keep_due`가 False면 주기 확인 대상에서 뺀다."""
+    def release(self, key: JobKey, *, retry_at_ms: int | None) -> None:
+        """확정을 포기하고 `open`으로 되돌린다.
+
+        주기 확인은 `retry_at_ms`부터 다시 확정한다. None이면 주기 확인 대상에서 뺀다.
+        """
         ...
 
     def finish(self, key: JobKey) -> None:
@@ -260,13 +263,16 @@ class MemoryJobStateStore:
             self._due[key] = job.lease_until_ms
             return _snapshot(key, job)
 
-    def release(self, key: JobKey, *, keep_due: bool) -> None:
+    def release(self, key: JobKey, *, retry_at_ms: int | None) -> None:
         with self._lock:
             job = self._jobs.get(key)
-            if job is not None and job.status == "finalizing":
-                job.status = "open"
-            if not keep_due:
+            if job is None or job.status != "finalizing":
+                return
+            job.status = "open"
+            if retry_at_ms is None:
                 self._due.pop(key, None)
+            else:
+                self._due[key] = retry_at_ms
 
     def finish(self, key: JobKey) -> None:
         with self._lock:
