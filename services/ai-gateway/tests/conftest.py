@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 from pydantic import Field
 from pydantic_settings import BaseSettings
-from vlm_testing.containers import postgres
+from vlm_testing.containers import postgres, redis
 
 # Prompt Registry 원본(docs ADR-0012). 분류 체계는 서비스 간 계약에서 가져와 합친다.
 _REGISTRY_SOURCE = Path(__file__).resolve().parents[1] / "registry"
@@ -49,6 +49,13 @@ def registry_dir(contracts_dir: Path, tmp_path_factory: pytest.TempPathFactory) 
 def database_url() -> Iterator[str]:
     """테스트 세션에서 함께 쓰는 PostgreSQL. 테스트는 각자 고유한 sourceId로 데이터를 나눈다."""
     with postgres() as url:
+        yield url
+
+
+@pytest.fixture(scope="session")
+def redis_url() -> Iterator[str]:
+    """테스트 세션에서 함께 쓰는 Redis. 테스트는 각자 고유한 키를 쓴다."""
+    with redis() as url:
         yield url
 
 
