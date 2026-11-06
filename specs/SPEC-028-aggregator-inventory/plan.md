@@ -4,7 +4,7 @@ repo: ai
 status: Approved
 owner: <이름>
 created: 2026-11-06
-updated: 2026-11-06
+updated: 2026-11-07
 ---
 
 # Plan: SPEC-028 aggregator 정적 객체 재고 비교·장비 방치·위험 노출 예측 — ai
@@ -12,6 +12,8 @@ updated: 2026-11-06
 - spec: docs 레포 `docs/specs/SPEC-028-aggregator-inventory/spec.md`
 - 계약(계약 묶음 3.14.0): `events/chunk.manifest`·`_state-compare`·`_risk-forecast`·`_vlm-analysis`, `aggregates/v1/chunk-inventory`·`source-result`(`inventory`·`inventoryChanges`·`inventoryEvents`·`forecasts`), `events/source.completed`(`counts.inventoryEvents`·`forecasts`), `openapi/analysis-service.yaml` `FinalState.staticObjects`, `openapi/ai-gateway.yaml` 1.4.0(taskType `state_compare`·`risk_forecast`), `asyncapi/aggregator.yaml` 1.1.0, `stages/v1`
 - 선행: SPEC-021, SPEC-027(이 plan은 SPEC-027의 aggregator 위에 더한다)
+
+- v5.1(계약 묶음 4.0.0, 2026-11-07, ADR-0015): `chunk.manifest`에 선택 필드 `jobType`·`trackIdEpoch`·`last`·`gapMs`(생산자 stream-ingestor, SPEC-037)가 더해졌다. `STREAM` 세션은 창마다가 아니라 프로필 주기마다 재고·방치·예측을 계산한다(R-19). SPEC-027 v5.1 설계(창 처리·세션 상태·Redis 계수) 위에 더한다. 잠금은 4.0.0이다.
 
 ## 1. 요약
 
@@ -38,6 +40,7 @@ ai-gateway에는 `state_compare` Registry 폴더(VLM)와, VLM이 아닌 새 Adap
 | R-16 | `gw/adapters/predictor.py` `RuleForecastPredictor`, `gw/analyze.py`(predictor 경로), `gw/profile.py` | `gt/test_predictor_adapter.py`, `gt/test_analyze_api.py`, `gt/test_profile.py` |
 | R-17 | `agg/ids.py`, `agg/result.py` | `t/test_aggregator_ids.py`, `t/test_aggregator_compute.py` |
 | R-18 | `agg/service.py`·`agg/inventory_store.py` 단계 블록 | `t/test_aggregator_service.py`, `libs/contracts/tests/test_stage_contracts.py` |
+| R-19 | `agg/stream.py`(`inventory_due`, 주기 계산을 창 처리 끝에 붙임), `agg/profile.py`(`stream_inventory_interval_s`, 기본 600), `agg/judge_budget.py`(세션당 상한, SPEC-027 R-31과 같은 계수) | `t/test_aggregator_stream_inventory.py`, `t/test_aggregator_judge_budget.py`(integration) |
 | NFR-1 | `agg/inventory.py` | `t/test_aggregator_performance.py`(청크 60 × 객체 100, p95 2초) |
 | NFR-2 | `agg/inventory_store.py` | `t/test_aggregator_worker_e2e.py`(처리 확인), 로컬 compose 측정(p95 300ms) |
 | NFR-3 | `gw/adapters/predictor.py` | `gt/test_overhead.py`에 `risk_forecast` 경우 추가(p95 20ms) |
@@ -213,3 +216,11 @@ sequenceDiagram
 - 로컬 compose(docs PR): 토픽 `chunk.manifest`, `chunk.manifest.aggregator.retry`. 생산자가 없으므로 측정은 메시지를 직접 넣는다.
 - ai-gateway 프로필 변경은 Registry 묶음(`registry_bundle`)에 함께 들어간다. 운영 배포는 사용자 지시 시.
 - 순서: SPEC-027 → ai-gateway `state_compare`·`predictor`·`risk_forecast` → aggregator 재고 단계.
+
+## 9. v5.1 추가 설계(계약 묶음 4.0.0, 2026-11-07)
+
+- `STREAM`의 `chunk.manifest`도 R-1과 같이 청크 재고 파일로 저장한다(경로는 창의 `chunkId`). 저장 경로·멱등 규칙은 같다.
+- SPEC-027 창 처리(R-30)의 fold 뒤에 `inventory_due(state, window_end_ms)`를 본다. 세션 상태의 `lastInventoryAtMs`가 없거나 `window_end_ms − lastInventoryAtMs ≥ stream_inventory_interval_s × 1000`이면 그때까지의 재고 파일(`inventory/` 나열)과 세션 현재 상태로 R-3~R-7(이어 맞추기·변화 후보), R-11~R-12(장비 방치), R-14~R-15(예측)를 계산한다. 회전 세션이면 `previousSourceId` 세션 상태의 끝 재고를 첫 청크 앞에 놓는다(R-6와 같은 규칙).
+- 확정된 재고 이벤트는 다음 창 fold의 입력에 넣어 다음 `state.updated`의 규칙 이벤트·위험 전이에 담긴다. 예측 결과는 세션 상태에 두고 세션 마무리(SPEC-027 R-32) 결과 파일의 `forecasts`에 싣는다. `state.updated`에는 예측 필드가 없다.
+- 판정 호출(R-7·R-12)의 상한(R-8)은 세션당이다. SPEC-027 R-31과 같은 Redis 계수 `agg:judge-calls:<jobId>`를 쓴다. 업로드 job은 지금처럼 프로세스 안 계수다.
+- 주기 계산은 창 처리와 같은 핸들러 안에서 순서대로 한다(별도 타이머 없음). 창이 멈추면 계산도 멈추고, 세션 마무리에서 마지막으로 한 번 더 계산한다.

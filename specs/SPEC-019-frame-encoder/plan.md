@@ -4,13 +4,15 @@ repo: ai
 status: Approved
 owner: <이름>
 created: 2026-11-06
-updated: 2026-11-06
+updated: 2026-11-07
 ---
 
 # Plan: SPEC-019 frame-encoder 구간·크롭 벡터와 프로토타입 후보 — ai
 
 - spec: docs 레포 `docs/specs/SPEC-019-frame-encoder/spec.md`
 - 계약: `events/segment.ready`·`segment.embedded`·`event.candidate.vector`, `vectors/v1/vector-file`, `stages/v1`, `asyncapi/frame-encoder.yaml` (계약 묶음 2.10.0)
+
+- v5.1(계약 묶음 4.0.0, 2026-11-07, ADR-0015·ADR-0016): `event.candidate.vector`에 후보 선택 필드 `mergedSegmentIds`와 메시지 선택 필드 `droppedCount`·`jobType`, `segment.ready`·`segment.embedded`에 선택 필드 `jobType`이 더해졌다. R-20(연속 구간 병합)·R-21(유형별 상한)·R-22(`jobType` 전달)를 아래 설계 절대로 더한다. 실시간 창(stream-ingestor, SPEC-037)도 같은 `segment.ready`로 들어오므로 코드 분기는 `jobType` 전달뿐이다.
 
 ## 1. 요약
 
@@ -42,6 +44,9 @@ ai-gateway의 인코더 프로필·로드 코드(`EncoderProfile`, `load_encoder
 | R-17 | `fe/service.py`(`NonRetryableError`) | `t/test_encoding_service.py` |
 | R-18 | 워커 재시도(SPEC-013 공통) | `t/test_encoding_service.py`(저장소 오류는 그대로 던짐) |
 | R-19 | `fe/service.py` 단계 블록 | `t/test_encoding_service.py` |
+| R-20 | `fe/prototypes.py` `merge_consecutive`(연속 구간 병합) | `t/test_prototypes.py::test_spec019_r20_*` |
+| R-21 | `fe/prototypes.py` `cap_per_type`, `fe/profile.py`(`[prototypes] max_candidates_per_type`, 기본 5) | `t/test_prototypes.py::test_spec019_r21_*`, `t/test_prototype_profile.py::test_spec019_r21_*` |
+| R-22 | `fe/service.py`(`jobType` 그대로 전달), `vlm_contracts.events.SegmentReady`·`SegmentEmbedded`·`EventCandidateVector` | `t/test_encoding_service.py::test_spec019_r22_*`, `libs/contracts/tests/test_event_contracts.py` |
 | NFR-1 | `KafkaWorker`(메시지를 하나씩 처리) | `t/test_encoder_worker_e2e.py` |
 | NFR-2 | open_clip 인코더 | 로컬 compose 측정(PR에 기록) |
 | NFR-3 | 워커가 핸들러를 별도 스레드에서 기다리며 poll을 이어 감(`libs/messaging`). 핸들러는 인코딩을 `asyncio.to_thread`로 돌린다 | `t/test_encoder_worker_e2e.py`(인코딩이 `max.poll.interval.ms`보다 오래 걸려도 커밋) |
@@ -118,3 +123,24 @@ ai-gateway의 인코더 프로필·로드 코드(`EncoderProfile`, `load_encoder
 
 - 운영 배포·토픽·Secret은 사용자 지시 시 infra·gitops에서 한다.
 - 로컬 compose: docs `local/docker-compose.yml`에 frame-encoder와 토픽을 더한다.
+
+## 9. v5.1 추가 설계(계약 묶음 4.0.0, 2026-11-07)
+
+### 후보 계산 순서
+
+R-11 후보 계산 → R-20 연속 병합 → R-21 유형별 상한 → R-14 발행. 셋 다 한 메시지 안의 순수 함수라 R-5의 결정성이 유지된다(같은 메시지면 같은 후보·같은 `mergedSegmentIds`·같은 `droppedCount`).
+
+### R-20 연속 구간 병합
+
+- 한 메시지의 구간을 `startMs` 순으로 놓는다. 같은 유형의 후보가 이웃 구간에서 이어지면(앞 구간 `endMs` ≥ 다음 구간 `startMs`. 10초 창·5초 간격이라 이웃 구간은 5초 겹친다) 같은 묶음이다. 한 구간이라도 그 유형의 후보가 없으면 묶음이 끊긴다.
+- 묶음에서 점수가 가장 높은 후보 하나를 남긴다. 동점이면 `startMs`가 빠른 것이다. 나머지 구간의 `segmentId`를 시작순으로 남긴 후보의 `mergedSegmentIds`에 담는다. 묶음이 하나뿐이면 필드를 싣지 않는다.
+- 병합은 메시지(실행) 안에서만 한다. 실행 경계의 겹침 5초 구간은 양쪽 실행에 같은 `segmentId`로 들어가므로 같은 candidateId가 두 번 나올 수 있고, event-analyzer가 같은 eventId로 처리한다(SPEC-020 R-9).
+
+### R-21 유형별 상한
+
+- 병합 뒤 유형마다 점수 내림차순(동점이면 `startMs` 순)으로 `max_candidates_per_type`개만 남긴다. 잘린 후보 수의 합을 메시지의 `droppedCount`에 싣는다(0이면 싣지 않는다).
+- 프로필 `[prototypes] max_candidates_per_type = 5`는 자리값이고 값은 AI 담당자 몫이다. 1 미만이면 프로필 검증에서 실패한다.
+
+### R-22 `jobType`
+
+`SegmentReady.job_type: Literal["FULL", "REANALYZE", "REEMBED", "STREAM"] | None`을 `SegmentEmbedded`·`EventCandidateVector`에 그대로 옮긴다. 없으면 발행 메시지에도 싣지 않는다. frame-encoder는 값을 읽어 동작을 바꾸지 않는다.

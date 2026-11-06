@@ -1,7 +1,7 @@
 ---
 spec: SPEC-020
 repo: ai
-updated: 2026-11-06
+updated: 2026-11-07
 ---
 
 # Tasks: SPEC-020 event-analyzer 벡터 후보 판정 — ai
@@ -17,7 +17,7 @@ updated: 2026-11-06
 
 ## Phase 0: 준비
 
-- [x] T001 계약 잠금 3.0.0, 단계 ID 4개 — 테스트 `libs/contracts/tests/test_stage_contracts.py`, 구현 `vlm_contracts/stages.py`
+- [x] T001 계약 잠금 4.0.0, 단계 ID 4개 — 테스트 `libs/contracts/tests/test_stage_contracts.py`, 구현 `vlm_contracts/stages.py`
 - [x] T002 [R-10] `VLMAnalysis`·`EventAnalyzed` 모델, 벡터 방식이면 `vectorCandidate` 필수 — 테스트 `libs/contracts/tests/test_event_contracts.py`, `test_analysis_contracts.py`, 구현 `vlm_contracts/events.py`
 - [x] T003 [R-20] ai-gateway 출력 스키마를 계약 `_vlm-analysis` 참조로, Registry에 `events/` — 테스트 `services/ai-gateway/tests/test_prompts.py`, 구현 `registry/prompts/event_judge/`, `prompts.py`, `registry_bundle.py`, Dockerfile
 - [x] T004 [R-20] `event_judge_escalate` 등록(입출력 동일, 프로필 모델·프롬프트 버전) — 테스트 `test_prompts.py`, `test_analyze_api.py`, 구현 `registry/prompts/event_judge_escalate/`, 프로필
@@ -51,6 +51,11 @@ updated: 2026-11-06
 - [x] T020 [R-15] [R-16] [NFR-1] [NFR-2] 워커 e2e: 정상 발행, 잘못된 메시지·403 DLQ, 긴 판정 중 커밋 — 테스트 `t/test_analyzer_worker_e2e.py`
 - [x] T021 Dockerfile, README, CI 이미지 빌드
 - [x] T022 [NFR-3] 로컬 compose 측정(docs compose PR 뒤)
+
+## Phase 6: v5.1 추가(계약 묶음 4.0.0)
+
+- [ ] T023 [R-21] 잠금 4.0.0, ai-client 모델 재생성, `EventAnalyzed.unverified_reason`, `unverified` 최종 결과에 응답 사유 전달 — 테스트 `t/test_judgment.py`, `t/test_analyzer_service.py`, `libs/contracts/tests/test_event_contracts.py`, 구현 `ea/judgment.py`, `ea/service.py`, `vlm_contracts/events.py`, `libs/ai-client`(생성)
+- [ ] T024 [R-22] `EventCandidateVector.job_type` → `EventAnalyzed.job_type` 전달, 없으면 생략 — 테스트 `t/test_analyzer_service.py`, 구현 `ea/service.py`, `vlm_contracts/events.py`
 
 ## 측정 기록 (T022, 2026-11-06)
 

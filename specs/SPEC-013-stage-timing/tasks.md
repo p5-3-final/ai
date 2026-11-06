@@ -1,7 +1,7 @@
 ---
 spec: SPEC-013
 repo: ai
-updated: 2026-11-04
+updated: 2026-11-07
 ---
 
 # Tasks: SPEC-013 처리 단계 측정 — ai
@@ -36,6 +36,10 @@ updated: 2026-11-04
 
 - [x] T009 발행 설정(normalize `STAGE_TIMING_PUBLISH`, ai-gateway `AI_GATEWAY_STAGE_TIMING_PUBLISH`), `.env.example`, AGENTS.md — 구현 `services/normalize/src/normalize/__main__.py`·`settings.py`, `services/ai-gateway/src/ai_gateway/deletion.py`·`settings.py`
 - [x] T010 로컬 compose에서 normalize 로그의 측정 묶음 확인
+
+## Phase 5: v5.1 추가(계약 묶음 4.0.0)
+
+- [ ] T011 [R-10] 잠금 4.0.0의 단계 ID 6개를 `StageId`에 추가(SPEC-023 T001·SPEC-027 T001과 같은 태스크, 먼저 하는 쪽이 한다) — 테스트 `libs/contracts/tests/test_stage_contracts.py`, 구현 `con/stages.py`
 
 ## 완료 조건 (Definition of Done)
 

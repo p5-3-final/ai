@@ -1,7 +1,7 @@
 ---
 spec: SPEC-028
 repo: ai
-updated: 2026-11-06
+updated: 2026-11-07
 ---
 
 # Tasks: SPEC-028 aggregator 정적 객체 재고 비교·장비 방치·위험 노출 예측 — ai
@@ -18,7 +18,7 @@ updated: 2026-11-06
 
 ## Phase 0: 준비
 
-- [ ] T001 계약 잠금 3.14.0 확인(SPEC-027 T001에서 올렸으면 건너뜀) — `service-contracts.lock`
+- [ ] T001 계약 잠금 4.0.0 확인(SPEC-027 T001에서 올렸으면 건너뜀) — `service-contracts.lock`
 - [ ] T002 [R-18] 단계 ID 4개(`aggregate.inventory_store`·`inventory_compare`·`judge`·`forecast`) — 테스트 `libs/contracts/tests/test_stage_contracts.py`, 구현 `vlm_contracts/stages.py`
 - [ ] T003 [P] [R-1] `ChunkManifest`·`ChunkInventory` 모델(계약 비교, 예시 왕복) — 테스트 `libs/contracts/tests/test_event_contracts.py`, `test_aggregate_contracts.py`, 구현 `vlm_contracts/{events,aggregates}.py`
 - [ ] T004 [P] [R-13] `SourceResult` 확장 필드·타임라인 `inventory_event`, `SourceCompleted.counts` 선택 필드 — 같은 테스트
@@ -69,6 +69,12 @@ updated: 2026-11-06
 - [ ] T028 [NFR-1] 청크 60 × 객체 100 이어 맞추기 p95 2초 — 테스트 `t/test_aggregator_performance.py`
 - [ ] T029 [R-1] [R-9] 워커에 `chunk.manifest` 경로, e2e(`chunk.manifest` 두 건 + `analysis.completed` → `object_moved`가 든 `source.completed`) — 테스트 `t/test_aggregator_worker_e2e.py`, 구현 `agg/__main__.py`
 - [ ] T030 [NFR-2] 로컬 compose 토픽(docs PR)과 `chunk.manifest` 처리 p95 측정, README 갱신, 아래에 측정 기록
+
+## Phase 8: v5.1 추가(계약 묶음 4.0.0)
+
+- [ ] T031 [R-19] `ChunkManifest` 4.0.0 선택 필드, `STREAM` 재고 파일 저장, `inventory_due`와 주기 계산(재고 비교·장비 방치·예측), 확정 재고 이벤트를 다음 창 fold 입력으로 — 테스트 `libs/contracts/tests/test_event_contracts.py`, `t/test_aggregator_stream_inventory.py`, 구현 `vlm_contracts/events.py`, `agg/stream.py`, `agg/profile.py`
+- [ ] T032 [R-19] 세션당 판정 상한을 Redis 계수로(SPEC-027 T053과 같은 계수), 업로드는 기존 계수 유지 — 테스트 `t/test_aggregator_judge_budget.py`(integration), 구현 `agg/judge_budget.py`, `agg/judge.py`
+- [ ] T033 [R-19] 회전 세션의 직전 끝 재고를 첫 청크 앞에 놓기, 세션 마무리의 마지막 계산과 `forecasts` — 테스트 `t/test_aggregator_stream_inventory.py`, 구현 `agg/stream.py`
 
 ## 측정 기록
 

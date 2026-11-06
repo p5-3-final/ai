@@ -4,13 +4,15 @@ repo: ai
 status: Approved
 owner: <이름>
 created: 2026-11-06
-updated: 2026-11-06
+updated: 2026-11-07
 ---
 
 # Plan: SPEC-016 ai-gateway 결과 캐시·예산·호출 한도 — ai
 
 - spec: docs 레포 `docs/specs/SPEC-016-ai-gateway-cache-budget/spec.md`
 - 계약: docs 레포 `service-contracts/openapi/ai-gateway.yaml`(0.4.0, `AI_BUDGET_EXCEEDED`), 계약 묶음 2.8.0
+
+- v5.1(계약 묶음 4.0.0, 2026-11-07): `openapi/ai-gateway.yaml` 1.6.0이 `/v1/analyze` 응답에 선택 필드 `unverifiedReason`(`model_unavailable`·`budget_exceeded`)을 더했다(R-23). 호출자(event-analyzer SPEC-020 R-21, quality-service SPEC-029 R-27)가 이 값으로 재판정 큐를 나눈다.
 
 ## 1. 요약
 
@@ -33,6 +35,7 @@ updated: 2026-11-06
 | R-17, R-18 | `gw/result_cache.py`, `gw/rate_limit.py`, `gw/main.py` | `test_result_cache.py`·`test_rate_limit.py`의 `r17_*`, `t/test_startup_e2e.py::test_spec016_r18_*` |
 | R-19 | `gw/call_log.py`, 각 서비스 | `test_analyze_api.py::test_spec016_r19_*`, `t/test_call_log.py`(PostgreSQL) |
 | R-20 | `gw/profile.py` | `t/test_profile.py::test_spec016_r20_*` |
+| R-23 | `gw/analyze.py`(`unverified` 결과에 사유), `gw/api.py`(응답 모델 `AnalyzeResponse.unverifiedReason`) | `t/test_analyze_api.py::test_spec016_r23_*`, `t/test_contract.py`(응답 모델과 1.6.0 대조) |
 | NFR-1, NFR-4 | `gw/gate.py` | 로컬 compose 측정 |
 | NFR-3 | 각 서비스 로그 | 기존 로그 테스트에 캐시 적중 경우 추가 |
 
@@ -136,3 +139,9 @@ sequenceDiagram
 - 리스크: 정산 비용이 예상보다 크면 그날 한도를 조금 넘을 수 있다. 예상 토큰을 넉넉히 두고, 넘은 뒤 예약은 막는다(NFR-2).
 - 리스크: `/v1/analyze` 캐시 키에 이미지를 다 읽어야 한다. 원래도 모델에 보내려 읽으므로 추가 읽기는 없다.
 - 롤백 방법: 프로필에서 `[budget]`·`[rate_limits]`를 지우고 `AI_GATEWAY_REDIS_URL`을 비우면 예전 동작에 가깝다. 코드는 PR revert, 마이그레이션 0004는 downgrade로 되돌린다.
+
+## 8. v5.1 추가 설계(계약 묶음 4.0.0, 2026-11-07)
+
+- `AnalyzeService`가 결과를 만드는 경로는 둘이다. 모델 미설정·Adapter 없음으로 `fallback.json`을 돌려주는 경로는 `unverifiedReason: model_unavailable`, `ModelGate`가 `budget_exceeded`를 돌려준 경로는 `budget_exceeded`를 싣는다. `verificationStatus`가 `unverified`가 아니면 필드를 싣지 않는다(`exclude_none`).
+- 결과 캐시(R-1)는 `unverified` 결과를 저장하지 않으므로(기존 동작) 캐시 적중 경로에는 사유가 없다. 캐시 키·예산·한도 계산은 바뀌지 않는다.
+- 응답 모델은 계약 테스트(`t/test_contract.py`)가 `ai-gateway.yaml`과 대조한다. 잠금 4.0.0으로 올린 뒤 이 테스트가 먼저 깨지는 것이 Red다.

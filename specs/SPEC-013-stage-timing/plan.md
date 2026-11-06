@@ -4,13 +4,15 @@ repo: ai
 status: Approved
 owner: <이름>
 created: 2026-11-04
-updated: 2026-11-04
+updated: 2026-11-07
 ---
 
 # Plan: SPEC-013 처리 단계 측정 — ai
 
 - spec: docs 레포 `docs/specs/SPEC-013-stage-timing/spec.md`
 - 계약: docs 레포 `service-contracts/stages/v1/`(단계 ID 목록, `StageTiming`), `events/stage.timing.schema.json`, `events/_envelope.schema.json`(`producedAt`), `asyncapi/stage-timing.yaml` (계약 묶음 2.3.0)
+
+- v5.1(계약 묶음 4.0.0, 2026-11-07): `stages/v1` 목록에 `ingest.window`·`ingest.alert`·`stream.window-complete`·`stream.state-apply`·`analyzer.alert`·`aggregate.fold`가 더해졌다. 기록 형식은 바뀌지 않는다. `StageId`는 잠금을 4.0.0으로 올리는 태스크(SPEC-023 T001 또는 SPEC-027 T001, 먼저 하는 쪽)에서 전체 목록으로 맞춘다.
 
 ## 1. 요약
 
@@ -30,6 +32,7 @@ updated: 2026-11-04
 | R-8 | `msg/publisher.py` | `test_publisher.py::test_spec013_r8_*`(Kafka) |
 | R-9 | `services/normalize/src/normalize/service.py` | `services/normalize/tests/test_service.py::test_spec013_r9_*` |
 | R-10 | `con/stages.py`(`StageId`), `msg/worker.py`(소비 그룹 단계 확인) | `libs/contracts/tests/test_stage_contracts.py`, `test_timing.py::test_spec013_r10_*` |
+| R-10(v5.1 단계 ID 6개) | `con/stages.py`(`StageId`) | `libs/contracts/tests/test_stage_contracts.py`(잠금 4.0.0 목록과 일치) |
 | NFR-1 | `con/stages.py`(측정 대상 필드) | `test_stage_contracts.py`(계약에 없는 필드 금지), `test_timing.py::test_spec013_nfr1_*` |
 | NFR-2 | `msg/timing.py` | `test_timing.py::test_spec013_nfr2_*` |
 
@@ -110,3 +113,8 @@ sequenceDiagram
 - 리스크: Kafka 발행을 켜면 메시지마다 브로커 확인을 한 번 더 기다린다. 기본은 로그라 영향이 없고, 운영에서 켤 때 지연을 확인한다.
 - 리스크: 재시도 토픽에서 받은 메시지의 queue_wait은 원래 발행 시각(`producedAt`) 또는 재시도 토픽 적재 시각 기준이라 백오프 대기가 섞일 수 있다. 시도 번호로 나눠 본다.
 - 롤백 방법: 발행 설정을 끈다. 코드 롤백은 PR revert.
+
+## 8. v5.1 추가 설계(계약 묶음 4.0.0, 2026-11-07)
+
+- 단계 ID 6개는 `Literal` 목록에만 더한다(5절의 선택과 같다). 측정 기록기·출력기·발행 형식은 그대로다.
+- `ingest.*`·`stream.*`는 이 레포의 stream-ingestor(SPEC-037, Phase 2)와 backend stream-service가 쓰고, `analyzer.alert`는 SPEC-023 R-24, `aggregate.fold`는 SPEC-027 R-34가 쓴다. 목록을 먼저 맞춰 두어야 그 spec의 단계 블록이 mypy를 통과한다.

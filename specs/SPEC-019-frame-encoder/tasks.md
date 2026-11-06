@@ -1,7 +1,7 @@
 ---
 spec: SPEC-019
 repo: ai
-updated: 2026-11-06
+updated: 2026-11-07
 ---
 
 # Tasks: SPEC-019 frame-encoder — ai
@@ -47,6 +47,12 @@ updated: 2026-11-06
 - [x] T019 [R-16] [NFR-1] [NFR-3] 워커 e2e: 정상 처리, 잘못된 메시지 DLQ — 테스트 `t/test_encoder_worker_e2e.py`
 - [x] T020 Dockerfile, 로컬 프로필, README, `scripts/test-in-docker.sh` 대상
 - [x] T021 [NFR-2] 실제 모델 테스트(`-m model`)와 로컬 compose 측정
+
+## Phase 6: v5.1 추가(계약 묶음 4.0.0)
+
+- [ ] T022 [R-22] 잠금 4.0.0, `SegmentReady`·`SegmentEmbedded`·`EventCandidateVector`의 선택 필드(`jobType`, `mergedSegmentIds`, `droppedCount`)와 `jobType` 전달 — 테스트 `libs/contracts/tests/test_event_contracts.py`, `t/test_encoding_service.py`, 구현 `vlm_contracts/events.py`, `fe/service.py`
+- [ ] T023 [R-20] 연속 구간 묶음에서 최고 점수 하나만 남기고 `mergedSegmentIds`(동점은 빠른 구간, 묶음 하나면 필드 없음) — 테스트 `t/test_prototypes.py`, 구현 `fe/prototypes.py`
+- [ ] T024 [R-21] 유형별 상한(점수순, 기본 5)과 `droppedCount`, 프로필 검증 — 테스트 `t/test_prototypes.py`, `t/test_prototype_profile.py`, 구현 `fe/prototypes.py`, `fe/profile.py`, `profiles/*.toml`, README
 
 ## 측정 기록 (T021, 2026-11-06)
 

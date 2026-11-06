@@ -4,13 +4,15 @@ repo: ai
 status: Approved
 owner: <이름>
 created: 2026-11-06
-updated: 2026-11-06
+updated: 2026-11-07
 ---
 
 # Plan: SPEC-020 event-analyzer 벡터 후보 판정 — ai
 
 - spec: docs 레포 `docs/specs/SPEC-020-event-analyzer-vector/spec.md`
 - 계약: `events/event.analyzed`·`_vlm-analysis`·`event.candidate.vector`, `stages/v1`, `asyncapi/event-analyzer.yaml`, `openapi/ai-gateway.yaml` 1.0.0 (계약 묶음 3.0.0, docs ADR-0014)
+
+- v5.1(계약 묶음 4.0.0, 2026-11-07, ADR-0016): `event.analyzed`에 선택 필드 `unverifiedReason`(`budget_exceeded`·`model_unavailable`·`call_cap_reached`)·`jobType`, `openapi/ai-gateway.yaml` 1.6.0 응답에 `unverifiedReason`이 더해졌다. R-21(사유 전달)·R-22(`jobType` 전달)를 아래 설계 절대로 더한다. `call_cap_reached`는 탐지기 경로(SPEC-023 R-19)만 만든다.
 
 ## 1. 요약
 
@@ -38,6 +40,8 @@ ai-gateway에는 `event_judge_escalate` 폴더와 프로필 항목을 더하고,
 | R-18 | `ea/service.py`(`asyncio.Semaphore`) | `t/test_analyzer_service.py` |
 | R-19 | `ea/service.py` 단계 블록 | `t/test_analyzer_service.py` |
 | R-20 | `registry/prompts/event_judge_escalate/`, 프로필 `[tasks.event_judge_escalate]` | `services/ai-gateway/tests/test_prompts.py`, `test_analyze_api.py` |
+| R-21 | `ea/judgment.py`(`Outcome.unverified_reason`, `decide`), `ea/service.py`, `vlm_ai_client` 생성 모델(`AnalyzeResponse.unverifiedReason`) | `t/test_judgment.py::test_spec020_r21_*`, `t/test_analyzer_service.py::test_spec020_r21_*`, `libs/ai-client/tests`(생성 모델 대조) |
+| R-22 | `ea/service.py`(`jobType` 그대로 전달), `vlm_contracts.events.EventAnalyzed`·`EventCandidateVector` | `t/test_analyzer_service.py::test_spec020_r22_*`, `libs/contracts/tests/test_event_contracts.py` |
 | NFR-1 | `KafkaWorker`(하나씩 처리, 발행 뒤 커밋) | `t/test_analyzer_worker_e2e.py` |
 | NFR-2 | `KafkaWorker`가 핸들러를 기다리며 poll을 이어 감(`libs/messaging`) | `t/test_analyzer_worker_e2e.py`(판정이 `max.poll.interval.ms`보다 오래 걸려도 커밋) |
 | NFR-3 | 후보 판정 동시 실행 | 로컬 compose 측정(PR에 기록) |
@@ -128,3 +132,9 @@ ai-gateway에는 `event_judge_escalate` 폴더와 프로필 항목을 더하고,
 
 - 운영 배포·토픽은 사용자 지시 시 infra·gitops에서 한다.
 - 로컬 compose: docs `local/docker-compose.yml`에 event-analyzer와 토픽 `event.analyzed`, `event.candidate.vector.event-analyzer.retry`, `event-analyzer.dlq`를 더한다.
+
+## 9. v5.1 추가 설계(계약 묶음 4.0.0, 2026-11-07)
+
+- ai-client의 요청·응답 모델은 SPEC-021대로 `openapi/ai-gateway.yaml`에서 생성하므로 잠금 4.0.0으로 다시 생성하면 `AnalyzeResponse.unverifiedReason`이 들어온다. 손으로 쓴 모델은 두지 않는다.
+- `decide`는 최종 결과가 `unverified`일 때 그 결과를 만든 응답(1차 판정 또는 재판정)의 `unverifiedReason`을 `Outcome.unverified_reason`으로 옮기고, 핸들러가 `EventAnalyzed.unverified_reason`에 싣는다. 응답에 사유가 없거나 최종 결과가 `unverified`가 아니면 싣지 않는다. 호출 실패(`unknown`, R-12~R-14)에는 사유가 없다.
+- `jobType`은 `EventCandidateVector.job_type`을 `EventAnalyzed.job_type`에 그대로 옮긴다. 없으면 싣지 않는다. 벡터 경로는 값을 읽어 동작을 바꾸지 않는다(Redis 재판정 키는 탐지기 경로 SPEC-023 R-18만 쓴다).

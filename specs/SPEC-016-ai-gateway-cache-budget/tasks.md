@@ -1,7 +1,7 @@
 ---
 spec: SPEC-016
 repo: ai
-updated: 2026-11-06
+updated: 2026-11-07
 ---
 
 # Tasks: SPEC-016 ai-gateway 결과 캐시·예산·호출 한도 — ai
@@ -44,6 +44,10 @@ updated: 2026-11-06
 - [x] T013 [R-17] [R-18] 운영 조립, Redis 설정, `/ready`는 Redis와 무관 — 테스트 `t/test_startup_e2e.py`, 구현 `gw/main.py`, `gw/settings.py`, `.env.example`, `profiles/` (f0b07eb)
 - [x] T014 [P] 계약 대조(`AI_BUDGET_EXCEEDED`) — 테스트 `t/test_contract.py` (f0b07eb)
 - [x] T015 로컬 compose: 같은 analyze 두 번, 작은 예산, Redis 정지, NFR-1·NFR-4 측정 — docs `local/`(Redis 연결 설정) — 같은 analyze 두 번(적중, 결과 같음), 작은 예산(analyze budget_exceeded·parse safe-fallback), Redis 정지(/ready 200, DB 캐시 적중, 경고 1회). p95: 적중 8.0ms·미적중 6.5ms(이미지 읽기 포함, mock 모델), parse LLM 적중 2.1ms
+
+## Phase 7: v5.1 추가(계약 묶음 4.0.0)
+
+- [ ] T016 [R-23] `unverified` 응답에 `unverifiedReason`(`model_unavailable`·`budget_exceeded`), 그 밖에는 싣지 않음 — 테스트 `t/test_analyze_api.py`, `t/test_contract.py`, 구현 `gw/analyze.py`, `gw/api.py`
 
 ## 완료 조건 (Definition of Done)
 
