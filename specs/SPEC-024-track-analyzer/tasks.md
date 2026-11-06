@@ -43,9 +43,9 @@ updated: 2026-11-07
 
 ## Phase 3: US-3·US-4 실패 (P1·P2)
 
-- [ ] T016 [R-4] 503(다시 부르지 않음)·504·시간 초과·연결 실패 소진·403·`AI_IMAGE_NOT_FOUND`·잘못된 출력(`AI_INVALID_RESPONSE`) → FAILED와 오류 코드, 나머지 필드 null — 테스트 `t/test_track_service.py`
-- [ ] T017 [R-8] 발행 오류는 그대로 던짐 — 테스트 `t/test_track_service.py`
-- [ ] T018 [NFR-3] 성공·실패 모두 로그에 질문·답·설명 문장이 없음 — 테스트 `t/test_track_service.py`(`caplog`)
+- [x] T016 [R-4] 503(다시 부르지 않음)·504·시간 초과·연결 실패 소진·403·`AI_IMAGE_NOT_FOUND`·잘못된 출력(`AI_INVALID_RESPONSE`) → FAILED와 오류 코드, 나머지 필드 null — 테스트 `t/test_track_service.py`
+- [x] T017 [R-8] (T011 구현이 이미 그대로 던져 Red 없음) 발행 오류는 그대로 던짐 — 테스트 `t/test_track_service.py`
+- [x] T018 [NFR-3] (T016 로그가 식별자만 실어 Red 없음) 성공·실패 모두 로그에 질문·답·설명 문장이 없음 — 테스트 `t/test_track_service.py`(`caplog`)
 
 ## Phase 4: 워커와 배포
 

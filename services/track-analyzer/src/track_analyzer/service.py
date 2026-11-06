@@ -1,10 +1,13 @@
 """`attribute.requested` 하나를 ai-gateway로 분석해 `track.analyzed`로 발행한다(SPEC-024)."""
 
 import asyncio
+import logging
 from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Literal, Protocol
 
+from pydantic import ValidationError
+from vlm_ai_client.client import AiGatewayError
 from vlm_ai_client.models import AnalyzeRequest, AnalyzeResponse, ImageRef
 from vlm_contracts.events import (
     AttributeRequested,
@@ -17,6 +20,10 @@ from vlm_messaging.publisher import prepare_event
 from vlm_messaging.worker import MessageContext
 
 from track_analyzer import ids
+
+_INVALID_RESPONSE = "AI_INVALID_RESPONSE"
+
+logger = logging.getLogger(__name__)
 
 
 class AnalyzeClient(Protocol):
@@ -51,23 +58,51 @@ class TrackAnalyzerService:
     async def handle(self, message: AttributeRequested, ctx: MessageContext) -> None:
         """워커 경로 핸들러."""
         request = _request(message)
-        with ctx.timing.stage("attribute.call", unit="images") as block:
-            block.count = len(request.images)
-            response = await self._client.analyze(request, traceparent=ctx.traceparent)
-        event = self._ready(message, response)
+        try:
+            with ctx.timing.stage("attribute.call", unit="images") as block:
+                block.count = len(request.images)
+                response = await self._client.analyze(request, traceparent=ctx.traceparent)
+            event = self._ready(message, response)
+        except AiGatewayError as e:
+            # R-4: 화면이 기다리는 요청이라 4xx도 DLQ로 보내지 않고 FAILED로 알린다
+            # (SPEC-020과 다름). NFR-3: 질문·답·요청 변수는 로그에 싣지 않는다.
+            logger.warning(
+                "attribute call failed",
+                extra={
+                    "requestId": str(message.request_id),
+                    "reason": message.reason,
+                    "taskType": request.task_type,
+                    "code": e.code,
+                },
+            )
+            event = self._analyzed(message, outcome="FAILED", error_code=e.code)
         # 발행은 블로킹이라 이벤트 루프 밖에서 한다.
         await asyncio.to_thread(self._publish, event, ctx.traceparent)
 
     def _ready(self, message: AttributeRequested, response: AnalyzeResponse) -> TrackAnalyzed:
-        """결과가 있는 경우(R-3). `unverified`·`unknown`도 결과다."""
+        """결과가 있는 경우(R-3). `unverified`·`unknown`도 결과다.
+
+        Raises:
+            AiGatewayError: 응답이 결과 형식·계약과 맞지 않을 때(`AI_INVALID_RESPONSE`).
+        """
         is_question = message.reason == "question"
-        return self._analyzed(
-            message,
-            outcome="READY",
-            attributes=None if is_question else TrackAttribute.model_validate(response.output),
-            answer=ObjectAnswer.model_validate(response.output) if is_question else None,
-            response=response,
-        )
+        try:
+            return self._analyzed(
+                message,
+                outcome="READY",
+                attributes=None if is_question else TrackAttribute.model_validate(response.output),
+                answer=ObjectAnswer.model_validate(response.output) if is_question else None,
+                response=response,
+            )
+        except ValidationError as e:
+            # ai-gateway가 출력 스키마로 검증해 돌려주므로 계약이 어긋난 경우다. 예외 메시지에
+            # 출력 원문이 들어가지 않도록 원인 예외의 내용은 싣지 않는다(NFR-3).
+            raise AiGatewayError(
+                _INVALID_RESPONSE,
+                "analysis output does not match the track result shape",
+                status=200,
+                retryable=False,
+            ) from e
 
     def _analyzed(
         self,

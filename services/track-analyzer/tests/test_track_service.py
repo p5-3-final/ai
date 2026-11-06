@@ -1,3 +1,4 @@
+import logging
 from dataclasses import replace
 from uuid import UUID
 
@@ -11,13 +12,17 @@ from ta_support import (
     TRACEPARENT,
     FakeGateway,
     RecordingPublisher,
+    Reply,
     attribute_request,
     crop,
     event_errors,
+    gateway_error,
     scene_key,
 )
 from track_analyzer.service import TrackAnalyzerService
-from vlm_contracts.events import AttributeReason, AttributeRequested, TrackAnalyzed
+from vlm_ai_client.client import AiGatewayError
+from vlm_contracts.events import AttributeReason, AttributeRequested, Event, TrackAnalyzed
+from vlm_messaging.publisher import PublishError
 from vlm_messaging.timing import StageRecorder
 from vlm_messaging.worker import MessageContext
 
@@ -168,3 +173,130 @@ async def test_spec024_r10_records_call_stage_with_image_count(
     assert [(t.stage_id, t.status, t.count, t.unit) for t in ctx.timing.timings] == [
         ("attribute.call", "ok", count, "images"),
     ]
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        gateway_error("AI_PROVIDER_UNAVAILABLE", 503),
+        gateway_error("AI_DEADLINE_EXCEEDED", 504),
+        gateway_error("AI_TIMEOUT", None),
+        gateway_error("AI_CONNECTION_FAILED", None, retryable=True),
+        gateway_error("AI_CALLER_FORBIDDEN", 403),
+        gateway_error("AI_IMAGE_NOT_FOUND", 400),
+        gateway_error("AI_RATE_LIMITED", 429),
+    ],
+)
+@pytest.mark.parametrize("reason", ["click", "question"])
+async def test_spec024_r4_call_without_result_is_published_failed(
+    error: AiGatewayError, reason: AttributeReason
+) -> None:
+    gateway = FakeGateway(reply=lambda _: error)
+
+    _, publisher = await _run(attribute_request(reason), gateway)
+
+    # 다시 부르지 않는다. 연결 실패 재시도는 클라이언트 안의 일이다.
+    assert len(gateway.requests) == 1
+    event = _published(publisher)
+    assert (event.outcome, event.error_code) == ("FAILED", error.code)
+    assert (event.attributes, event.answer) == (None, None)
+    assert (event.call_id, event.model_id, event.prompt_version, event.taxonomy_version) == (
+        None,
+        None,
+        None,
+        None,
+    )
+
+
+@pytest.mark.parametrize(
+    ("reason", "output"),
+    [
+        ("click", {"verificationStatus": "confirmed"}),
+        ("click", {**ATTRIBUTES, "helmet": "maybe"}),
+        ("question", ATTRIBUTES),
+    ],
+)
+async def test_spec024_r4_output_not_matching_result_shape_is_failed(
+    reason: AttributeReason, output: dict[str, object]
+) -> None:
+    _, publisher = await _run(attribute_request(reason), FakeGateway(reply=lambda _: output))
+
+    event = _published(publisher)
+    assert (event.outcome, event.error_code) == ("FAILED", "AI_INVALID_RESPONSE")
+
+
+async def test_spec024_r4_unknown_taxonomy_version_is_failed() -> None:
+    _, publisher = await _run(attribute_request("click"), FakeGateway(taxonomy_version="v3"))
+
+    assert _published(publisher).error_code == "AI_INVALID_RESPONSE"
+
+
+async def test_spec024_r4_failed_call_stage_is_recorded_as_error() -> None:
+    ctx = _timed_ctx()
+
+    await _run(
+        attribute_request("click"),
+        FakeGateway(reply=lambda _: gateway_error("AI_PROVIDER_UNAVAILABLE", 503)),
+        ctx,
+    )
+
+    assert [(t.stage_id, t.status) for t in ctx.timing.timings] == [("attribute.call", "error")]
+
+
+class _DownPublisher(RecordingPublisher):
+    def publish(
+        self, topic: str, event: Event, *, key: str | None = None, traceparent: str | None = None
+    ) -> None:
+        raise PublishError("broker down")
+
+
+async def test_spec024_r8_publish_failure_is_raised_for_retry() -> None:
+    """[SPEC-024 R-8] 발행 오류를 삼키지 않아 워커가 재시도 토픽으로 보낸다."""
+    service = TrackAnalyzerService(FakeGateway(), _DownPublisher(), clock=lambda: NOW)
+
+    with pytest.raises(PublishError):
+        await service.handle(attribute_request("click"), CTX)
+
+
+_PRIVATE_REPLY = "로그에 남으면 안 되는 답 문장"
+_PRIVATE_ASK = "로그에 남으면 안 되는 질문인가요?"
+
+
+@pytest.mark.parametrize(
+    "reply",
+    [
+        lambda _: {**ANSWER, "answer": _PRIVATE_REPLY},
+        lambda _: gateway_error("AI_PROVIDER_UNAVAILABLE", 503),
+        lambda _: {"verificationStatus": "confirmed", "answer": _PRIVATE_REPLY},
+    ],
+)
+async def test_spec024_nfr3_logs_have_no_question_or_answer(
+    caplog: pytest.LogCaptureFixture, reply: Reply
+) -> None:
+    caplog.set_level(logging.DEBUG)
+
+    await _run(attribute_request("question", question=_PRIVATE_ASK), FakeGateway(reply=reply))
+
+    for record in caplog.records:
+        text = record.getMessage() + repr(record.__dict__)
+        assert _PRIVATE_ASK not in text
+        assert _PRIVATE_REPLY not in text
+
+
+async def test_spec024_nfr3_failure_log_has_only_identifiers(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    caplog.set_level(logging.WARNING, logger="track_analyzer.service")
+
+    await _run(
+        attribute_request("question"),
+        FakeGateway(reply=lambda _: gateway_error("AI_TIMEOUT", None)),
+    )
+
+    [record] = [r for r in caplog.records if r.name == "track_analyzer.service"]
+    assert {k: getattr(record, k) for k in ("requestId", "reason", "taskType", "code")} == {
+        "requestId": str(attribute_request().request_id),
+        "reason": "question",
+        "taskType": "object_question",
+        "code": "AI_TIMEOUT",
+    }
