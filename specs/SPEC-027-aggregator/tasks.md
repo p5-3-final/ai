@@ -82,7 +82,7 @@ updated: 2026-11-07
 - [x] T038 기동 조립: 설정, 두 클라이언트, 저장소, 워커 — 테스트 `t/test_aggregator_main.py`, 구현 `agg/{__main__,settings}.py`
 - [x] T039 [NFR-4] [R-23] 워커 e2e: 정상 발행 뒤 커밋, 잘못된 메시지·400 DLQ, 503 소진 재시도 토픽 — 테스트 `t/test_aggregator_worker_e2e.py`
 - [x] T040 [NFR-3] 로그에 요약 문장·이벤트 설명 원문이 없음 — 테스트 `t/test_aggregator_service.py`
-- [ ] T041 [NFR-1] 생성 입력(이벤트 2,000·트랙 5,000·머문 구간 20,000)으로 `compute` p95 5초 — 테스트 `t/test_aggregator_performance.py`
+- [x] T041 [NFR-1] 생성 입력(이벤트 2,000·트랙 5,000·머문 구간 20,000)으로 `compute` p95 5초 — 테스트 `t/test_aggregator_performance.py`
 - [ ] T042 Dockerfile, README(환경변수 표), CI `service-images`에 aggregator runtime 빌드
 - [ ] T043 [NFR-2] 로컬 compose(docs PR: aggregator 256M, 토픽 4개)와 analysis-api 자리 표시 서버(plan 5절 사용자 확인 뒤)로 성공 지표·메모리 측정, 아래에 측정 기록
 

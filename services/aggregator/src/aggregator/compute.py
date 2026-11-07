@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from vlm_contracts.aggregates import MergeGroup, Risk, StateSnapshot, TimelineItem
 from vlm_contracts.events import RuleEvent
 
-from aggregator.exposure import exposure_of
+from aggregator.exposure import ExposureSpans, exposure_in
 from aggregator.fold import RiskRecord, SessionState
 from aggregator.merge import Merged, merge_events
 from aggregator.model import AggregateInput, InputEvent
@@ -65,15 +65,8 @@ def compute(source: AggregateInput, loaded: LoadedProfile, *, merge: bool = True
         job_id=source.job_id,
         end_ms=source.duration_ms,
     )
-    risks = tuple(
-        to_contract_risk(
-            r,
-            exposure_of(
-                r, source.duration_ms, source.tracks, source.presences, profile.person_classes
-            ),
-        )
-        for r in run.risks
-    )
+    spans = ExposureSpans.of(source.tracks, source.presences, profile.person_classes)
+    risks = tuple(to_contract_risk(r, exposure_in(r, source.duration_ms, spans)) for r in run.risks)
     timeline = build_timeline(merged.representatives, rules, run.risks)
     return Computed(
         representatives=merged.representatives,
