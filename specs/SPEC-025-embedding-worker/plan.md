@@ -4,13 +4,13 @@ repo: ai
 status: Approved
 owner: <이름>
 created: 2026-11-06
-updated: 2026-11-06
+updated: 2026-11-07
 ---
 
 # Plan: SPEC-025 embedding-worker 이벤트·트랙·구간 주석 텍스트 벡터 — ai
 
 - spec: docs 레포 `docs/specs/SPEC-025-embedding-worker/spec.md`
-- 계약: `events/event.analyzed`·`track.analyzed`·`segment.annotated`·`embedding.ready`, `vectors/v1/text-vector-file`, `tracks/v1/track-mapping`(트랙 항목 시각·클래스, 4절), `stages/v1`, `asyncapi/embedding-worker.yaml`, `openapi/ai-gateway.yaml`(`/v1/embed`, `X-Request-Deadline`). 잠금 계약 묶음 3.14.0
+- 계약: `events/event.analyzed`·`track.analyzed`·`segment.annotated`·`embedding.ready`, `vectors/v1/text-vector-file`, `tracks/v1/track-mapping`(트랙 항목 시각·클래스, 4절), `stages/v1`, `asyncapi/embedding-worker.yaml`, `openapi/ai-gateway.yaml`(`/v1/embed`, `X-Request-Deadline`). 잠금 계약 묶음 4.1.0
 
 ## 1. 요약
 
@@ -46,7 +46,7 @@ ai-gateway 호출은 SPEC-021이 `libs/ai-client`에 더하는 `embed`(생성 �
 | 원칙 | 준수 | 비고 |
 | --- | --- | --- |
 | I 스펙 우선 | ☑ | SPEC-025 Approved (docs #120) |
-| II 계약 우선 | ☑ | docs #120 머지. 잠금을 3.14.0으로 올린 뒤 구현한다(T001). 트랙 항목 시각·클래스 출처는 7절 확인 항목 |
+| II 계약 우선 | ☑ | docs #120 머지. 잠금 4.1.0에 계약과 단계 ID가 이미 있다(T001). 트랙 항목 시각·클래스는 번역표에서 읽는다(D-12) |
 | III 테스트 우선 | ☑ | R-1~R-13, NFR-2·NFR-3 테스트 매핑, NFR-1은 로컬 측정 |
 | IV 서비스 자율성 | ☑ | DB 없음. search-service 코드·DB에 의존하지 않고 계약 파일만 쓴다. 트랙 번역표는 계약 `tracks/v1/track-mapping` 형식의 저장소 파일로만 읽는다 |
 | V 단순성 | ☑ | 새 패키지 없음. 묶음 임베딩 없이 메시지 하나에 문장 하나(spec 제외 범위). 설정은 환경변수만, 프로필 파일 없음 |
@@ -61,12 +61,12 @@ ai-gateway 호출은 SPEC-021이 `libs/ai-client`에 더하는 `embed`(생성 �
 
 | 경로 | 내용 |
 | --- | --- |
-| `libs/contracts/.../events.py` | `SegmentAnnotated`, `EmbeddingReady`, `ItemKind`. `TrackAnalyzed`·`TrackAttribute`는 SPEC-024 구현이 더한다(없으면 T003에서 더함) |
+| `libs/contracts/.../events.py` | `SegmentAnnotated`, `EmbeddingReady`, `ItemKind`. `TrackAnalyzed`·`TrackAttribute`는 SPEC-024 구현이 이미 더했다 |
 | `libs/contracts/.../vectors.py` | `TextVectorFile`, `TextVectorMetadata`(필드는 모두 선택, `startMs`·`endMs`만 필수). 벡터 길이 = `dimension` 검사 |
-| `libs/contracts/.../tracks.py` | `TrackMapping`(번역표 읽기용). SPEC-022 구현이 먼저 더했으면 그것을 쓴다 |
+| `libs/contracts/.../track_mapping.py` | `TrackMappingSummary`·`MappedTrackSummary`(번역표 읽기 전용. 최종 trackId·className·startMs·endMs만 두고 나머지 필드는 무시). SPEC-022의 전체 모델 `tracks.py`가 아직 main에 없어 파일을 분리해 충돌을 피했다(D-12) |
 | `libs/contracts/.../stages.py` | 단계 ID 4개(`embedding-worker.queue_wait`·`.handle`, `embedding.call`·`embedding.store`) |
-| `ew/settings.py` | 환경변수 `EMBEDDING_WORKER_`: 소비 그룹, ai-gateway 주소, 호출 제한 시간, 재시도 횟수·첫 대기, 최대 글자 수(기본 2000, 최대 2000) |
-| `ew/texts.py` | 입력 이벤트 → `TextItem`(itemKind, itemId, jobId, text, textFormat, metadata) 또는 `Skip(reason)` |
+| `ew/settings.py` | 환경변수 `EMBEDDING_WORKER_`: 소비 그룹, ai-gateway 주소, 호출 제한 시간(기본 30초), 재시도 횟수·첫 대기, 최대 글자 수(기본 2000, 최대 2000), 번역표 메모리 개수(기본 8) |
+| `ew/texts.py` | 입력 이벤트 → `TextItem`(itemKind, itemId, jobId, text, textFormat, metadata) 또는 `Skip(reason)`. track은 `track_skip`으로 조건을 먼저 보고, 통과한 메시지만 번역표를 읽는다 |
 | `ew/tracks.py` | `TrackLookup`: jobId별 번역표를 읽어 trackId → (className, startMs, endMs) |
 | `ew/files.py` | 벡터 파일 경로 `sources/<sourceId>/jobs/<jobId>/text-vectors/<itemKind>/<itemId>.json` |
 | `ew/ids.py` | eventId = uuid5(`vlm:embedding.ready:<itemKind>:<itemId>:<modelId>`) |
@@ -77,11 +77,12 @@ ai-gateway 호출은 SPEC-021이 `libs/ai-client`에 더하는 `embed`(생성 �
 
 | itemKind | textFormat | 문장 | metadata |
 | --- | --- | --- | --- |
-| `event` | `event-v1` | `analysis`의 `description`·`riskReason`·`solution` 중 null이 아닌 값을 이 순서로 `"\n"`으로 잇는다(R-1) | `startMs`·`endMs`(이벤트의 ms 값), `eventType`(`analysis.eventType`), `severity`(null이면 생략), `verificationStatus`(`analysis`) |
+| `event` | `event-v1` | `analysis`의 `description`·`riskReason`·`solution` 중 null이 아니고 공백뿐이 아닌 값을 이 순서로 `"\n"`으로 잇는다(R-1) | `startMs`·`endMs`(이벤트의 ms 값), `eventType`(`analysis.eventType`), `severity`(null이면 생략), `verificationStatus`(`analysis`) |
 | `track` | `track-v1` | `attributes.description`(R-2) | `startMs`·`endMs`·`className`(번역표), `trackId`, `helmet`·`vest`·`role`(null이면 생략) |
 | `segment_annotation` | `segment_annotation-v1` | `text`(R-3) | `startMs`·`endMs`, `segmentId` |
 
-- 문장 결과가 빈 문자열이거나 공백뿐이면 `Skip`이다(R-4). 공백뿐인 문자열도 임베딩할 값이 없다고 본다.
+- 문장 결과가 빈 문자열이거나 공백뿐이면 `Skip`이다(R-4). 공백뿐인 문자열도 임베딩할 값이 없다고 본다. event의 세 값 중 공백뿐인 값도 같은 이유로 잇지 않는다(빈 줄이 생기지 않게 한다).
+- 이벤트 시각은 계약의 `startMs`·`endMs`(ms)다(D-13). `analysis.evidenceStart`·`evidenceEnd`(초)는 판정하지 못하면 null이라 쓰지 않는다.
 - track은 reason `event`·`click`, `outcome` `READY`, `attributes.verificationStatus` `confirmed`, `description`이 있을 때만 항목을 만든다. 하나라도 어기면 `Skip`이고 이유 코드(`track_question`, `track_failed`, `track_not_confirmed`, `track_no_description`)를 남긴다(R-4).
 - 최대 글자 수는 파이썬 문자열 길이(코드 포인트) 기준으로 앞에서 자른다(R-5). 계약 `text.maxLength`가 2000이라 설정 상한도 2000이다.
 - 텍스트 벡터 파일 metadata는 계약상 null을 받지 않는다. 값이 null인 필터 필드는 키를 빼고 쓴다.
@@ -89,19 +90,19 @@ ai-gateway 호출은 SPEC-021이 `libs/ai-client`에 더하는 `embed`(생성 �
 
 ### 트랙 항목의 시각·클래스
 
-`track.analyzed`에는 R-7이 요구하는 트랙 시각과 클래스가 없다. 계약에서 구할 수 있는 곳은 track-stitcher의 번역표(`tracks/v1/track-mapping`, 경로 `sources/<sourceId>/jobs/<jobId>/tracks/mapping.json`)다. 이 plan의 기본안은 이 파일을 읽어 trackId로 `className`·`startMs`·`endMs`를 찾는 것이다. 계약 변경 없이 R-7을 채울 수 있다. 사용자 확인이 필요하다(7절, 5절 대안).
+`track.analyzed`에는 R-7이 요구하는 트랙 시각과 클래스가 없다. 계약에서 구할 수 있는 곳은 track-stitcher의 번역표(`tracks/v1/track-mapping`, 경로 `sources/<sourceId>/jobs/<jobId>/tracks/mapping.json`)다. 이 파일을 읽어 trackId로 `className`·`startMs`·`endMs`를 찾는다(D-12 결정). 계약 변경 없이 R-7을 채울 수 있다.
 
 - 번역표는 Job마다 한 번 읽고 워커 메모리에 jobId 키로 작게(설정 개수) 보관한다. 같은 Job의 트랙 메시지가 이어서 오기 때문이다.
 - 번역표가 없으면 저장소 일시 오류처럼 다시 던져 재시도 토픽으로 보낸다(R-12). `track.analyzed`는 `track.manifest` 뒤에 나오므로 정상 흐름에서는 있다.
-- 번역표에 trackId가 없으면 다시 처리해도 같으므로 `NonRetryableError`로 DLQ에 보낸다.
+- 메모리의 번역표에 trackId가 없으면 저장소에서 한 번 다시 읽는다. 그래도 없으면 다시 처리해도 같으므로 `NonRetryableError`로 DLQ에 보낸다. 번역표가 계약과 맞지 않거나 다른 Job의 것이어도 DLQ다.
 
 ### 처리 순서
 
 1. 워커가 토픽별 계약 모델로 검증한다. 맞지 않으면 DLQ(R-11).
 2. `texts.py`로 항목을 만든다. `Skip`이면 이유와 입력 eventId만 로그에 남기고 끝낸다(R-4, NFR-2).
 3. `embedding.call`(count 1, unit `texts`): `embed(EmbedRequest(taskType=embed_text, texts=[text]))`. 헤더 `X-Caller: embedding-worker`, `traceparent`, `X-Request-Deadline`(SPEC-021 R-8).
-4. 응답 검사: 벡터 수 1, 벡터 길이 = `dimension`. 어기면 `NonRetryableError`(R-10).
-5. `embedding.store`(count 1, unit `files`): 텍스트 벡터 파일을 `put_bytes`로 같은 경로에 덮어쓴다(R-6, R-12).
+4. 응답 검사: 벡터 수 1, 벡터 길이 = `dimension`. 어기면 `NonRetryableError`(R-10). 모델 ID·차원이 계약 범위(200자, 4096)를 넘어 파일·이벤트 모델 검증에 실패해도 같다.
+5. `embedding.store`(count 1, unit `files`): 텍스트 벡터 파일을 `put_bytes`로 같은 경로에 덮어쓴다(R-6, R-12). 경로에 모델 단계가 없어 같은 항목·다른 모델이면 마지막 모델 결과로 덮어쓴다(C-5).
 6. `embedding.ready` 발행. 키는 sourceId, eventId는 `ids.py`(R-8). 발행 오류는 그대로 던진다(R-12).
 
 - 저장소·발행은 블로킹이라 `asyncio.to_thread`로 넘긴다.
@@ -113,10 +114,10 @@ ai-client가 SPEC-021 R-10 재시도를 마친 뒤 던진 `AiGatewayError`를 �
 
 | 결과 | 처리 | 근거 |
 | --- | --- | --- |
-| `AI_MODEL_NOT_CONFIGURED`, `AI_BUDGET_EXCEEDED`(503) | `NonRetryableError` → DLQ | R-9 단서 |
-| 그 밖의 503, `AI_CONNECTION_FAILED`, `AI_TIMEOUT` | 그대로 던짐 → 재시도 토픽, 소진하면 DLQ | R-9 |
-| 4xx, `AI_INVALID_RESPONSE` | `NonRetryableError` → DLQ | R-10. 계약과 맞지 않는 응답은 다시 불러도 같다고 본다 |
-| 502 `AI_PROVIDER_FAILED`, 504 `AI_DEADLINE_EXCEEDED`, 그 밖의 5xx | 그대로 던짐 → 재시도 토픽(기본안) | spec에 없음. 7절 확인 항목 |
+| `AI_MODEL_NOT_CONFIGURED`(503), `AI_BUDGET_EXCEEDED`(429) | `NonRetryableError` → DLQ | R-9 단서. 503인 `AI_MODEL_NOT_CONFIGURED`는 클라이언트가 2회 재시도한 뒤 DLQ로 간다(C-6, 그대로 둔다) |
+| 그 밖의 503, 429 `AI_RATE_LIMITED`, `AI_CONNECTION_FAILED`, `AI_TIMEOUT` | 그대로 던짐 → 재시도 토픽, 소진하면 DLQ | R-9 |
+| 그 밖의 4xx, `AI_INVALID_RESPONSE` | `NonRetryableError` → DLQ | R-10. 계약과 맞지 않는 응답은 다시 불러도 같다고 본다 |
+| 502 `AI_PROVIDER_FAILED`, 504 `AI_DEADLINE_EXCEEDED`, 그 밖의 5xx | 그대로 던짐 → 재시도 토픽 | spec에 없음. D-14 결정 |
 
 ### embedding-worker 범위 밖
 
@@ -146,7 +147,7 @@ sequenceDiagram
 
 | 대안 | 장점 | 단점 | 선택 |
 | --- | --- | --- | --- |
-| 트랙 시각·클래스를 번역표 파일에서 읽음 | 계약 변경 없음. 최종 trackId 기준 값이 이미 있다 | 저장소 읽기가 하나 늘고 track-stitcher 출력에 의존 | ☑(기본안, 사용자 확인 필요) |
+| 트랙 시각·클래스를 번역표 파일에서 읽음 | 계약 변경 없음. 최종 trackId 기준 값이 이미 있다 | 저장소 읽기가 하나 늘고 track-stitcher 출력에 의존 | ☑(D-12) |
 | `track.analyzed`에 `className`·`startMs`·`endMs` 추가(계약 변경, track-analyzer는 내 담당) | 메시지 하나로 끝남 | 계약·SPEC-024 변경이 필요하고 attribute.requested에도 시각이 없어 analysis-api(다른 담당자) 계약까지 바뀜 | |
 | 트랙 항목 metadata를 비워 둠 | 단순 | 계약 `metadata.startMs`·`endMs`가 필수라 파일이 계약을 어김 | |
 | 세 토픽을 소비 그룹 하나로 받음 | Pod·설정 하나, 같은 DLQ | 토픽마다 재시도 토픽이 따로 생김 | ☑ |
@@ -166,19 +167,18 @@ sequenceDiagram
 ## 7. 리스크와 롤백
 
 - 리스크
-  - SPEC-021(ai-client `embed`)·SPEC-024(`TrackAnalyzed` 모델)·SPEC-022(`TrackMapping` 모델)가 먼저 구현되지 않으면 해당 태스크가 막힌다. 모델이 없으면 이 작업에서 계약 모델만 더한다(T003·T004).
-  - 트랙 시각·클래스 출처(4절)가 사용자 확인으로 바뀌면 T011·T013과 계약 모델 태스크가 바뀐다.
-  - 벡터 파일 경로에 모델 ID가 없다(계약 `vectorKey` 패턴). 임베딩 모델이 바뀌면 같은 경로를 덮어쓰고 eventId만 달라진다. spec 제외 범위 문장("다른 모델이면 다른 파일")과 다르다. 계약대로 구현하고 보고한다.
-  - AI_MODEL_NOT_CONFIGURED·AI_BUDGET_EXCEEDED도 503이라 ai-client가 2회 재시도한 뒤에 DLQ로 간다(SPEC-021 R-10). 호출 2번이 더 들지만 결과는 같다.
-- 사용자 확인이 필요한 항목
-  - 트랙 항목 시각·클래스 출처(번역표 읽기 기본안 또는 계약 변경)
-  - 이벤트 항목 시각: spec R-7의 "초 단위 값은 ms로"가 `analysis.evidenceStart`·`evidenceEnd`(초)를 뜻하는지. 기본안은 계약에 늘 있는 `startMs`·`endMs`(ms)다
-  - 502·504·그 밖의 5xx 처리(기본안: 재시도 토픽)
+  - SPEC-022의 번역표 전체 모델(`vlm_contracts.tracks`)이 머지돼도 읽기 모델(`track_mapping.py`)과 함께 둘 수 있다. 읽기 모델은 필요한 필드만 본다.
+  - 벡터 파일 경로에 모델 ID가 없다(계약 `vectorKey` 패턴). 임베딩 모델이 바뀌면 같은 경로를 마지막 결과로 덮어쓰고 eventId만 달라진다(C-5). spec 제외 범위 문장("다른 모델이면 다른 파일")과 달라 spec 문구 수정이 필요하다.
+  - `AI_MODEL_NOT_CONFIGURED`는 503이라 ai-client가 2회 재시도한 뒤에 DLQ로 간다(SPEC-021 R-10). 호출 2번이 더 들지만 결과는 같아 그대로 둔다(C-6).
+- 결정된 확인 항목(2026-11-07)
+  - D-12 트랙 항목 시각·클래스: 번역표를 읽는다
+  - D-13 이벤트 항목 시각: 계약의 `startMs`·`endMs`
+  - D-14 502·504·그 밖의 5xx: 재시도 토픽
 - 롤백: 새 서비스라 끄면 된다. libs 계약 모델 추가는 기존 테스트로 확인한다.
 
 ## 8. 배포 고려사항
 
-- 환경변수: `EMBEDDING_WORKER_AI_GATEWAY_URL`, `EMBEDDING_WORKER_CALL_TIMEOUT_S`, `EMBEDDING_WORKER_MAX_RETRIES`, `EMBEDDING_WORKER_RETRY_BASE_DELAY_S`, `EMBEDDING_WORKER_MAX_CHARS`, `EMBEDDING_WORKER_TRACK_MAPPING_CACHE`와 공통 `KAFKA_BOOTSTRAP`·`STORAGE_*`·`HEALTH_PORT`. 레포 `.env.example`과 README에 적는다. 비밀값은 없다.
+- 환경변수: `EMBEDDING_WORKER_AI_GATEWAY_URL`, `EMBEDDING_WORKER_CALL_TIMEOUT_S`, `EMBEDDING_WORKER_MAX_RETRIES`, `EMBEDDING_WORKER_RETRY_BASE_DELAY_S`, `EMBEDDING_WORKER_MAX_CHARS`, `EMBEDDING_WORKER_TRACK_MAPPING_CACHE`와 공통 `KAFKA_BOOTSTRAP`·`STORAGE_*`·`HEALTH_PORT`. README 환경변수 표에 적는다. 레포 `.env.example`은 권한 설정으로 이 작업에서 읽고 쓸 수 없어 PR에 보고한다. 비밀값은 없다.
 - 로컬 compose(docs `local/`): embedding-worker(256M), 토픽 `segment.annotated`, `embedding.ready`, `event.analyzed.embedding-worker.retry`, `track.analyzed.embedding-worker.retry`, `segment.annotated.embedding-worker.retry`, `embedding-worker.dlq`를 `kafka-init`과 `local/README.md`에 더한다. `track.analyzed`는 SPEC-024 compose 작업에서 생긴다고 본다(없으면 함께 더함).
 - 운영 배포·토픽은 사용자 지시 시 infra·gitops에서 한다.
 - 배포 순서: ai-gateway에 `embed_text` 프로필이 있어야 한다. 없으면 모든 메시지가 `AI_MODEL_NOT_CONFIGURED`로 DLQ에 간다.

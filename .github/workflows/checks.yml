@@ -113,6 +113,8 @@ jobs:
         run: docker build -f services/track-analyzer/Dockerfile --target runtime -t vlm/track-analyzer .
       - name: track stitcher runtime image
         run: docker build -f services/track-stitcher/Dockerfile --target runtime -t vlm/track-stitcher .
+      - name: embedding worker runtime image
+        run: docker build -f services/embedding-worker/Dockerfile --target runtime -t vlm/embedding-worker .
       # 분류 체계는 잠금 버전의 계약을 이름 있는 빌드 컨텍스트로 넘긴다(docs ADR-0012·0013).
       - name: ai-gateway runtime image
         run: >-
