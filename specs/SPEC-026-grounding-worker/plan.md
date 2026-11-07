@@ -16,7 +16,7 @@ updated: 2026-11-07
 
 새 Kafka 워커 `services/grounding-worker`를 만든다. `grounding.requested`의 구간(최대 3개)을 순서대로 처리한다. 구간마다 정규화 영상에서 샘플 프레임(기본 1초 간격, 최대 12장)을 뽑고, 대상어를 텍스트 클래스로 개방 어휘 탐지를 한다. 그다음 원본 fps의 H.264 주석 클립(박스와 대상어 라벨, 오디오 유지)을 만들어 클립과 결과 파일을 저장하고 `grounding.completed`를 발행한다. 결과 파일이 이미 있으면 탐지·인코딩 없이 그 내용으로 다시 발행한다. 실패는 `outcome: FAILED`로 발행한다.
 
-영상 디코딩·인코딩은 normalize처럼 시스템 ffmpeg·ffprobe 프로세스로 한다(새 Python 패키지 없음, 사용자 확인 필요 항목). **탐지기 실행 라이브러리는 정하지 않았다.** 서비스 코드는 `GroundingDetector` 인터페이스만 쓰고, 이번 단계에서는 결정적 mock 구현으로 전체 흐름과 테스트를 완성한다. 실제 구현은 사용자 확인(5절) 뒤 태스크로 더한다.
+영상 디코딩·인코딩은 normalize처럼 시스템 ffmpeg·ffprobe 프로세스로 한다. 탐지기는 OWL-ViT base patch32(`transformers`, Apache-2.0)다(2026-11-07 사용자 결정, 5절). 서비스 코드는 `GroundingDetector` 인터페이스만 쓰고, CI는 결정적 mock 구현으로 전체 흐름을 검증한다.
 
 ## 2. 담당 요구사항
 
@@ -54,7 +54,7 @@ updated: 2026-11-07
 | II 계약 우선 | ☑ | docs #121 머지. 잠금 4.1.0에 계약과 단계 ID가 이미 있다(T001 확인) |
 | III 테스트 우선 | ☑ | R-1~R-18, NFR-3 테스트 매핑. NFR-1·NFR-2는 로컬 측정. 탐지기는 인터페이스를 가짜로 바꿔 끼워 검증한다 |
 | IV 서비스 자율성 | ☑ | DB 없음. search-service·notification-service 코드에 의존하지 않고 계약만 따른다 |
-| V 단순성 | △ | 새 Python 패키지는 탐지기 라이브러리 결정 전까지 없다. ffmpeg `drawtext`용 글꼴 시스템 패키지를 이미지에 더한다. 탐지기 라이브러리는 사용자 확인 필요(5절) |
+| V 단순성 | △ | 탐지기 실행에 `transformers`·`torch`(CPU)·`pillow`·`scipy`(OWL 계열 전처리)를 더한다. ffmpeg `drawtext`용 글꼴 시스템 패키지를 이미지에 더한다 |
 | VI 관측 가능성 | ☑ | 단계 `grounding.sample`·`detect`·`render`·`store`, health, `traceparent` 전파, 결과에 탐지기 버전·기준 신뢰도 |
 | VII 보안 | ☑ | ffmpeg 인자는 목록으로 넘기고 셸을 쓰지 않는다. 대상어는 필터 스크립트에 넣지 않고 라벨 파일(`textfile`)로 넘긴다. 스크립트에 들어가는 경로(글꼴, 작업 폴더)는 `[A-Za-z0-9_./-]`만 허용해 이스케이프가 필요 없다. `normalizedKey` 폴더 검사(R-15). 클립은 외부 모델로 보내지 않아 블러 대상이 아니다(spec 제외) |
 | VIII 문서·주석 | ☑ | 계약 모델 테스트, README, 색·샘플 규칙에 R-ID 주석 |
@@ -153,17 +153,20 @@ sequenceDiagram
 
 ## 5. 대안과 선택 이유
 
-### 탐지기 실행 라이브러리 (사용자 확인 필요)
+### 탐지기 실행 라이브러리
 
 | 대안 | 장점 | 단점 | 선택 |
 | --- | --- | --- | --- |
-| A. `ultralytics`(YOLOE 공식 구현) | 실행 시점에 대상어를 텍스트 클래스로 바로 지정(`set_classes`). 구현이 가장 짧다 | AGPL-3.0이라 배포 형태에 따라 소스 공개 의무. opencv 등 의존성이 커 이미지가 커진다 | 확인 필요 |
-| B. `onnxruntime` + ONNX로 내보낸 YOLOE | 런타임은 MIT. 이미지가 작고 CPU 추론이 빠르다 | 보통 내보내기는 클래스를 고정하므로 텍스트 임베딩을 입력으로 받는 그래프로 따로 내보내야 한다(AI 담당자 작업). 대상어 텍스트 임베딩은 lock에 있는 open_clip(MobileCLIP)로 만들 수 있다. 가중치 자체의 라이선스도 AI 담당자 확인이 필요하다 | 확인 필요 |
-| C. `transformers`의 OWLv2·Grounding DINO 계열 | Apache-2.0, 임의 문장 클래스 지원 | 새 의존성이 크고 CPU에서 프레임당 수 초라 NFR-1(30초)이 빠듯하다 | |
+| A. `ultralytics`(YOLOE 공식 구현) | 실행 시점에 대상어를 텍스트 클래스로 바로 지정(`set_classes`). 구현이 가장 짧다 | AGPL-3.0이라 배포 형태에 따라 소스 공개 의무. opencv 등 의존성이 커 이미지가 커진다 | |
+| B. `onnxruntime` + ONNX로 내보낸 YOLOE | 런타임은 MIT. 이미지가 작고 CPU 추론이 빠르다 | 보통 내보내기는 클래스를 고정하므로 텍스트 임베딩을 입력으로 받는 그래프로 따로 내보내야 한다(AI 담당자 작업). 대상어 텍스트 임베딩은 lock에 있는 open_clip(MobileCLIP)로 만들 수 있다. 가중치 자체의 라이선스도 AI 담당자 확인이 필요하다 | |
+| C. `transformers`의 OWL-ViT·OWLv2·Grounding DINO 계열 | Apache-2.0, 임의 문장 클래스 지원. 변환 없이 공개 가중치를 그대로 쓴다 | 새 의존성이 크다(runtime 이미지 602MB → 1.36GB). 컨테이너 CPU에서 OWLv2는 프레임당 약 6초다 | ☑ OWL-ViT base patch32 |
 
-- 2026-11-07 진행안: B(`onnxruntime`)를 추천한다. A는 AGPL-3.0이라 서버 배포 라이선스 위험이 있고, C는 CPU에서 느리다. ONNX 가중치와 텍스트 임베딩 입력 그래프 내보내기는 AI 담당자 몫이고 새 외부 패키지는 사용자 확인 사항이라, 가중치가 준비된 뒤 T026~T028·T033을 진행한다.
-- 어느 쪽이든 서비스 코드는 `GroundingDetector`만 쓴다. 결정 전에는 mock으로 R-1~R-18을 모두 구현·검증하고, 결정 뒤 구현 태스크(T026~T028)만 더한다.
-- 모델 manifest 계약은 `kind: detector`면 `classes`(1개 이상)가 필수다. 개방 어휘 탐지기는 고정 클래스가 없어 manifest 작성 방식(AI 담당자)을 확인해야 한다(7절).
+- 2026-11-07 결정: C의 OWL-ViT base patch32(사용자 결정). B는 ONNX 변환을 AI 담당자가 해야 해서 지금 검증할 수 없다. A의 AGPL-3.0은 ADR-0008이 비상용 시연 목적으로 감수하기로 했지만, 개발 환경에서 라이선스 제약이 없는 C를 골랐다.
+- 처음에는 OWLv2 base patch16 ensemble로 구현했다. Mac 호스트에서는 프레임당 약 2초였지만 로컬 compose 컨테이너(Linux arm64 CPU, 10스레드)에서는 프레임당 약 6초라 10초 구간 p95가 75.5초로 NFR-1(30초)을 넘었다. 같은 컨테이너에서 OWL-ViT base patch32는 프레임당 0.45초이고 사람 12명 중 10명을 정확한 박스로 찾아 바꿨다(사용자 결정). OWL-ViT는 점수가 0.12~0.18로 낮아 기준 신뢰도를 0.1로 둔다.
+- 서비스 코드는 `GroundingDetector`만 쓰고, 탐지기는 프로필 `[detector] kind`로 고른다. OWL-ViT와 OWLv2는 같은 구현(`detector_owl.py`)이 manifest modelId로 고른다. 박스를 원본 좌표로 되돌리는 기준만 다르다(OWLv2는 정사각형으로 채우고 OWL-ViT는 늘린다). torch·transformers는 이 모듈에서만 import하고 mock 프로필에서는 읽지 않는다.
+- 겹치는 박스는 대상어마다 IoU 0.3 이상이면 낮은 점수를 버린다(프로필 `nms_iou`). 박스가 수십 개 이하라 직접 구현하고 torchvision을 의존하지 않는다.
+- 기동할 때 빈 프레임으로 한 번 돌려 실행 시점에야 드러나는 문제(빠진 선택 의존성 등)를 기동 실패로 만든다. 로컬 compose에서 `scipy` 누락이 요청마다 DLQ로 이어진 것을 보고 더했다.
+- 모델 manifest는 계약 5.1.0의 `openVocabulary: true`로 `classes` 없이 쓴다(docs #153). 탐지기 구현은 사용처가 하나라 서비스 안에 둔다. chunk-processor 등이 같은 탐지기를 쓰게 되면 `libs/`로 옮긴다.
 
 ### 그 밖의 선택
 
@@ -191,7 +194,7 @@ sequenceDiagram
 ## 7. 리스크와 롤백
 
 - 리스크
-  - 탐지기 라이브러리 결정 전에는 mock만 있어 NFR-1·NFR-2를 실제 모델로 잴 수 없다. 측정 태스크는 결정 뒤에 한다.
+  - OWL-ViT base patch32는 OWLv2보다 작은 물체·가려진 물체를 덜 찾는다. 정확도가 더 필요하면 GPU 노드나 더 빠른 CPU에서 OWLv2 프로필로 바꾸고 NFR-1을 다시 잰다.
   - 필터 주입: 대상어는 라벨 파일로만 넘기고, 스크립트의 경로는 허용 문자를 검사한다(단위 테스트).
   - presigned 주소의 만료 시간은 구간 제한 시간보다 길게 잡는다.
 - spec·계약과 맞춰 볼 점(계약대로 구현하고 보고한다)
@@ -199,15 +202,13 @@ sequenceDiagram
   - C-9: R-9 eventId가 groundingId·탐지기 버전만 쓰면 FAILED 뒤 다시 요청해 READY가 나오거나 다른 requestId가 클립을 재사용할 때 소비자가 중복으로 버린다. requestId·outcome을 더 넣는다. 같은 요청의 재처리는 여전히 같은 eventId다(spec 문구 수정 필요).
   - C-10: R-10 영상 길이 비교에 허용 오차가 없으면 마지막 구간 `endMs`가 ffprobe 길이보다 몇 ms 길 때 FAILED가 된다. 프레임 간격 하나(1000/fps ms)만큼 허용하고, 샘플 시각은 영상 길이 미만만 쓴다(spec 문구 수정 필요).
   - 결과 파일 `sampleFps`는 이름은 fps인데 설명은 "샘플 간격"이다. 1000 ÷ 간격(ms)으로 기록한다.
-  - 모델 manifest 계약은 `kind: detector`에 `classes`가 필수라 개방 어휘 탐지기 manifest 작성 방식이 정해지지 않았다.
 - 사용자 확인이 필요한 항목
-  - 탐지기 실행 라이브러리(A/B/C)와 가중치 라이선스
   - 영상 처리를 ffmpeg·ffprobe 프로세스로 하는 것과 runtime 이미지에 `ffmpeg`·`fonts-dejavu-core` 시스템 패키지를 넣는 것
 - 롤백: 새 서비스라 끄면 된다. `ObjectStorage` 메서드 추가는 기존 구현의 테스트로 확인한다.
 
 ## 8. 배포 고려사항
 
-- 환경변수: `GROUNDING_WORKER_PROFILE_PATH`, `GROUNDING_WORKER_ALLOW_MOCK`, `GROUNDING_WORKER_ITEM_TIMEOUT_S`, `GROUNDING_WORKER_SAMPLE_INTERVAL_MS`, `GROUNDING_WORKER_MAX_SAMPLES`, `GROUNDING_WORKER_WORK_DIR`와 공통 `KAFKA_BOOTSTRAP`·`S3_*`·`HEALTH_PORT`. 모델 버킷·캐시 폴더 설정은 실제 탐지기(T027)와 함께 더한다. README에 적는다(레포 `.env.example`은 에이전트 권한 설정으로 수정하지 못했다). 비밀값은 없다.
+- 환경변수: `GROUNDING_WORKER_PROFILE_PATH`, `GROUNDING_WORKER_ALLOW_MOCK`, `GROUNDING_WORKER_ITEM_TIMEOUT_S`, `GROUNDING_WORKER_SAMPLE_INTERVAL_MS`, `GROUNDING_WORKER_MAX_SAMPLES`, `GROUNDING_WORKER_WORK_DIR`와 공통 `KAFKA_BOOTSTRAP`·`S3_*`·`HEALTH_PORT`. 실제 탐지기는 `GROUNDING_WORKER_MODELS_BUCKET`·`GROUNDING_WORKER_MODEL_CACHE_DIR`를 쓴다. README에 적는다(레포 `.env.example`은 에이전트 권한 설정으로 수정하지 못했다). 비밀값은 없다.
 - 이미지: normalize처럼 runtime 단계에 ffmpeg, 그리고 글꼴 패키지. 가중치는 이미지에 넣지 않고 기동 때 받는다(모델 캐시 폴더에 emptyDir).
-- 로컬 compose(docs `local/`): grounding-worker(1.5G, overview "로컬 개발 환경" 표), 토픽 `grounding.requested`, `grounding.completed`, `grounding.requested.grounding-worker.retry`, `grounding-worker.dlq`를 `kafka-init`과 `local/README.md`에 더한다. 로컬은 생산자(search-service)가 없으므로 측정은 테스트가 직접 넣는다.
+- 로컬 compose(docs `local/`): grounding-worker(2G, docs #153에서 1.5G에서 올림, overview "로컬 개발 환경" 표), 토픽 `grounding.requested`, `grounding.completed`, `grounding.requested.grounding-worker.retry`, `grounding-worker.dlq`를 `kafka-init`과 `local/README.md`에 더한다. 로컬은 생산자(search-service)가 없으므로 측정은 테스트가 직접 넣는다.
 - 운영 배포·토픽은 사용자 지시 시 infra·gitops에서 한다.

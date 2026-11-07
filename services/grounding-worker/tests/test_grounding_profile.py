@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 from grounding_worker.detector import MockDetector, load_detector
-from grounding_worker.profile import GroundingProfile
+from grounding_worker.profile import GroundingProfile, OwlDetectorProfile
 from vlm_common.profile import ProfileError, load_profile
 
 _PROFILES = Path(__file__).resolve().parents[1] / "profiles"
@@ -86,3 +86,51 @@ def test_spec026_r17_mock_detector_version_comes_from_profile(tmp_path: Path) ->
 
     assert isinstance(detector, MockDetector)
     assert detector.version == "mock-grounding-v1"
+
+
+_OWL = """
+[detector]
+kind = "owl"
+manifest = "models/owlvit/owlvit-b32/manifest.json"
+manifest_sha256 = "d61e583174e35fbce8264447cbb8e2864afb97f13489b491b718ba3bf61f1cc2"
+score_threshold = 0.1
+"""
+
+
+def test_spec026_r17_local_owl_profile_loads() -> None:
+    profile = load_profile(_PROFILES / "local.toml", GroundingProfile)
+
+    assert isinstance(profile.detector, OwlDetectorProfile)
+    assert profile.detector.manifest == "models/owlvit/owlvit-b32/manifest.json"
+    assert 0 <= profile.detector.score_threshold <= 1
+
+
+def test_owl_profile_defaults_nms_iou(tmp_path: Path) -> None:
+    profile = load_profile(_write(tmp_path, _OWL), GroundingProfile)
+
+    assert isinstance(profile.detector, OwlDetectorProfile)
+    assert profile.detector.nms_iou == 0.3
+
+
+@pytest.mark.parametrize(
+    "replace",
+    [
+        ('manifest = "models/owlvit/owlvit-b32/manifest.json"\n', ""),
+        ('manifest_sha256 = "d61e', 'manifest_sha256 = "D61E'),
+        ('manifest = "models/', 'manifest = "../'),
+        ("score_threshold = 0.1", 'score_threshold = 0.1\nversion = "v1"'),
+        ("score_threshold = 0.1", "score_threshold = 0.1\nnms_iou = 0"),
+    ],
+)
+def test_spec026_r17_invalid_owl_profile_fails_startup(
+    tmp_path: Path, replace: tuple[str, str]
+) -> None:
+    with pytest.raises(ProfileError):
+        load_profile(_write(tmp_path, _OWL.replace(*replace)), GroundingProfile)
+
+
+def test_owl_detector_requires_models_bucket(tmp_path: Path) -> None:
+    profile = load_profile(_write(tmp_path, _OWL), GroundingProfile)
+
+    with pytest.raises(ProfileError, match="MODELS_BUCKET"):
+        load_detector(profile.detector, allow_mock=False, models=None, cache_dir=tmp_path)

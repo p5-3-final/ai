@@ -4,6 +4,10 @@ version = "0.1.0"
 description = "검색 결과 bbox 주석 클립, grounding.completed 발행 (SPEC-026)"
 requires-python = ">=3.12,<3.13"
 dependencies = [
+    "pillow>=13.0.0",
+    "scipy>=1.18.1",
+    "torch>=2.15.0",
+    "transformers>=5.22.2",
     "vlm-common",
     "vlm-contracts",
     "vlm-messaging",

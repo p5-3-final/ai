@@ -1,17 +1,19 @@
-"""탐지기 인터페이스와 결정적 mock 구현(SPEC-026 R-3).
+"""탐지기 인터페이스, 결정적 mock 구현, 프로필에 따른 탐지기 선택(SPEC-026 R-3, R-17).
 
-서비스 코드는 `GroundingDetector`만 쓴다. 실제 구현(라이브러리)은 사용자 확인 뒤 더한다(plan 5절).
+서비스 코드는 `GroundingDetector`만 쓴다. 실제 구현은 `detector_owl`(OWL-ViT·OWLv2)이다(plan 5절).
 """
 
 import hashlib
 from collections.abc import Sequence
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Protocol
 
 from vlm_common.errors import VlmError
 from vlm_common.profile import ProfileError
+from vlm_storage.storage import ObjectStorage
 
-from grounding_worker.profile import MockDetectorProfile
+from grounding_worker.profile import DetectorProfile
 
 
 @dataclass(frozen=True, slots=True)
@@ -54,6 +56,12 @@ class DetectorError(VlmError):
     code = "GROUNDING_DETECTOR_FAILED"
 
 
+class DetectorLoadError(VlmError):
+    """가중치를 받거나 읽지 못했거나 manifest가 프로필과 맞지 않는다. 기동을 멈춰야 한다."""
+
+    code = "GROUNDING_DETECTOR_LOAD_FAILED"
+
+
 class GroundingDetector(Protocol):
     """대상어를 텍스트 클래스로 쓰는 개방 어휘 탐지기. 블로킹이고 CPU를 쓴다."""
 
@@ -91,12 +99,32 @@ class MockDetector:
         return Detection(target, Box(x, y, w, h), confidence)
 
 
-def load_detector(profile: MockDetectorProfile, *, allow_mock: bool) -> GroundingDetector:
+def load_detector(
+    profile: DetectorProfile,
+    *,
+    allow_mock: bool,
+    models: ObjectStorage | None = None,
+    cache_dir: Path | None = None,
+) -> GroundingDetector:
     """프로필의 탐지기를 만든다. 기동 때 한 번 부른다.
 
+    Args:
+        profile: 검증한 `[detector]` 프로필.
+        allow_mock: mock 탐지기를 허용하는지. CI·로컬 전용이다.
+        models: 모델 버킷. 실제 탐지기에 필요하다.
+        cache_dir: 가중치 로컬 캐시 폴더. 실제 탐지기에 필요하다.
+
     Raises:
-        ProfileError: mock을 허용하지 않았는데 mock을 고른 경우. mock은 CI·로컬 전용이다.
+        ProfileError: 허용하지 않은 mock을 골랐거나, 실제 탐지기인데 모델 버킷 설정이 없을 때.
+        DetectorLoadError: 가중치를 받거나 읽지 못했거나 manifest가 프로필과 맞지 않을 때.
     """
-    if not allow_mock:
-        raise ProfileError("mock detector requires GROUNDING_WORKER_ALLOW_MOCK=true")
-    return MockDetector(profile.version)
+    if profile.kind == "mock":
+        if not allow_mock:
+            raise ProfileError("mock detector requires GROUNDING_WORKER_ALLOW_MOCK=true")
+        return MockDetector(profile.version)
+    if models is None or cache_dir is None:
+        raise ProfileError("owl detector requires GROUNDING_WORKER_MODELS_BUCKET")
+    # torch·transformers import에 수 초가 걸려 mock 프로필(CI·흐름 확인)에서는 읽지 않는다.
+    from grounding_worker.detector_owl import OwlDetector
+
+    return OwlDetector.load(models, profile, cache_dir)

@@ -5,7 +5,7 @@
 
 import re
 from pathlib import Path
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import Field, field_validator
 from vlm_common.profile import Profile
@@ -21,16 +21,38 @@ type X264Preset = Literal[
 
 
 class MockDetectorProfile(Profile):
-    """결정적 가짜 탐지기(`[detector] kind = "mock"`). CI·로컬 흐름 확인 전용이다.
-
-    실제 탐지기 종류는 라이브러리를 정한 뒤 판별 공용체로 더한다(tasks T026~T027).
-    """
+    """결정적 가짜 탐지기(`[detector] kind = "mock"`). CI·로컬 흐름 확인 전용이다."""
 
     kind: Literal["mock"]
     # groundingModel(가중치 manifest의 version 자리). 결과 경로 한 단계가 된다.
     version: str = Field(pattern=GROUNDING_MODEL_PATTERN)
     # SPEC-026 R-3: 이 값 이상인 탐지만 남긴다. 값은 AI 담당자가 정한다.
     score_threshold: float = Field(ge=0, le=1)
+
+
+class OwlDetectorProfile(Profile):
+    """OWL 계열(OWL-ViT·OWLv2) 개방 어휘 탐지기(`[detector] kind = "owl"`, plan 5절).
+
+    둘 중 무엇인지는 가중치 manifest의 modelId로 정한다. groundingModel은 프로필이 아니라
+    manifest의 version이다(SPEC-026 R-17).
+    """
+
+    kind: Literal["owl"]
+    # 모델 버킷의 manifest 키와 manifest 파일 해시(docs ADR-0010 ②). 가중치 해시는 manifest가
+    # 고정한다.
+    manifest: str = Field(
+        pattern=r"^models/[a-z0-9][a-z0-9_-]*/[A-Za-z0-9][A-Za-z0-9._-]*/manifest\.json$"
+    )
+    manifest_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    # SPEC-026 R-3: 이 값 이상인 탐지만 남긴다. 값은 AI 담당자가 정한다.
+    score_threshold: float = Field(ge=0, le=1)
+    # OWL 계열은 겹치는 후보 박스를 그대로 내므로 대상어마다 이 IoU 이상 겹치면 낮은 점수를 버린다.
+    nms_iou: float = Field(default=0.3, gt=0, le=1)
+
+
+type DetectorProfile = Annotated[
+    MockDetectorProfile | OwlDetectorProfile, Field(discriminator="kind")
+]
 
 
 class RenderProfile(Profile):
@@ -53,5 +75,5 @@ class RenderProfile(Profile):
 class GroundingProfile(Profile):
     """프로필 전체."""
 
-    detector: MockDetectorProfile
+    detector: DetectorProfile
     render: RenderProfile = RenderProfile()
