@@ -8,7 +8,7 @@ from botocore.config import Config
 from botocore.exceptions import ClientError
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from vlm_storage.storage import ObjectNotFoundError
+from vlm_storage.storage import ObjectNotFoundError, check_expiry
 
 if TYPE_CHECKING:
     # 타입 스텁은 개발 의존성이라 운영 이미지에는 없다.
@@ -106,6 +106,12 @@ class S3Storage:
                 )
                 deleted += len(batch)
         return deleted
+
+    def presigned_get_url(self, key: str, *, expires_s: int) -> str:
+        check_expiry(expires_s)
+        return self._client.generate_presigned_url(
+            "get_object", Params={"Bucket": self._bucket, "Key": key}, ExpiresIn=expires_s
+        )
 
 
 def _is_not_found(error: ClientError) -> bool:

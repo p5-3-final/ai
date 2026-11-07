@@ -18,11 +18,11 @@ updated: 2026-11-06
 
 ## Phase 0: 준비
 
-- [ ] T001 계약 잠금을 3.14.0으로 올림(`scripts/fetch-service-contracts.sh --update 3.14.0`, 이미 3.14.0 이상이면 건너뜀), 단계 ID 6개 — 테스트 `libs/contracts/tests/test_stage_contracts.py`, 구현 `service-contracts.lock`, `vlm_contracts/stages.py`
-- [ ] T002 [P] [R-15] `GroundingRequested` 모델(`normalizedKey`가 sourceId·normalizationId 폴더가 아니면 검증 실패) — 테스트 `libs/contracts/tests/test_grounding_contracts.py`, 구현 `vlm_contracts/events.py`
-- [ ] T003 [P] [R-7] [R-9] `GroundingCompleted`(READY·FAILED 필드 조합), `GroundingErrorCode` — 테스트 `libs/contracts/tests/test_grounding_contracts.py`, 구현 `vlm_contracts/events.py`
-- [ ] T004 [P] [R-6] [R-17] `GroundingResultFile` — 테스트 `libs/contracts/tests/test_grounding_result_contract.py`, 구현 `vlm_contracts/groundings.py`
-- [ ] T005 [P] `ObjectStorage.presigned_get_url`(S3·메모리 구현) — 테스트 `libs/storage/tests/test_storage_presign.py`, 구현 `vlm_storage/{storage,s3,memory}.py`
+- [x] T001 계약 잠금을 3.14.0으로 올림(`scripts/fetch-service-contracts.sh --update 3.14.0`, 이미 3.14.0 이상이면 건너뜀), 단계 ID 6개 — 테스트 `libs/contracts/tests/test_stage_contracts.py`, 구현 `service-contracts.lock`, `vlm_contracts/stages.py`
+- [x] T002 [P] [R-15] `GroundingRequested` 모델(`normalizedKey`가 sourceId·normalizationId 폴더가 아니면 검증 실패) — 테스트 `libs/contracts/tests/test_grounding_contracts.py`, 구현 `vlm_contracts/events.py`
+- [x] T003 [P] [R-7] [R-9] `GroundingCompleted`(READY·FAILED 필드 조합), `GroundingErrorCode` — 테스트 `libs/contracts/tests/test_grounding_contracts.py`, 구현 `vlm_contracts/events.py`
+- [x] T004 [P] [R-6] [R-17] `GroundingResultFile` — 테스트 `libs/contracts/tests/test_grounding_result_contract.py`, 구현 `vlm_contracts/groundings.py`
+- [x] T005 [P] `ObjectStorage.presigned_get_url`(S3·메모리 구현) — 테스트 `libs/storage/tests/test_storage_presign.py`, 구현 `vlm_storage/{storage,s3,memory}.py`
 - [ ] T006 `services/grounding-worker` 패키지 뼈대(pyproject, 워크스페이스 `members`·mypy `files`·`mypy_path`·pytest `pythonpath` 등록, `gw_support.py`, 인터페이스만 둔 모듈), Dockerfile에 ffmpeg·글꼴(test·runtime)
 
 ## Phase 1: 탐지기 인터페이스와 프로필
