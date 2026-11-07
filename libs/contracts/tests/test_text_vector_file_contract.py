@@ -1,4 +1,4 @@
-"""텍스트 벡터 파일과 트랙 번역표 읽기 모델이 docs 원본과 맞는지 검증한다(SPEC-025 R-6, R-7)."""
+"""텍스트 벡터 파일 모델이 docs 원본과 맞는지 검증한다(SPEC-025 R-6, R-7)."""
 
 import copy
 import importlib
@@ -90,23 +90,3 @@ def test_spec025_r6_text_vector_file_rules_are_enforced(
 
     with pytest.raises(ValidationError):
         model.model_validate({**example, **override})
-
-
-def test_spec025_r7_track_mapping_example_is_readable(contracts_dir: Path) -> None:
-    schema = _load(contracts_dir, "tracks/v1/track-mapping.schema.json")
-    model = _model("vlm_contracts.track_mapping", "TrackMappingSummary")
-    track_model = _model("vlm_contracts.track_mapping", "MappedTrackSummary")
-    item = cast(JsonObject, cast(JsonObject, schema["properties"])["tracks"])["items"]
-    track_props = set(cast(JsonObject, cast(JsonObject, item)["properties"]))
-
-    # 읽기 모델은 필요한 필드만 두므로 계약 필드의 부분집합이고, 그 필드는 모두 계약에서 필수다.
-    assert _fields(model) <= set(cast(JsonObject, schema["properties"]))
-    assert _required(model) <= set(cast(list[str], schema["required"]))
-    assert _fields(track_model) <= track_props
-    assert _required(track_model) <= set(cast(list[str], cast(JsonObject, item)["required"]))
-    for example in cast(list[JsonObject], schema["examples"]):
-        parsed = model.model_validate(example)
-        tracks = cast(list[JsonObject], example["tracks"])
-        assert parsed.model_dump(mode="json", by_alias=True)["tracks"] == [
-            {k: t[k] for k in ("trackId", "className", "startMs", "endMs")} for t in tracks
-        ]

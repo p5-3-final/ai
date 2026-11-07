@@ -14,7 +14,7 @@ from vlm_contracts.events import (
     TrackAnalyzed,
     TrackAttribute,
 )
-from vlm_contracts.track_mapping import MappedTrackSummary
+from vlm_contracts.tracks import MappedTrack
 from vlm_contracts.vectors import TextVectorMetadata
 
 
@@ -77,9 +77,7 @@ def track_skip(message: TrackAnalyzed) -> Skip | None:
     return checked if isinstance(checked, Skip) else None
 
 
-def track_item(
-    message: TrackAnalyzed, track: MappedTrackSummary, max_chars: int
-) -> TextItem | Skip:
+def track_item(message: TrackAnalyzed, track: MappedTrack, max_chars: int) -> TextItem | Skip:
     """R-2: 트랙 속성 설명. 시각·클래스는 track-stitcher 번역표의 최종 트랙 값이다(R-7)."""
     checked = _confirmed_attributes(message)
     if isinstance(checked, Skip):

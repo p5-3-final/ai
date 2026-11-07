@@ -8,11 +8,11 @@ from collections import OrderedDict
 from uuid import UUID
 
 from pydantic import ValidationError
-from vlm_contracts.track_mapping import MappedTrackSummary, TrackMappingSummary
+from vlm_contracts.tracks import MappedTrack, TrackMapping
 from vlm_messaging.worker import NonRetryableError
 from vlm_storage.storage import ObjectStorage
 
-type _Tracks = dict[UUID, MappedTrackSummary]
+type _Tracks = dict[UUID, MappedTrack]
 
 
 def mapping_key(source_id: UUID, job_id: UUID) -> str:
@@ -36,7 +36,7 @@ class TrackLookup:
         self._capacity = capacity
         self._cache: OrderedDict[UUID, _Tracks] = OrderedDict()
 
-    def find(self, source_id: UUID, job_id: UUID, track_id: UUID) -> MappedTrackSummary:
+    def find(self, source_id: UUID, job_id: UUID, track_id: UUID) -> MappedTrack:
         """블로킹이다. 워커에서는 `asyncio.to_thread`로 부른다.
 
         Raises:
@@ -58,7 +58,7 @@ class TrackLookup:
     def _load(self, source_id: UUID, job_id: UUID) -> _Tracks:
         data = self._storage.get_bytes(mapping_key(source_id, job_id))
         try:
-            mapping = TrackMappingSummary.model_validate_json(data)
+            mapping = TrackMapping.model_validate_json(data)
         except ValidationError as e:
             raise NonRetryableError(f"track mapping of job {job_id} breaks the contract") from e
         if (mapping.source_id, mapping.job_id) != (source_id, job_id):

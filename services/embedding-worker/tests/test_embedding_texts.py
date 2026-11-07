@@ -29,11 +29,14 @@ from ew_support import (
     segment_annotated,
     track_analyzed,
 )
-from vlm_contracts.events import AttributeReason, TrackAnalyzed
-from vlm_contracts.track_mapping import MappedTrackSummary
+from vlm_contracts.events import AttributeReason, TrackAnalyzed, TrackMember
+from vlm_contracts.tracks import MappedTrack
 
 MAX = 2000
-PLACE = MappedTrackSummary(track_id=TRACK, class_name="person", start_ms=101_000, end_ms=190_000)
+MEMBERS = [TrackMember(chunk_id=UUID(int=2), execution_id=UUID(int=3), track_local_id="t7")]
+PLACE = MappedTrack(
+    track_id=TRACK, class_name="person", start_ms=101_000, end_ms=190_000, members=MEMBERS
+)
 
 
 def _item(result: TextItem | Skip) -> TextItem:
@@ -245,7 +248,9 @@ def test_spec025_r7_annotation_metadata_has_time_and_segment() -> None:
 
 def test_track_item_uses_message_track_id() -> None:
     other = UUID("0192f100-0000-5000-8000-0000000000e9")
-    place = MappedTrackSummary(track_id=other, class_name="forklift", start_ms=0, end_ms=1)
+    place = MappedTrack(
+        track_id=other, class_name="forklift", start_ms=0, end_ms=1, members=MEMBERS
+    )
 
     item = _item(track_item(track_analyzed(track_id=other), place, MAX))
 

@@ -23,7 +23,7 @@ updated: 2026-11-07
 - [x] T001 계약 잠금을 3.14.0으로 올림(`scripts/fetch-service-contracts.sh --update 3.14.0`, 이미 3.14.0 이상이면 건너뜀), 단계 ID 4개 — 테스트 `libs/contracts/tests/test_stage_contracts.py`, 구현 `service-contracts.lock`, `vlm_contracts/stages.py`
 - [x] T002 [P] [R-3] [R-8] `SegmentAnnotated`·`EmbeddingReady`·`ItemKind` 모델(docs 원본과 필드·필수·enum·패턴·예시 왕복) — 테스트 `libs/contracts/tests/test_embedding_contracts.py`, 구현 `vlm_contracts/events.py`
 - [x] T003 [P] [R-2] `TrackAnalyzed`·`TrackAttribute` 모델(SPEC-024가 이미 더했으면 건너뜀) — 테스트 `libs/contracts/tests/test_embedding_contracts.py`, 구현 `vlm_contracts/events.py`
-- [x] T004 [P] [R-6] [R-7] `TextVectorFile`·`TextVectorMetadata`(벡터 길이 = dimension), `TrackMapping`(SPEC-022가 이미 더했으면 건너뜀) — 테스트 `libs/contracts/tests/test_text_vector_file_contract.py`, 구현 `vlm_contracts/vectors.py`, `vlm_contracts/tracks.py`
+- [x] T004 [P] [R-6] [R-7] `TextVectorFile`·`TextVectorMetadata`(벡터 길이 = dimension), `TrackMapping`(SPEC-022가 이미 더해 그것을 씀) — 테스트 `libs/contracts/tests/test_text_vector_file_contract.py`, 구현 `vlm_contracts/vectors.py`, `vlm_contracts/tracks.py`
 - [x] T005 `services/embedding-worker` 패키지 뼈대(pyproject, 워크스페이스 `members`·mypy `files`·`mypy_path`·pytest `pythonpath` 등록, `ew_support.py`, 인터페이스만 둔 모듈)
 
 ## Phase 1: US-1 행동·속성으로 장면 찾기 (P1)

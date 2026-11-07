@@ -63,7 +63,7 @@ ai-gateway 호출은 SPEC-021이 `libs/ai-client`에 더하는 `embed`(생성 �
 | --- | --- |
 | `libs/contracts/.../events.py` | `SegmentAnnotated`, `EmbeddingReady`, `ItemKind`. `TrackAnalyzed`·`TrackAttribute`는 SPEC-024 구현이 이미 더했다 |
 | `libs/contracts/.../vectors.py` | `TextVectorFile`, `TextVectorMetadata`(필드는 모두 선택, `startMs`·`endMs`만 필수). 벡터 길이 = `dimension` 검사 |
-| `libs/contracts/.../track_mapping.py` | `TrackMappingSummary`·`MappedTrackSummary`(번역표 읽기 전용. 최종 trackId·className·startMs·endMs만 두고 나머지 필드는 무시). SPEC-022의 전체 모델 `tracks.py`가 아직 main에 없어 파일을 분리해 충돌을 피했다(D-12) |
+| `libs/contracts/.../tracks.py` | `TrackMapping`·`MappedTrack`(SPEC-022가 더한 번역표 모델을 읽기에 그대로 쓴다, D-12) |
 | `libs/contracts/.../stages.py` | 단계 ID 4개(`embedding-worker.queue_wait`·`.handle`, `embedding.call`·`embedding.store`) |
 | `ew/settings.py` | 환경변수 `EMBEDDING_WORKER_`: 소비 그룹, ai-gateway 주소, 호출 제한 시간(기본 30초), 재시도 횟수·첫 대기, 최대 글자 수(기본 2000, 최대 2000), 번역표 메모리 개수(기본 8) |
 | `ew/texts.py` | 입력 이벤트 → `TextItem`(itemKind, itemId, jobId, text, textFormat, metadata) 또는 `Skip(reason)`. track은 `track_skip`으로 조건을 먼저 보고, 통과한 메시지만 번역표를 읽는다 |
@@ -167,7 +167,6 @@ sequenceDiagram
 ## 7. 리스크와 롤백
 
 - 리스크
-  - SPEC-022의 번역표 전체 모델(`vlm_contracts.tracks`)이 머지돼도 읽기 모델(`track_mapping.py`)과 함께 둘 수 있다. 읽기 모델은 필요한 필드만 본다.
   - 벡터 파일 경로에 모델 ID가 없다(계약 `vectorKey` 패턴). 임베딩 모델이 바뀌면 같은 경로를 마지막 결과로 덮어쓰고 eventId만 달라진다(C-5). spec 제외 범위 문장("다른 모델이면 다른 파일")과 달라 spec 문구 수정이 필요하다.
   - `AI_MODEL_NOT_CONFIGURED`는 503이라 ai-client가 2회 재시도한 뒤에 DLQ로 간다(SPEC-021 R-10). 호출 2번이 더 들지만 결과는 같아 그대로 둔다(C-6).
 - 결정된 확인 항목(2026-11-07)
