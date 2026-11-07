@@ -1224,6 +1224,156 @@ class ChunkManifest(Event):
     reference_frames: list[ReferenceFrame] = Field(min_length=1, max_length=8)
 
 
+type GroundingTarget = Annotated[str, Field(pattern=r"^[a-z0-9][a-z0-9 '-]{0,79}$")]
+"""grounding 대상어. 영어 소문자 명사구(ai-gateway /v1/parse의 시각 대상어)."""
+GroundingErrorCode = Literal[
+    "GROUNDING_SOURCE_UNREADABLE",
+    "GROUNDING_SEGMENT_OUT_OF_RANGE",
+    "GROUNDING_DETECTOR_FAILED",
+    "GROUNDING_TIMEOUT",
+]
+"""grounding 실패 사유(SPEC-026 R-10~R-13)."""
+GROUNDING_MODEL_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$"
+"""탐지기 버전. S3 경로 한 단계로 쓰므로 콜론·슬래시가 없다."""
+_GROUNDING_FILE = r"^sources/[0-9a-f-]{36}/groundings/[0-9a-f-]{36}/[A-Za-z0-9._-]{1,100}/"
+
+
+def _unique_targets(targets: list[str]) -> None:
+    # 계약의 uniqueItems
+    if len(set(targets)) != len(targets):
+        raise ValueError("targets must be unique")
+
+
+class GroundingSegment(_Part):
+    """주석을 만들 구간 하나. `endMs > startMs`는 검사하지 않는다(워커가 R-10 FAILED로 알린다)."""
+
+    grounding_id: UUID
+    segment_id: UUID
+    start_ms: int = _MS
+    end_ms: int = _MS
+
+
+class GroundingRequested(Event):
+    """검색 상위 구간의 bbox 주석 요청. 발행: search-service. 소비: grounding-worker(SPEC-026).
+
+    계약은 소비 쪽(SPEC-026)이 아키텍처 문서대로 정했다.
+    """
+
+    event_type: Literal["grounding.requested"] = "grounding.requested"
+    schema_version: Literal[1] = 1
+    request_id: UUID
+    job_id: UUID
+    normalization_id: UUID
+    normalized_key: str = Field(
+        pattern=r"^sources/[0-9a-f-]{36}/normalizations/[0-9a-f-]{36}/normalized[.]mp4$"
+    )
+    canonical_query: str = Field(min_length=1, max_length=500)
+    targets: list[GroundingTarget] = Field(min_length=1, max_length=3)
+    segments: list[GroundingSegment] = Field(min_length=1, max_length=3)
+
+    @model_validator(mode="after")
+    def _targets_unique(self) -> Self:
+        _unique_targets(self.targets)
+        return self
+
+    @model_validator(mode="after")
+    def _inside_normalization_folder(self) -> Self:
+        # SPEC-026 R-15: 다른 영상의 정규화 사본을 읽지 않는다. 계약 패턴은 폴더 이름이 메시지의
+        # sourceId·normalizationId와 같은지 보지 않으므로 여기서 확인한다.
+        expected = f"sources/{self.source_id}/normalizations/{self.normalization_id}/normalized.mp4"
+        if self.normalized_key != expected:
+            raise ValueError("normalizedKey is not the normalization folder of this message")
+        return self
+
+
+class GroundingFrameCount(_Part):
+    """샘플 프레임 하나의 대상어별 객체 수(기준 신뢰도 이상)."""
+
+    pts_ms: int = _MS
+    counts: dict[str, Annotated[int, Field(ge=0, le=1000)]]
+
+
+class GroundingCompleted(Event):
+    """주석 구간 하나의 처리 결과. 발행: grounding-worker(SPEC-026 R-1, R-6~R-13)."""
+
+    event_type: Literal["grounding.completed"] = "grounding.completed"
+    schema_version: Literal[1] = 1
+    request_id: UUID
+    job_id: UUID
+    grounding_id: UUID
+    segment_id: UUID
+    start_ms: int = _MS
+    end_ms: int = _MS
+    targets: list[GroundingTarget] = Field(min_length=1, max_length=3)
+    grounding_model: str = Field(pattern=GROUNDING_MODEL_PATTERN)
+    outcome: Literal["READY", "FAILED"]
+    clip_key: str | None = Field(pattern=_GROUNDING_FILE + r"clip[.]mp4$")
+    result_key: str | None = Field(pattern=_GROUNDING_FILE + r"result[.]json$")
+    frames: list[GroundingFrameCount] | None = Field(max_length=12)
+    error_code: GroundingErrorCode | None
+
+    @model_validator(mode="after")
+    def _targets_unique(self) -> Self:
+        _unique_targets(self.targets)
+        return self
+
+    @model_validator(mode="after")
+    def _fields_match_outcome(self) -> Self:
+        # 계약 allOf의 if/then 두 개
+        results = (self.clip_key, self.result_key, self.frames)
+        if self.outcome == "READY" and (None in results or self.error_code is not None):
+            raise ValueError("READY requires clipKey, resultKey, frames and no errorCode")
+        if self.outcome == "FAILED" and (
+            self.error_code is None or any(v is not None for v in results)
+        ):
+            raise ValueError("FAILED requires errorCode and null clipKey, resultKey, frames")
+        return self
+
+
+# --- SPEC-025 텍스트 임베딩 --------------------------------------------------------------------
+
+# 텍스트 벡터 항목 종류. event: event.analyzed, track: track.analyzed 속성 설명,
+# segment_annotation: 정밀 검색 구간 주석
+ItemKind = Literal["event", "track", "segment_annotation"]
+_TEXT_VECTOR_KEY = (
+    rf"^sources/{_UUID36}/jobs/{_UUID36}/text-vectors/(event|track|segment_annotation)/"
+    rf"{_UUID36}[.]json$"
+)
+TEXT_FORMAT_PATTERN = r"^[a-z0-9_]+-v[0-9]+$"
+
+
+class SegmentAnnotated(Event):
+    """정밀 검색에서 확인된 구간 주석 하나. 발행: search-service. 소비: embedding-worker.
+
+    계약은 소비 쪽(SPEC-025)이 아키텍처 문서대로 정했다.
+    """
+
+    event_type: Literal["segment.annotated"] = "segment.annotated"
+    schema_version: Literal[1] = 1
+    annotation_id: UUID
+    job_id: UUID
+    segment_id: UUID
+    start_ms: int = _MS
+    end_ms: int = _MS
+    text: str = Field(min_length=1, max_length=500)
+    canonical_query: str = Field(min_length=1)
+    score: float = Field(ge=0, le=1)
+
+
+class EmbeddingReady(Event):
+    """텍스트 항목 하나의 벡터 파일 저장 완료. 발행: embedding-worker(SPEC-025 R-6, R-8)."""
+
+    event_type: Literal["embedding.ready"] = "embedding.ready"
+    schema_version: Literal[1] = 1
+    job_id: UUID
+    item_kind: ItemKind
+    item_id: UUID
+    vector_key: str = Field(pattern=_TEXT_VECTOR_KEY)
+    text_format: str = Field(pattern=TEXT_FORMAT_PATTERN)
+    embedding_model: str = Field(min_length=1, max_length=200)
+    dimension: int = Field(ge=1, le=4096)
+
+
 EVENT_MODELS: dict[str, type[Event]] = {
     "chunk.requested": ChunkRequested,
     "chunk.execution.finished": ChunkExecutionFinished,
@@ -1248,5 +1398,9 @@ EVENT_MODELS: dict[str, type[Event]] = {
     "source.completed": SourceCompleted,
     "state.updated": StateUpdated,
     "chunk.manifest": ChunkManifest,
+    "grounding.requested": GroundingRequested,
+    "grounding.completed": GroundingCompleted,
+    "segment.annotated": SegmentAnnotated,
+    "embedding.ready": EmbeddingReady,
 }
 """토픽 이름 → 이벤트 모델. 계약 테스트는 여기 등록된 모델을 모두 검증한다."""
