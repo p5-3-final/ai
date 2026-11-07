@@ -52,7 +52,16 @@ updated: 2026-11-07
 - [x] T019 [R-9] 기동 조립: 설정, 클라이언트(`X-Caller` `track-analyzer`, 설정 제한 시간으로 `X-Request-Deadline`), 워커 route `attribute.requested` — 테스트 `t/test_track_main.py`, 구현 `ta/{__main__,settings}.py`
 - [x] T020 [R-6] [R-7] [NFR-2] 워커 e2e: 정상 발행, 잘못된 메시지 DLQ, sourceId 밖 경로 DLQ(ai-gateway 호출 0회), 긴 호출 중 커밋(구현 뒤 작성, Red 없음) — 테스트 `t/test_track_worker_e2e.py`
 - [x] T021 Dockerfile, README, CI `service-images` runtime 빌드 (레포 `.env.example`은 에이전트 권한 설정이 읽기를 막아 고치지 못했다. event-analyzer 변수도 그 파일에 없고 README 표가 기준이다)
-- [ ] T022 [NFR-1] 로컬 compose 측정: click·question 요청 발행부터 `track.analyzed`까지 p95 2초 안, 성공 지표(click 1, question 1 → 2건 계약 통과)(docs compose PR 뒤)
+- [x] T022 [NFR-1] 로컬 compose 측정: click·question 요청 발행부터 `track.analyzed`까지 p95 2초 안, 성공 지표(click 1, question 1 → 2건 계약 통과)(docs compose PR 뒤) — 완료: 아래 측정 기록
+
+## 측정 기록
+
+2026-11-07, 로컬 compose mock 프로필(M1 Pro, Docker 10 CPU·25GB), docs `scripts/e2e/run.sh measure`
+
+| 항목 | 기준 | 결과 |
+| --- | --- | --- |
+| 성공 지표(click 1, question 1) | `track.analyzed` 2건, 계약 통과 | 2건, 계약 통과 |
+| NFR-1 click 20회, 발행부터 `track.analyzed`까지 | p95 2초 | p95 32ms |
 
 ## 완료 조건
 
