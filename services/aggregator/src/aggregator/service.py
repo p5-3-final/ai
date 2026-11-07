@@ -343,5 +343,8 @@ class AggregatorService:
 
     def _require_stream(self) -> WindowHandler:
         if self._stream is None:
-            raise StoreUnavailableError("STREAM handling needs AGGREGATOR_REDIS_URL")
+            # build_worker는 Redis와 stream-service 주소가 둘 다 있어야 처리기를 만든다.
+            raise StoreUnavailableError(
+                "STREAM handling needs AGGREGATOR_REDIS_URL and AGGREGATOR_STREAM_SERVICE_URL"
+            )
         return self._stream
