@@ -25,8 +25,8 @@ updated: 2026-11-06
 
 - [x] T003 [R-11] temporal IoU(겹친 길이 / 합친 길이, 길이 0이면 0) — 테스트 `et/test_evals_matching.py`, 구현 `ev/matching.py`
 - [x] T004 [R-11] 같은 유형끼리, 기준 이상 쌍을 IoU 큰 순(같으면 라벨 시작 이른 순) 일대일, 놓침·오탐 — 테스트 `et/test_evals_matching.py`
-- [ ] T005 [P] [R-12] bbox: 같은 클래스, 시각 차 ≤ 프레임 간격 절반, 박스 IoU 기준, 같은 순서 규칙 — 테스트 `et/test_evals_matching.py`
-- [ ] T006 [R-12] 상태 변화: 같은 클래스·같은 종류(대응표 인자, plan 5절 1 기본안), 시각 차 기준, 가까운 순 일대일 — 테스트 `et/test_evals_matching.py`
+- [x] T005 [P] [R-12] bbox: 같은 클래스, 시각 차 ≤ 프레임 간격 절반, 박스 IoU 기준, 같은 순서 규칙 — 테스트 `et/test_evals_matching.py`
+- [x] T006 [R-12] 상태 변화: 같은 클래스·같은 종류(대응표 인자, plan 5절 1 기본안), 시각 차 기준, 가까운 순 일대일 — 테스트 `et/test_evals_matching.py`
 
 ## Phase 2: US-4 성능 Gate 명령 (P2)
 
