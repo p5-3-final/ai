@@ -1081,6 +1081,50 @@ class GroundingCompleted(Event):
         return self
 
 
+# --- SPEC-025 텍스트 임베딩 --------------------------------------------------------------------
+
+# 텍스트 벡터 항목 종류. event: event.analyzed, track: track.analyzed 속성 설명,
+# segment_annotation: 정밀 검색 구간 주석
+ItemKind = Literal["event", "track", "segment_annotation"]
+_TEXT_VECTOR_KEY = (
+    rf"^sources/{_UUID36}/jobs/{_UUID36}/text-vectors/(event|track|segment_annotation)/"
+    rf"{_UUID36}[.]json$"
+)
+TEXT_FORMAT_PATTERN = r"^[a-z0-9_]+-v[0-9]+$"
+
+
+class SegmentAnnotated(Event):
+    """정밀 검색에서 확인된 구간 주석 하나. 발행: search-service. 소비: embedding-worker.
+
+    계약은 소비 쪽(SPEC-025)이 아키텍처 문서대로 정했다.
+    """
+
+    event_type: Literal["segment.annotated"] = "segment.annotated"
+    schema_version: Literal[1] = 1
+    annotation_id: UUID
+    job_id: UUID
+    segment_id: UUID
+    start_ms: int = _MS
+    end_ms: int = _MS
+    text: str = Field(min_length=1, max_length=500)
+    canonical_query: str = Field(min_length=1)
+    score: float = Field(ge=0, le=1)
+
+
+class EmbeddingReady(Event):
+    """텍스트 항목 하나의 벡터 파일 저장 완료. 발행: embedding-worker(SPEC-025 R-6, R-8)."""
+
+    event_type: Literal["embedding.ready"] = "embedding.ready"
+    schema_version: Literal[1] = 1
+    job_id: UUID
+    item_kind: ItemKind
+    item_id: UUID
+    vector_key: str = Field(pattern=_TEXT_VECTOR_KEY)
+    text_format: str = Field(pattern=TEXT_FORMAT_PATTERN)
+    embedding_model: str = Field(min_length=1, max_length=200)
+    dimension: int = Field(ge=1, le=4096)
+
+
 EVENT_MODELS: dict[str, type[Event]] = {
     "chunk.requested": ChunkRequested,
     "chunk.execution.finished": ChunkExecutionFinished,
@@ -1103,5 +1147,7 @@ EVENT_MODELS: dict[str, type[Event]] = {
     "track.manifest": TrackManifest,
     "grounding.requested": GroundingRequested,
     "grounding.completed": GroundingCompleted,
+    "segment.annotated": SegmentAnnotated,
+    "embedding.ready": EmbeddingReady,
 }
 """토픽 이름 → 이벤트 모델. 계약 테스트는 여기 등록된 모델을 모두 검증한다."""
