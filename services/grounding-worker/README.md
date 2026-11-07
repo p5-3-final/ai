@@ -12,8 +12,9 @@
   `result.json`(클립을 먼저 쓴다)
 - 영상 처리는 시스템 ffmpeg·ffprobe 프로세스다. 입력은 저장소 서명 주소라 영상 전체를 받지 않고 구간만
   읽는다. 박스는 ffmpeg `drawbox`·`drawtext`로 그리고, 라벨 글꼴은 이미지의 `fonts-dejavu-core`다.
-- 탐지기는 `GroundingDetector` 인터페이스다. 지금은 결정적 mock만 있다. 실제 탐지기(onnxruntime 추천)는
-  가중치가 준비된 뒤 더한다(tasks T026~T028).
+- 탐지기는 `GroundingDetector` 인터페이스다. 실제 탐지기는 OWL-ViT base patch32(`transformers`, Apache-2.0)이고
+  대상어 문장을 그대로 텍스트 쿼리로 쓴다(`profiles/local.toml`). 가중치는 모델 버킷의 manifest로 기동할 때
+  받는다(docs `local/scripts/upload-models.sh`). 결정적 mock(`profiles/local-mock.toml`)은 CI·흐름 확인용이다.
 
 ## 실행
 
@@ -29,6 +30,8 @@ uv run --package grounding-worker python -m grounding_worker
 | `S3_BUCKET`, `S3_ENDPOINT_URL`, `S3_REGION`, `S3_PATH_STYLE` | (버킷 필수) | 영상 버킷. 정규화 사본을 서명 주소로 읽고 클립·결과 파일을 쓴다 |
 | `GROUNDING_WORKER_PROFILE_PATH` | (필수, 이미지는 `/app/profiles/local-mock.toml`) | 탐지기·기준 신뢰도·렌더링 프로필(TOML) |
 | `GROUNDING_WORKER_ALLOW_MOCK` | `false` | mock 탐지기 허용. 운영에서 실수로 고르지 않도록 따로 켠다 |
+| `GROUNDING_WORKER_MODELS_BUCKET` | 없음 | 탐지기 가중치를 받는 모델 버킷. 실제 탐지기 프로필에 필요하다 |
+| `GROUNDING_WORKER_MODEL_CACHE_DIR` | `/var/cache/vlm-models` | 가중치 로컬 캐시. 운영은 emptyDir을 붙인다 |
 | `GROUNDING_WORKER_ITEM_TIMEOUT_S` | `120` | 구간 하나(probe~렌더링)의 제한 시간. 넘으면 `GROUNDING_TIMEOUT` |
 | `GROUNDING_WORKER_SAMPLE_INTERVAL_MS` | `1000` | 샘플 간격(200 이상) |
 | `GROUNDING_WORKER_MAX_SAMPLES` | `12` | 구간당 최대 샘플 수(1~12) |
@@ -50,5 +53,6 @@ uv run --package grounding-worker python -m grounding_worker
 
 ```bash
 uv run pytest services/grounding-worker -m "not ffmpeg"   # 단위·서비스(가짜 미디어·탐지기)
+uv run pytest services/grounding-worker -m model          # 실제 OWL-ViT 가중치(Hugging Face에서 약 615MB 받음)
 scripts/test-in-docker.sh grounding-worker                # 서비스 이미지 안에서 ffmpeg·Kafka e2e 포함 전체
 ```

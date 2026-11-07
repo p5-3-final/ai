@@ -103,3 +103,30 @@ def test_class_names_follow_taxonomy_pattern(contracts_dir: Path) -> None:
     assert ModelManifest.model_validate(detector).classes == ["person", "no_helmet"]
     with pytest.raises(ValidationError):
         ModelManifest.model_validate(detector | {"classes": ["Forklift"]})
+
+
+OPEN_VOCABULARY: JsonObject = {
+    k: v for k, v in ENCODER.items() if k not in ("dimension", "classes")
+} | {"kind": "detector", "openVocabulary": True}
+
+
+def test_open_vocabulary_detector_omits_classes() -> None:
+    parsed = ModelManifest.model_validate(OPEN_VOCABULARY)
+
+    assert parsed.open_vocabulary is True
+    assert json.loads(parsed.model_dump_json(by_alias=True, exclude_none=True)) == OPEN_VOCABULARY
+
+
+def test_open_vocabulary_detector_rejects_classes() -> None:
+    with pytest.raises(ValidationError, match="classes"):
+        ModelManifest.model_validate(OPEN_VOCABULARY | {"classes": ["person"]})
+
+
+def test_fixed_class_detector_still_requires_classes() -> None:
+    with pytest.raises(ValidationError, match="classes"):
+        ModelManifest.model_validate(OPEN_VOCABULARY | {"openVocabulary": False})
+
+
+def test_open_vocabulary_is_detector_only() -> None:
+    with pytest.raises(ValidationError, match="openVocabulary"):
+        ModelManifest.model_validate(ENCODER | {"openVocabulary": True})

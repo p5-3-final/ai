@@ -31,6 +31,10 @@ class GroundingWorkerSettings(BaseSettings):
     profile_path: Path
     # mock 탐지기는 CI·로컬 전용이다. 운영에서 실수로 고르지 않도록 따로 켜야 한다.
     allow_mock: bool = False
+    # 탐지기 가중치를 받는 모델 버킷. 영상 버킷(S3_BUCKET)과 권한을 나눈다(mock은 불필요).
+    models_bucket: str | None = None
+    # 가중치 로컬 캐시. 운영은 Pod의 emptyDir을 여기에 붙여 재시작 때 다시 받지 않는다.
+    model_cache_dir: Path = Path("/var/cache/vlm-models")
     # SPEC-026 R-13: 구간 하나(probe~렌더링)의 제한 시간
     item_timeout_s: float = Field(default=120, gt=0)
     # SPEC-026 R-2: 샘플 간격. 결과 파일 sampleFps 상한(5)에 맞춰 200ms 이상이다.
@@ -41,7 +45,7 @@ class GroundingWorkerSettings(BaseSettings):
     # 특수 문자를 허용하지 않는다.
     work_dir: Path | None = None
 
-    @field_validator("work_dir", mode="before")
+    @field_validator("work_dir", "models_bucket", mode="before")
     @classmethod
     def _blank_is_none(cls, value: object) -> object:
         # compose는 값이 없는 변수를 빈 문자열로 넘긴다.

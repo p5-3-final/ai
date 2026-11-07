@@ -56,23 +56,30 @@ updated: 2026-11-07
 - [x] T024 [R-12] `DetectorError`면 `GROUNDING_DETECTOR_FAILED` FAILED — 테스트 `t/test_grounding_service.py`
 - [x] T025 [R-13] 구간 제한 시간(기본 120초)을 넘으면 멈추고 `GROUNDING_TIMEOUT` FAILED, ffmpeg 프로세스 종료 — 테스트 `t/test_grounding_service.py`, `t/test_grounding_media.py`(`ffmpeg` 마커), 구현 `gw/service.py`, `gw/media.py`
 
-## Phase 5: 실제 탐지기 (사용자 확인 뒤)
+## Phase 5: 실제 탐지기 (OWL-ViT base patch32, 2026-11-07 사용자 결정)
 
-- [ ] T026 [확인] [R-3] 결정한 라이브러리 추가(`uv add`, 이유를 plan에 기록)와 탐지기 구현(대상어를 텍스트 클래스로, 라이브러리 오류 → `DetectorError`) — 테스트 `t/test_grounding_model.py`(`model` 마커), 구현 `gw/detector_<라이브러리>.py`
-- [ ] T027 [확인] [R-17] 가중치 manifest로 받기(`fetch_model`), 버전 = manifest version, `local.toml` 자리값 — 테스트 `t/test_grounding_profile.py`, 구현 `gw/detector.py` `load_detector`, `profiles/local.toml`
-- [ ] T028 [확인] runtime 이미지에 라이브러리 반영과 크기 확인 — `services/grounding-worker/Dockerfile`
+- [x] T026 [R-3] [R-12] `transformers`·`torch`·`pillow`·`scipy` 추가와 OWL 계열 탐지기(OWL-ViT·OWLv2를 manifest modelId로 고름, 대상어를 텍스트 쿼리로, 대상어별 겹침 제거, 라이브러리 오류 → `DetectorError`, 기동 시 빈 프레임 실행) — 테스트 `t/test_grounding_owl.py`, `t/test_grounding_model.py`(`model` 마커), 구현 `gw/detector_owl.py`
+- [x] T027 [R-17] 가중치 manifest로 받기(`fetch_model`, 계약 5.1.0 `openVocabulary`), 버전 = manifest version, `local.toml`, 모델 버킷·캐시 설정 — 테스트 `t/test_grounding_profile.py`, `t/test_grounding_owl.py`, `t/test_grounding_main.py`, 구현 `gw/{detector,profile,settings,__main__}.py`, `profiles/local.toml`
+- [x] T028 runtime 이미지에 라이브러리 반영과 크기 확인(602MB → 1.36GB, torch 테스트·헤더 제거, 가중치 캐시 폴더) — `services/grounding-worker/Dockerfile`
 
 ## Phase 6: 워커와 배포
 
 - [x] T029 기동 조립: 설정, 프로필, 탐지기 로드(기동 때 한 번), 저장소, `route`, health, 측정 발행 — 테스트 `t/test_grounding_main.py`, 구현 `gw/{__main__,settings}.py`
 - [x] T030 [R-15] [R-16] [NFR-3] 워커 e2e(Kafka·SeaweedFS testcontainer, mock 탐지기, 서비스 이미지의 ffmpeg): 정상 발행, 재사용, 잘못된 메시지·`normalizedKey` 불일치 DLQ, 긴 처리 중 커밋 — 테스트 `t/test_grounding_worker_e2e.py`(`ffmpeg` 마커, 구현 뒤 작성이면 PR에 "Red 없음"으로 적음)
 - [x] T031 README, 레포 `.env.example`, CI `service-images` 이미지 빌드·ffmpeg 테스트(`.env.example`은 에이전트 권한 설정으로 수정하지 못해 README 환경변수 표로 대신했다)
-- [x] T032 docs `local/`: compose 서비스(1.5G), 토픽 `grounding.requested`·`grounding.completed`·재시도·`grounding-worker.dlq`, `local/.env.example`, `local/README.md`(docs 레포 PR) — 완료: docs #142(로컬 compose에 서비스 1.5G·토픽·DLQ, README 메모리 표)
-- [ ] T033 [확인] [NFR-1] [NFR-2] 로컬 compose 측정(CPU, 1080p 30fps 10초 구간 p95 30초, 메모리 1.5GB). 실제 탐지기 결정 뒤. 결과는 아래 "측정 기록"에만 짧게 적음
+- [x] T032 docs `local/`: compose 서비스(1.5G, docs #153에서 2G로 올림), 토픽 `grounding.requested`·`grounding.completed`·재시도·`grounding-worker.dlq`, `local/.env.example`, `local/README.md`(docs 레포 PR) — 완료: docs #142(로컬 compose에 서비스 1.5G·토픽·DLQ, README 메모리 표)
+- [x] T033 [NFR-1] [NFR-2] 로컬 compose 측정(CPU, 1080p 30fps 10초 구간 p95 30초, 메모리 2GB). docs `scripts/e2e/run.sh measure spec026_grounding`(E2E_REAL_MODELS=1). 결과는 아래 "측정 기록"에만 짧게 적음
 
 ## 측정 기록
 
-(T033에서 채운다)
+2026-11-07 로컬 compose(Docker Desktop, Linux arm64 CPU 10개), 실제 영상(1080p 30fps) 10초 구간 5개, 대상어 "person", 구간당 샘플 10장. docs `scripts/e2e/run.sh measure spec026_grounding`.
+
+| 탐지기 | 구간 처리 p95 | 탐지 단계 p95 | 최대 메모리 | 프레임당 박스 | 판정 |
+| --- | --- | --- | --- | --- | --- |
+| OWL-ViT base patch32 (`owlvit-b32`) | 10.3초 | 6.4초 | 1,276MiB | 8.4개 | NFR-1·NFR-2 통과 |
+| OWLv2 base patch16 ensemble | 75.5초 | 71.3초 | 1,320MiB | — | NFR-1 실패, 쓰지 않음 |
+
+- 5건 모두 READY이고 이벤트가 계약 스키마를 통과했다. 클립은 h264 1920x1080 30fps 10초이고, 4초 지점 프레임에서 사람 12명 모두 박스가 위치와 맞았다.
 
 ## 완료 조건
 

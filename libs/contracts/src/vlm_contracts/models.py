@@ -57,6 +57,9 @@ class ModelManifest(_Contract):
     files: list[ManifestFile] = Field(min_length=1)
     dimension: int | None = Field(default=None, ge=1)
     classes: list[ClassName] | None = Field(default=None, min_length=1)
+    # detector 전용. true면 실행 시 받은 대상어를 클래스로 쓰는 개방 어휘 탐지기라 classes가
+    # 없다(SPEC-026).
+    open_vocabulary: bool | None = None
     source: Annotated[PublicSource | TrainedSource, Field(discriminator="type")]
     license: str = Field(min_length=1, max_length=200)
 
@@ -64,6 +67,14 @@ class ModelManifest(_Contract):
     def _kind_fields(self) -> Self:
         if self.kind == "image_text_encoder" and self.dimension is None:
             raise ValueError("image_text_encoder manifest requires dimension")
-        if self.kind == "detector" and self.classes is None:
-            raise ValueError("detector manifest requires classes")
+        if self.open_vocabulary is not None and self.kind != "detector":
+            raise ValueError("openVocabulary is only for detector manifest")
+        if self.kind == "detector":
+            self._detector_classes()
         return self
+
+    def _detector_classes(self) -> None:
+        if self.open_vocabulary and self.classes is not None:
+            raise ValueError("open vocabulary detector manifest must omit classes")
+        if not self.open_vocabulary and self.classes is None:
+            raise ValueError("detector manifest requires classes")

@@ -33,14 +33,24 @@ class Prepared:
     config: GroundingConfig
 
 
-def prepare(settings: GroundingWorkerSettings) -> Prepared:
+def prepare(settings: GroundingWorkerSettings, models: ObjectStorage | None) -> Prepared:
     """프로필을 검증하고 탐지기를 로드한다. 메시지마다가 아니라 기동 때 한 번 부른다.
 
+    Args:
+        settings: 서비스 설정.
+        models: 모델 버킷. 설정이 없으면 None이다.
+
     Raises:
-        ProfileError: 프로필이 틀렸거나 허용하지 않은 mock 탐지기일 때.
+        ProfileError: 프로필이 틀렸거나, 허용하지 않은 mock 탐지기이거나, 모델 버킷 설정이 없을 때.
+        DetectorLoadError: 가중치를 받거나 읽지 못했을 때.
     """
     profile = load_profile(settings.profile_path, GroundingProfile)
-    detector = load_detector(profile.detector, allow_mock=settings.allow_mock)
+    detector = load_detector(
+        profile.detector,
+        allow_mock=settings.allow_mock,
+        models=models,
+        cache_dir=settings.model_cache_dir,
+    )
     return Prepared(
         detector,
         GroundingConfig(
@@ -93,7 +103,12 @@ def main() -> None:
     health = HealthState()
     # 탐지기를 받는 동안에도 liveness가 응답하도록 먼저 연다. ready는 워커가 소비를 시작한 뒤다.
     serve_health(health, port=worker_settings.health_port)
-    prepared = prepare(settings)
+    models = (
+        S3Storage(StorageSettings(bucket=settings.models_bucket))
+        if settings.models_bucket
+        else None
+    )
+    prepared = prepare(settings, models)
     logger.info("detector loaded", extra={"groundingModel": prepared.detector.version})
     storage = S3Storage(StorageSettings())
     build_worker(worker_settings, settings, storage, prepared, health).run()

@@ -112,7 +112,7 @@ def _start(
         WorkerSettings(kafka_bootstrap=bootstrap),
         settings,
         storage,
-        prepare(settings),
+        prepare(settings, None),
         health,
         kafka=kafka,
         media=media,
