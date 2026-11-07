@@ -27,15 +27,15 @@ updated: 2026-11-06
 
 ## Phase 1: 탐지기 인터페이스와 프로필
 
-- [ ] T007 [R-17] 프로필 `[detector]`·`[render]` 검증, mock은 허용 설정 없으면 기동 실패 — 테스트 `t/test_grounding_profile.py`, 구현 `gw/profile.py`, `profiles/local-mock.toml`
-- [ ] T008 [R-3] `GroundingDetector`·`Detection`·`RgbFrame`·`DetectorError`, 결정적 `MockDetector` — 테스트 `t/test_grounding_detector.py`, 구현 `gw/detector.py`
+- [x] T007 [R-17] 프로필 `[detector]`·`[render]` 검증, mock은 허용 설정 없으면 기동 실패 — 테스트 `t/test_grounding_profile.py`, 구현 `gw/profile.py`, `profiles/local-mock.toml`
+- [x] T008 [R-3] `GroundingDetector`·`Detection`·`RgbFrame`·`DetectorError`, 결정적 `MockDetector` — 테스트 `t/test_grounding_detector.py`, 구현 `gw/detector.py`
 
 ## Phase 2: US-1 검색 결과에서 대상 위치 보기 (P1)
 
-- [ ] T009 [P] [R-2] 샘플 시각: startMs부터 간격마다, `< endMs`, 최대 12장 — 테스트 `t/test_grounding_sampling.py`, 구현 `gw/sampling.py`
-- [ ] T010 [P] [R-5] 대상어 색 = UTF-8 sha256 앞 3바이트 `#rrggbb` — 테스트 `t/test_grounding_render.py`, 구현 `gw/render.py`
-- [ ] T011 [R-4] 샘플별 표시 구간(이웃 샘플 중간점)과 `drawbox`·`drawtext` 필터 스크립트(이스케이프 포함) — 테스트 `t/test_grounding_render.py`, 구현 `gw/render.py`
-- [ ] T012 [P] [R-9] eventId = uuid5(groundingId·groundingModel), 클립·결과 경로 — 테스트 `t/test_grounding_ids.py`, 구현 `gw/ids.py`, `gw/keys.py`
+- [x] T009 [P] [R-2] 샘플 시각: startMs부터 간격마다, `< endMs`, 최대 12장 — 테스트 `t/test_grounding_sampling.py`, 구현 `gw/sampling.py`
+- [x] T010 [P] [R-5] 대상어 색 = UTF-8 sha256 앞 3바이트 `#rrggbb` — 테스트 `t/test_grounding_render.py`, 구현 `gw/render.py`
+- [x] T011 [R-4] 샘플별 표시 구간(이웃 샘플 중간점)과 `drawbox`·`drawtext` 필터 스크립트(이스케이프 포함) — 테스트 `t/test_grounding_render.py`, 구현 `gw/render.py`
+- [x] T012 [P] [R-9] eventId = uuid5(groundingId·groundingModel), 클립·결과 경로 — 테스트 `t/test_grounding_ids.py`, 구현 `gw/ids.py`, `gw/keys.py`
 - [ ] T013 [R-2] `FfmpegTool` probe와 샘플 프레임 rgb24 추출 — 테스트 `t/test_grounding_media.py`(`ffmpeg` 마커), 구현 `gw/media.py`
 - [ ] T014 [R-4] `FfmpegTool` 클립 렌더링: H.264, 원본 fps, 오디오 유지, 박스 위치 픽셀 확인 — 테스트 `t/test_grounding_media.py`(`ffmpeg` 마커), 구현 `gw/media.py`
 - [ ] T015 [R-1] [R-6] 핸들러: 구간 순서대로 처리, 클립 → 결과 파일 순서로 저장, 구간마다 READY 발행(계약 스키마 통과) — 테스트 `t/test_grounding_service.py`, 구현 `gw/service.py`
