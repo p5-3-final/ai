@@ -9,6 +9,7 @@ from agg_support import (
     STREAM_JOB,
     STREAM_PREVIOUS,
     STREAM_SOURCE,
+    Harness,
     StreamHarness,
     analysis,
     context,
@@ -23,6 +24,7 @@ from agg_support import (
     window_id,
 )
 from aggregator.fold import SessionState, fold
+from aggregator.kv import StoreUnavailableError
 from aggregator.service import AggregatorService, CountMismatchError
 from aggregator.session_state import SessionStateStore
 from vlm_contracts.aggregates import result_key
@@ -296,3 +298,11 @@ async def test_spec027_r34_window_fold_stage_is_recorded() -> None:
         "aggregate.inventory_compare": 0,
         "aggregate.judge": 0,
     }
+
+
+async def test_59_stream_message_without_stream_service_url_names_that_setting() -> None:
+    """[#59] Redis가 있어도 stream-service 주소가 없으면 그 설정 이름을 오류에 싣는다."""
+    service = Harness().service()
+
+    with pytest.raises(StoreUnavailableError, match="AGGREGATOR_STREAM_SERVICE_URL"):
+        await service.on_analysis_completed(stream_completed(1), context())
