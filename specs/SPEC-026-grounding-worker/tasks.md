@@ -64,7 +64,7 @@ updated: 2026-11-06
 
 ## Phase 6: 워커와 배포
 
-- [ ] T029 기동 조립: 설정, 프로필, 탐지기 로드(기동 때 한 번), 저장소, `route`, health, 측정 발행 — 테스트 `t/test_grounding_main.py`, 구현 `gw/{__main__,settings}.py`
+- [x] T029 기동 조립: 설정, 프로필, 탐지기 로드(기동 때 한 번), 저장소, `route`, health, 측정 발행 — 테스트 `t/test_grounding_main.py`, 구현 `gw/{__main__,settings}.py`
 - [ ] T030 [R-15] [R-16] [NFR-3] 워커 e2e(Kafka·SeaweedFS testcontainer, mock 탐지기, 서비스 이미지의 ffmpeg): 정상 발행, 재사용, 잘못된 메시지·`normalizedKey` 불일치 DLQ, 긴 처리 중 커밋 — 테스트 `t/test_grounding_worker_e2e.py`(`ffmpeg` 마커, 구현 뒤 작성이면 PR에 "Red 없음"으로 적음)
 - [ ] T031 README, 레포 `.env.example`, CI `service-images` 이미지 빌드·ffmpeg 테스트
 - [ ] T032 docs `local/`: compose 서비스(1.5G), 토픽 `grounding.requested`·`grounding.completed`·재시도·`grounding-worker.dlq`, `local/.env.example`, `local/README.md`(docs 레포 PR)

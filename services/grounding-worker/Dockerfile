@@ -48,7 +48,8 @@ RUN groupadd --system --gid 10001 app \
 COPY --from=build /opt/venv /opt/venv
 COPY services/grounding-worker/profiles /app/profiles
 # 실제 탐지기 프로필(local.toml)은 탐지기 라이브러리를 정한 뒤 더한다(tasks T027).
-ENV GROUNDING_WORKER_PROFILE_PATH=/app/profiles/local-mock.toml
+ENV GROUNDING_WORKER_PROFILE_PATH=/app/profiles/local-mock.toml \
+    GROUNDING_WORKER_WORK_DIR=/var/tmp/grounding
 USER 10001:10001
 # health 전용 포트(docs 서비스 카탈로그 "포트 규칙")
 EXPOSE 8000
