@@ -23,7 +23,7 @@ def _make_video(path: Path, *, seconds: int = 4, audio: bool = True) -> Path:
     if audio:
         args += ["-f", "lavfi", "-i", f"sine=f=440:d={seconds}", "-c:a", "aac"]
     args += ["-c:v", "libx264", "-pix_fmt", "yuv420p", "-shortest", "-movflags", "+faststart"]
-    subprocess.run([*args, str(path)], check=True)  # noqa: S603  # 테스트가 만든 인자 목록이다 (#46)
+    subprocess.run([*args, str(path)], check=True)  # noqa: S603  # 테스트가 만든 인자 목록이다 (#48)
     return path
 
 

@@ -77,7 +77,7 @@ def video(tmp_path_factory: pytest.TempPathFactory) -> bytes:
     args += ["-f", "lavfi", "-i", "testsrc=s=320x240:r=30:d=6"]
     args += ["-f", "lavfi", "-i", "sine=f=440:d=6", "-c:a", "aac", "-shortest"]
     args += ["-c:v", "libx264", "-pix_fmt", "yuv420p", "-movflags", "+faststart", str(path)]
-    subprocess.run(args, check=True)  # noqa: S603  # 테스트가 만든 인자 목록이다 (#46)
+    subprocess.run(args, check=True)  # noqa: S603  # 테스트가 만든 인자 목록이다 (#48)
     return path.read_bytes()
 
 
