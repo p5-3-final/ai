@@ -49,7 +49,7 @@ ai-gateway에는 두 taskType의 Registry 폴더(입력·출력 스키마, 자�
 | 원칙 | 준수 | 비고 |
 | --- | --- | --- |
 | I 스펙 우선 | ☑ | SPEC-024 Approved (docs #119) |
-| II 계약 우선 | ☑ | docs #119 머지. 잠금은 첫 태스크에서 3.14.0으로 올린다 |
+| II 계약 우선 | ☑ | docs #119 머지. 잠금은 SPEC-021(ai #44)이 4.1.0으로 올렸다 |
 | III 테스트 우선 | ☑ | R-1~R-13, NFR-2·NFR-3 테스트 매핑. NFR-1은 로컬 측정 |
 | IV 서비스 자율성 | ☑ | 저장소·DB 없음. 이미지는 ai-gateway가 읽는다. analysis-api·notification 코드는 건드리지 않는다 |
 | V 단순성 | ☑ | 새 외부 패키지 없음. event-analyzer와 같은 워커 구조, 설정은 환경변수만(유형별 기준값이 없어 프로필 파일 없음) |
@@ -119,7 +119,7 @@ ai-gateway에는 두 taskType의 Registry 폴더(입력·출력 스키마, 자�
 - `prompt.md`: 동작 확인용 자리 표시 문장. 문안은 AI 담당자 몫이다.
 - 프로필: `max_images`는 `track_attribute` 3, `object_question` 11(크롭 3 + 장면 8). `local.toml`은 로컬 Ollama의 같은 모델(`qwen3-vl:4b-instruct`), `local-mock.toml`은 mock. 출력 토큰·제한 시간은 `event_judge`와 같은 자리값이다.
 - 계약 파일 배치: 테스트 `conftest.py`의 registry 배치와 Dockerfile COPY에 `events/_track-attribute.schema.json`·`_object-answer.schema.json`을 더한다. `registry_bundle._REGISTRY_FOLDERS`는 이미 `events`를 담는다. 테스트 도우미 `gateway_support.profile()`의 tasks에도 두 taskType을 더한다(프로필·Registry 목록이 다르면 `check_tasks`가 기동을 막는다).
-- 이미지 하한(R-11 "1~3장", R-12 "1~11장"): ai-gateway는 지금 상한(`max_images`)만 검사한다. 하한 검사를 더하려면 프로필 스키마에 `min_images`를 더해야 한다(사용자 확인 필요 1). 기본안은 `TaskProfile`에 `min_images`(기본 0, 기존 taskType 동작 유지)를 더하고 두 taskType은 1로 둔다. 모자라면 400 `AI_INVALID_REQUEST`다. 확인 전까지 해당 태스크(T009)는 보류한다.
+- 이미지 하한(R-11 "1~3장", R-12 "1~11장"): ai-gateway는 지금 상한(`max_images`)만 검사한다. 하한 검사를 위해 `TaskProfile`에 `min_images`(기본 0, 기존 taskType 동작 유지, `max_images` 이하)를 더하고 두 taskType은 1로 둔다. 모자라면 400 `AI_INVALID_REQUEST`(`errors[].field` = `images`)다(D-11, 2026-11-07 기본안으로 결정).
 
 ### 상호작용
 
@@ -149,7 +149,7 @@ sequenceDiagram
 | 4xx도 FAILED로 발행 | 화면이 기다리지 않음(spec 목적, R-4) | 설정 오류가 DLQ에 쌓이지 않고 결과로 보임 | ☑ |
 | SPEC-020처럼 4xx는 DLQ | 설정 오류가 눈에 띔 | 화면이 무한정 기다림. R-4와 다름 | |
 | 출력 형식 파일을 Registry에 하나씩 복사 | 프롬프트와 관계없는 이벤트 스키마가 섞이지 않음(SPEC-020 선택 유지) | 복사 목록이 세 곳에서 늘어남 | ☑ |
-| 프로필에 `min_images` 추가 | 하한을 ai-gateway가 지킴 | 프로필 스키마 변경 | 확인 필요 1 |
+| 프로필에 `min_images` 추가 | 하한을 ai-gateway가 지킴 | 프로필 스키마 변경 | ☑ (D-11) |
 | 하한을 호출자 계약(`crops` 1개 이상)에 맡김 | 변경 없음 | ai-gateway가 R-11·R-12의 하한을 보장하지 않음 | |
 
 ## 6. 테스트 전략
@@ -182,3 +182,12 @@ sequenceDiagram
 ## 9. v5.1 추가 설계(계약 묶음 4.0.0, 2026-11-07)
 
 바뀐 요구사항이 없다. 잠금을 4.0.0으로 올리면 깨지는 계약 테스트(`StageId` 목록, `EventAnalyzed`)는 T001에서 SPEC-023 T001과 같은 방식으로 맞춘다.
+
+## 10. 구현 기록(2026-11-07)
+
+- 잠금은 SPEC-021(ai #44)이 이미 4.1.0으로 올렸고 `StageId`·`EventAnalyzed`도 맞춰 두어 T001은 확인만 했다.
+- T005(`representativeCrops`)는 SPEC-022가 `vlm_contracts/tracks.py`를 만들면서 4.1.0 계약대로 넣는다. 이 PR은 하지 않았다.
+- 이미지 하한은 D-11 기본안(`min_images`, 기본 0)으로 구현했다.
+- 응답의 `taxonomyVersion`이 `v2`·null이 아니면 `track.analyzed` 계약을 어기므로 결과 형식 불일치와 같이 `AI_INVALID_RESPONSE`로 FAILED다.
+- 단계 `attribute.call`은 호출이 예외로 끝나면 `error`, 응답을 받으면(결과 형식 검사 전) `ok`다.
+- ai-gateway 테스트에서 "등록되지 않은 taskType" 예시로 쓰던 `track_attribute`를 `not_registered_task`로 바꿨다(`test_analyze_api`·`test_prompts`·`test_startup`).
