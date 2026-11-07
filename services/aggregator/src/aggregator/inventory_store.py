@@ -7,12 +7,20 @@
 import asyncio
 from uuid import UUID
 
+from vlm_common.errors import VlmError
 from vlm_contracts.aggregates import ChunkInventory, inventory_key, inventory_prefix
 from vlm_contracts.events import ChunkManifest
 from vlm_messaging.worker import MessageContext
 from vlm_storage.storage import ObjectStorage
 
 _JSON = "application/json"
+
+
+class InventoryIncompleteError(VlmError):
+    """청크 재고 파일이 `counts.chunks`보다 적다. `chunk.manifest`가 늦을 수 있어 다시 시도한다
+    (SPEC-028 R-2)."""
+
+    code = "AGGREGATOR_INVENTORY_INCOMPLETE"
 
 
 def inventory_of(message: ChunkManifest) -> ChunkInventory:

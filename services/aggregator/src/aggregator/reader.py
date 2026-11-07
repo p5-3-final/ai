@@ -20,7 +20,7 @@ from vlm_analysis_client.client import (
 from vlm_analysis_client.models import FinalState, JobEvent
 from vlm_common.errors import VlmError
 from vlm_common.http_call import Deadline
-from vlm_contracts.aggregates import InitialState
+from vlm_contracts.aggregates import InitialState, InventoryObject
 from vlm_contracts.events import AnalysisCompleted, AnalysisCounts, MissingCounts, VLMAnalysis
 
 from aggregator.model import AggregateInput, InputEvent, Presence, TrackSpan, ZoneInfo
@@ -141,7 +141,7 @@ class JobReader:
         zones = await self._client.list_source_zones(
             source, deadline=deadline, traceparent=traceparent
         )
-        initial = await self._initial(message, deadline, traceparent)
+        initial, previous_inventory = await self._initial(message, deadline, traceparent)
         events = {e.event_id: e for e in extra_events}
         events.update((e.event_id, _event(e)) for e in raw_events)
         return AggregateInput(
@@ -160,14 +160,16 @@ class JobReader:
                 Presence(p.track_id, p.zone_id, p.enter_ms, p.exit_ms) for p in raw_presences
             ),
             zones=tuple(ZoneInfo(z.zone_id, z.name, z.kind) for z in zones.items),
+            previous_inventory=previous_inventory,
         )
 
     async def _initial(
         self, message: AnalysisCompleted, deadline: Deadline, traceparent: str | None
-    ) -> InitialState:
+    ) -> tuple[InitialState, tuple[InventoryObject, ...]]:
+        """직전 영상의 마지막 상태와 끝 재고(SPEC-028 R-6). 재고가 없으면 빈 목록이다."""
         previous = message.session.previous_source_id if message.session else None
         if previous is None:
-            return EMPTY_INITIAL
+            return EMPTY_INITIAL, ()
         try:
             final = await self._client.get_source_final_state(
                 previous, deadline=deadline, traceparent=traceparent
@@ -175,9 +177,9 @@ class JobReader:
         except AnalysisApiError as e:
             # 활성 분석 버전이 없거나(R-5) 직전 영상이 지워졌으면(D-16) 다시 읽어도 같다.
             if e.status == 404:
-                return EMPTY_INITIAL
+                return EMPTY_INITIAL, ()
             raise
-        return InitialState.model_validate(
+        initial = InitialState.model_validate(
             {
                 "fromSourceId": previous,
                 "zoneStates": [z.model_dump(mode="json", by_alias=True) for z in final.zone_states],
@@ -186,6 +188,14 @@ class JobReader:
                 ],
             }
         )
+        try:
+            stocked = tuple(
+                InventoryObject.model_validate(o.model_dump(mode="json", by_alias=True))
+                for o in final.static_objects or ()
+            )
+        except ValidationError as e:
+            raise InvalidInputError("final-state staticObjects is not an inventory") from e
+        return initial, stocked
 
 
 async def _all[T](fetch: Callable[[str | None], Awaitable[_Page[T]]]) -> list[T]:

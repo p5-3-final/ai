@@ -217,7 +217,7 @@ async def test_spec027_r23_analysis_that_is_not_vlm_analysis_is_non_retryable() 
 
 
 async def test_spec027_r24_stages_are_recorded_with_counts() -> None:
-    """[SPEC-027 R-24] aggregate.read·compute·summary·store 단계와 처리 수를 남긴다."""
+    """[SPEC-027 R-24, SPEC-028 R-18] read·compute·summary·store와 재고 단계의 처리 수를 남긴다."""
     h = _with_events(Harness(), risk_event(1, 30_000, detected=True), event(2, start=0))
     ctx = context()
 
@@ -226,7 +226,10 @@ async def test_spec027_r24_stages_are_recorded_with_counts() -> None:
     stages = {t.stage_id: t.count for t in ctx.timing.timings}
     assert stages == {
         "aggregate.read": 2,
+        "aggregate.inventory_compare": 0,
+        "aggregate.judge": 0,
         "aggregate.compute": 2,
+        "aggregate.forecast": 1,
         "aggregate.summary": 1,
         "aggregate.store": 1,
     }

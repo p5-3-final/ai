@@ -27,6 +27,7 @@ def static(
     zone: UUID | None = None,
     first: int = 0,
     last: int = 50_000,
+    source: UUID = SOURCE,
 ) -> StaticObject:
     x, y, w, h = box
     return StaticObject.model_validate(
@@ -38,25 +39,32 @@ def static(
             "firstSeenMs": first,
             "lastSeenMs": last,
             "observationCount": 10,
-            "frameKey": f"{prefix(chunk)}static-{local}.jpg",
+            "frameKey": f"{prefix(chunk, source=source)}static-{local}.jpg",
         }
     )
 
 
 def chunk_inventory(
-    chunk: UUID, start: int, end: int, *objects: StaticObject, frames: tuple[int, ...] = ()
+    chunk: UUID,
+    start: int,
+    end: int,
+    *objects: StaticObject,
+    frames: tuple[int, ...] = (),
+    source: UUID = SOURCE,
 ) -> ChunkInventory:
     points = frames or (start, (start + end) // 2, end - 100)
     return ChunkInventory.model_validate(
         {
-            "sourceId": str(SOURCE),
+            "sourceId": str(source),
             "jobId": str(JOB),
             "chunkId": str(chunk),
             "executionId": str(execution_of(chunk)),
             "ownedRange": {"startMs": start, "endMs": end},
             "detectorProfile": "detect-v1",
             "staticObjects": [o.model_dump(mode="json", by_alias=True) for o in objects],
-            "referenceFrames": [{"ptsMs": p, "key": f"{prefix(chunk)}ref-{p}.jpg"} for p in points],
+            "referenceFrames": [
+                {"ptsMs": p, "key": f"{prefix(chunk, source=source)}ref-{p}.jpg"} for p in points
+            ],
         }
     )
 

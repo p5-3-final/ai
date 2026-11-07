@@ -1,11 +1,21 @@
 """결과 파일·`source.completed` 조립과 고정 직렬화(R-20, R-21, R-28)."""
 
+from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
-from vlm_contracts.aggregates import SourceResult, Summary, result_key
+from vlm_contracts.aggregates import (
+    Forecast,
+    InventoryChange,
+    InventoryEvent,
+    InventoryObject,
+    SourceResult,
+    Summary,
+    result_key,
+)
 from vlm_contracts.events import (
     AnalysisCompleted,
     MissingCounts,
@@ -43,10 +53,28 @@ def source_session(session: SessionRef | None) -> SourceSessionRef | None:
     )
 
 
+@dataclass(frozen=True, slots=True)
+class InventoryResult:
+    """재고 단계 결과(SPEC-028 R-9, R-13). 재고 파일이 끝내 모자라면 만들지 않는다(R-2)."""
+
+    inventory: tuple[InventoryObject, ...]
+    changes: tuple[InventoryChange, ...]
+    events: tuple[InventoryEvent, ...]
+
+
 def build_result(
-    source: AggregateInput, computed: Computed, summary: Summary, version: str
+    source: AggregateInput,
+    computed: Computed,
+    summary: Summary,
+    version: str,
+    *,
+    inventory: InventoryResult | None = None,
+    forecasts: Sequence[Forecast] | None = None,
 ) -> SourceResult:
-    """결과 파일. 목록은 계산 단계가 정한 순서 그대로다."""
+    """결과 파일. 목록은 계산 단계가 정한 순서 그대로다.
+
+    재고·예측이 None이면 그 필드를 빼고 낸다(SPEC-028 선택 필드).
+    """
     return SourceResult(
         source_id=source.source_id,
         job_id=source.job_id,
@@ -61,6 +89,10 @@ def build_result(
         risks=list(computed.risks),
         timeline=list(computed.timeline),
         summary=summary,
+        inventory=list(inventory.inventory) if inventory else None,
+        inventory_changes=list(inventory.changes) if inventory else None,
+        inventory_events=list(inventory.events) if inventory else None,
+        forecasts=list(forecasts) if forecasts is not None else None,
     )
 
 
@@ -101,6 +133,8 @@ def source_completed(
     occurred_at: datetime,
     missing: MissingCounts | None = None,
     job_type: str | None = None,
+    inventory: InventoryResult | None = None,
+    forecasts: Sequence[Forecast] | None = None,
 ) -> SourceCompleted:
     """`source.completed`. eventId는 jobId·revision으로 결정적이다(R-20, R-28)."""
     counts = SourceCompletedCounts(
@@ -111,6 +145,8 @@ def source_completed(
         snapshots=len(computed.snapshots),
         risks=len(computed.risks),
         active_risks_at_end=len(computed.final_state.active_risks),
+        inventory_events=len(inventory.events) if inventory else None,
+        forecasts=len(forecasts) if forecasts is not None else None,
     )
     return SourceCompleted.model_validate(
         {
@@ -135,6 +171,7 @@ def source_completed(
 
 __all__ = [
     "AggregateMeta",
+    "InventoryResult",
     "build_result",
     "empty_summary",
     "encode_result",

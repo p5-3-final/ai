@@ -30,7 +30,13 @@ from vlm_analysis_client.client import (
 )
 from vlm_analysis_client.models import FinalState
 from vlm_common.http_call import Deadline, Failure
-from vlm_contracts.aggregates import CarriedRisk, InitialState, ZoneState
+from vlm_contracts.aggregates import (
+    CarriedRisk,
+    ChunkInventory,
+    InitialState,
+    ZoneState,
+    inventory_key,
+)
 from vlm_contracts.events import (
     AnalysisCompleted,
     AnalysisCounts,
@@ -38,7 +44,9 @@ from vlm_contracts.events import (
     Event,
     EventAnalyzed,
     EventType,
+    ReferenceFrame,
     SessionRef,
+    TimeRange,
     TrackDetected,
     VLMAnalysis,
 )
@@ -380,6 +388,34 @@ class FakeAnalysisApi:
 # ---- 가짜 ai-gateway(source_summary) ----
 
 SUMMARY_TEXT = "요약 문장 원문"
+FORECAST_OUTPUT: dict[str, object] = {
+    "method": "rule",
+    "horizons": [{"horizonSec": 600, "exposureProbability": 0.42}],
+    "features": {"active_seconds": 1200.0, "zone_entries_per_minute": 0.8},
+}
+
+
+def state_compare_output(
+    status: str = "confirmed",
+    *,
+    event_type: str = "object_moved",
+    risk: bool | None = True,
+) -> dict[str, object]:
+    """`state_compare` 응답(`_state-compare`). 기본은 방호 해제 위험을 알리는 확정 판정이다."""
+    result = analysis(
+        event_type,
+        status,
+        risk=risk,
+        risk_type="barrier_not_restored" if risk else None,
+        risk_reason="통로 방호 해제" if risk else None,
+        after_state="방호벽이 옮겨짐",
+        evidence_end=70.0,
+        description="방호벽 판정 원문",
+    )
+    return {
+        "analysis": json.loads(result.model_dump_json(by_alias=True)),
+        "changes": [{"kind": "moved", "className": "safety_barrier", "description": "이동"}],
+    }
 
 
 @dataclass
@@ -396,23 +432,39 @@ class FakeGateway:
     error: AiGatewayError | None = None
     # event_judge(실시간 재판정, R-31) 응답. source_summary는 `output`이다.
     judge_output: dict[str, object] | None = None
+    # taskType별 응답·modelId·오류(SPEC-028 state_compare·risk_forecast). 없으면 위 값을 쓴다.
+    task_outputs: dict[str, dict[str, object]] = field(
+        default_factory=lambda: {
+            "state_compare": state_compare_output(),
+            "risk_forecast": FORECAST_OUTPUT,
+        }
+    )
+    task_model_ids: dict[str, str | None] = field(default_factory=dict)
+    task_errors: dict[str, AiGatewayError] = field(default_factory=dict)
     requests: list[tuple[AnalyzeRequest, str | None]] = field(default_factory=list)
 
     async def analyze(
         self, request: AnalyzeRequest, *, traceparent: str | None = None
     ) -> AnalyzeResponse:
         self.requests.append((request, traceparent))
-        if self.error is not None:
+        task = request.task_type
+        if task in self.task_errors:
+            raise self.task_errors[task]
+        if self.error is not None and task not in self.task_outputs:
             raise self.error
+        if task in self.task_outputs:
+            output = self.task_outputs[task]
+        elif task == "event_judge" and self.judge_output is not None:
+            output = self.judge_output
+        else:
+            output = self.output
         return AnalyzeResponse(
             call_id=uid(0xCA11 + len(self.requests)),
-            task_type=request.task_type,
-            model_id=self.model_id,
-            prompt_version=f"{request.task_type}@0123456789ab",
+            task_type=task,
+            model_id=self.task_model_ids.get(task, self.model_id),
+            prompt_version=f"{task}@0123456789ab",
             taxonomy_version="v2",
-            output=self.judge_output
-            if request.task_type == "event_judge" and self.judge_output is not None
-            else self.output,
+            output=output,
         )
 
     def task_types(self) -> list[str]:
@@ -481,6 +533,12 @@ class Harness:
     storage: InMemoryStorage = field(default_factory=InMemoryStorage)
     publisher: RecordingPublisher = field(default_factory=RecordingPublisher)
     store: MemoryStore | None = field(default_factory=MemoryStore)
+    # 업로드 job의 청크 재고 파일(SPEC-028 R-2). 기본은 counts.chunks(1)와 같은 빈 재고 하나다.
+    empty_inventories: int = 1
+
+    def __post_init__(self) -> None:
+        for n in range(self.empty_inventories):
+            put_empty_inventory(self.storage, uid(0x1A00 + n), start_ms=n * 60_000)
 
     def service(self) -> "AggregatorService":
         return AggregatorService(
@@ -494,6 +552,29 @@ class Harness:
             clock=lambda: T0,
             now=lambda: NOW,
         )
+
+
+def put_empty_inventory(
+    storage: InMemoryStorage, chunk: UUID, *, start_ms: int = 0, job: UUID = JOB
+) -> None:
+    """정적 객체가 없는 청크 재고 파일(SPEC-028 R-1)."""
+    execution = UUID(int=chunk.int + 0xE000)
+    prefix = f"sources/{SOURCE}/jobs/{job}/chunks/{chunk}/executions/{execution}/blurred/"
+    inventory = ChunkInventory(
+        source_id=SOURCE,
+        job_id=job,
+        chunk_id=chunk,
+        execution_id=execution,
+        owned_range=TimeRange(start_ms=start_ms, end_ms=start_ms + 60_000),
+        detector_profile="detect-v1",
+        static_objects=[],
+        reference_frames=[ReferenceFrame(pts_ms=start_ms, key=f"{prefix}ref-{start_ms}.jpg")],
+    )
+    storage.put_bytes(
+        inventory_key(SOURCE, job, chunk),
+        inventory.model_dump_json(by_alias=True).encode(),
+        "application/json",
+    )
 
 
 # ---- 실시간(STREAM) 창 ----

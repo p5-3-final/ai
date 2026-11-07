@@ -1,6 +1,7 @@
 """aggregator 핸들러(R-1~R-5, R-19~R-29). 실시간 창(STREAM)은 `stream.py`가 맡는다.
 
-처리 순서(업로드 job): 읽기 → 개수 대조 → 계산 → 요약 → 결과 파일 저장 → `source.completed` 발행.
+처리 순서(업로드 job): 읽기(청크 재고 포함) → 개수 대조 → 재고 비교 → 재고 판정 → 계산 → 예측 →
+요약 → 결과 파일 저장 → `source.completed` 발행(SPEC-028은 재고 비교·판정·예측을 더한다).
 발행이 끝나야 워커가 커밋한다(NFR-4). 재시도할 수 있는 실패는 그대로 던져 재시도 토픽으로 보내고,
 다시 해도 같은 실패는 `NonRetryableError`로 바꿔 DLQ로 보낸다(R-22, R-23).
 """
@@ -15,7 +16,7 @@ from uuid import UUID
 
 from vlm_analysis_client.client import AnalysisApiError
 from vlm_common.http_call import Deadline
-from vlm_contracts.aggregates import result_key
+from vlm_contracts.aggregates import ChunkInventory, result_key
 from vlm_contracts.events import (
     AnalysisCompleted,
     ChunkManifest,
@@ -26,7 +27,11 @@ from vlm_messaging.worker import MessageContext, NonRetryableError
 from vlm_storage.storage import ObjectNotFoundError, ObjectStorage
 
 from aggregator.compute import compute
-from aggregator.inventory_store import InventoryStore
+from aggregator.equipment import abandoned_equipment
+from aggregator.forecast import forecast_risks
+from aggregator.inventory import compare
+from aggregator.inventory_store import InventoryIncompleteError, InventoryStore
+from aggregator.judge import InventoryJudge, LocalBudget
 from aggregator.kv import KeyValueStore, StoreUnavailableError
 from aggregator.model import AggregateInput, InputEvent
 from aggregator.pending import PendingVectors, StoredEvent
@@ -35,6 +40,7 @@ from aggregator.profile import LoadedProfile
 from aggregator.reader import InvalidInputError, JobReader, missing_counts
 from aggregator.result import (
     AggregateMeta,
+    InventoryResult,
     build_result,
     encode_result,
     meta_key,
@@ -106,6 +112,7 @@ class AggregatorService:
         self._config = config
         self._pending = PendingVectors(store) if store is not None else None
         self._inventory = InventoryStore(storage)
+        self._judge = InventoryJudge(gateway, storage, profile.profile)
         self._stream = stream
         self._clock = clock
         self._now = now
@@ -170,19 +177,42 @@ class AggregatorService:
         extra = await self._pending_events(message.job_id)
         with ctx.timing.stage("aggregate.read", unit="events") as block:
             source = await self._read(message, deadline, ctx.traceparent, extra)
+            chunks = await asyncio.to_thread(
+                self._inventory.load_all, message.source_id, message.job_id
+            )
             block.count = len(source.events)
         missing = missing_counts(message.counts, source.events, source.tracks)
-        if missing is not None and ctx.attempt < self._config.max_attempts:
+        last_attempt = ctx.attempt >= self._config.max_attempts
+        if missing is not None and not last_attempt:
             raise CountMismatchError(
                 f"read counts differ from analysis.completed (missing {missing.model_dump()})"
             )
+        if len(chunks) < message.counts.chunks and not last_attempt:
+            raise InventoryIncompleteError(
+                f"inventory files {len(chunks)} < chunks {message.counts.chunks}"
+            )
+        stocked = await self._inventory_stage(source, chunks, message, ctx)
         with ctx.timing.stage("aggregate.compute", unit="events") as block:
-            computed = await asyncio.to_thread(compute, source, self._profile)
+            computed = await asyncio.to_thread(
+                compute, source, self._profile, inventory=stocked.events if stocked else ()
+            )
             block.count = len(source.events)
+        with ctx.timing.stage("aggregate.forecast", unit="risks") as block:
+            forecasts = await forecast_risks(
+                self._gateway, source, computed, self._profile.profile, traceparent=ctx.traceparent
+            )
+            block.count = len(forecasts)
         with ctx.timing.stage("aggregate.summary", unit="calls") as block:
             summary = await summarize(self._gateway, source, computed, traceparent=ctx.traceparent)
             block.count = 0 if summary.status == "empty" else 1
-        result = build_result(source, computed, summary, self._profile.version)
+        result = build_result(
+            source,
+            computed,
+            summary,
+            self._profile.version,
+            inventory=stocked,
+            forecasts=forecasts,
+        )
         event = source_completed(
             source,
             computed,
@@ -192,6 +222,8 @@ class AggregatorService:
             occurred_at=self._now(),
             missing=missing,
             job_type=message.job_type,
+            inventory=stocked,
+            forecasts=forecasts,
         )
         meta = AggregateMeta(
             revision=revision,
@@ -220,6 +252,50 @@ class AggregatorService:
                 "risks": len(computed.risks),
             },
         )
+
+    async def _inventory_stage(
+        self,
+        source: AggregateInput,
+        chunks: list[ChunkInventory],
+        message: AnalysisCompleted,
+        ctx: MessageContext,
+    ) -> InventoryResult | None:
+        """재고 비교·장비 방치(순수 계산)와 판정(SPEC-028 R-3~R-13).
+
+        재시도 상한에서도 재고 파일이 모자라면 없는 청크를 사라진 것으로 잘못 볼 수 있어 재고 단계를
+        건너뛰고 None을 낸다(R-2, plan 4절).
+        """
+        if len(chunks) < message.counts.chunks:
+            logger.warning(
+                "inventory skipped",
+                extra={
+                    "jobId": str(source.job_id),
+                    "inventoryFiles": len(chunks),
+                    "chunks": message.counts.chunks,
+                },
+            )
+            return None
+        loaded = self._profile.profile
+        with ctx.timing.stage("aggregate.inventory_compare", unit="objects") as block:
+            comparison = await asyncio.to_thread(
+                compare, chunks, source.previous_inventory, job_id=source.job_id, profile=loaded
+            )
+            abandoned = abandoned_equipment(
+                comparison.chains, source.tracks, source.presences, loaded, job_id=source.job_id
+            )
+            block.count = sum(len(c.static_objects) for c in chunks)
+        with ctx.timing.stage("aggregate.judge", unit="calls") as block:
+            judged = await self._judge.judge(
+                comparison,
+                abandoned,
+                source_id=source.source_id,
+                job_id=source.job_id,
+                zones=source.zones,
+                budget=LocalBudget(loaded.judge_call_limit),
+                traceparent=ctx.traceparent,
+            )
+            block.count = judged.calls
+        return InventoryResult(comparison.end_inventory, judged.changes, judged.events)
 
     async def _read(
         self,
