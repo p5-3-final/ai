@@ -24,7 +24,9 @@ members = [
     "vlm-common",
     "vlm-contracts",
     "vlm-encoders",
+    "vlm-evals",
     "vlm-messaging",
+    "vlm-quality-client",
     "vlm-storage",
     "vlm-stream-client",
     "vlm-testing",
@@ -1892,6 +1894,27 @@ requires-dist = [
 ]
 
 [[package]]
+name = "vlm-evals"
+version = "0.1.0"
+source = { editable = "evals" }
+dependencies = [
+    { name = "httpx" },
+    { name = "pydantic" },
+    { name = "pydantic-settings" },
+    { name = "vlm-common" },
+    { name = "vlm-quality-client" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "httpx", specifier = ">=0.28.1" },
+    { name = "pydantic", specifier = ">=2.14.2" },
+    { name = "pydantic-settings", specifier = ">=2.16.2" },
+    { name = "vlm-common", editable = "libs/common" },
+    { name = "vlm-quality-client", editable = "libs/quality-client" },
+]
+
+[[package]]
 name = "vlm-messaging"
 version = "0.1.0"
 source = { editable = "libs/messaging" }
@@ -1906,6 +1929,23 @@ requires-dist = [
     { name = "confluent-kafka", specifier = ">=2.16.1" },
     { name = "vlm-common", editable = "libs/common" },
     { name = "vlm-contracts", editable = "libs/contracts" },
+]
+
+[[package]]
+name = "vlm-quality-client"
+version = "0.1.0"
+source = { editable = "libs/quality-client" }
+dependencies = [
+    { name = "httpx" },
+    { name = "pydantic" },
+    { name = "vlm-common" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "httpx", specifier = ">=0.28.1" },
+    { name = "pydantic", specifier = ">=2.14.2" },
+    { name = "vlm-common", editable = "libs/common" },
 ]
 
 [[package]]
