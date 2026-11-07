@@ -69,6 +69,18 @@ max_retries = 1
 # 프롬프트·스키마 약 1500 + 이미지 11장 × 약 300
 estimated_input_tokens = 4800
 
+# 영상 요약(SPEC-027 R-18). 이미지 없이 타임라인·위험 JSON만 보낸다. 모델 선택은 AI 담당자 몫이고 로컬은
+# 개발 머신에 모델 하나만 올리도록 판정과 같은 모델을 자리값으로 둔다. 이미지가 없어도 상한은 0보다 커야 한다.
+[tasks.source_summary]
+adapter = "ollama"
+model = "qwen3-vl:4b-instruct"
+max_output_tokens = 600
+max_images = 1
+timeout_s = 120
+max_retries = 1
+# 프롬프트·스키마 약 1200 + 타임라인·위험 JSON(이벤트 수에 비례, 상한 없음. plan 7절)
+estimated_input_tokens = 3000
+
 # 이미지·질의 인코더(SPEC-011). frame-encoder와 같은 모델 ID여야 같은 인덱스를 찾는다.
 # 가중치: Hugging Face timm/MobileCLIP2-S0-OpenCLIP의 open_clip_model.safetensors(Apple AMLR, 비상용)를
 # manifest와 함께 모델 버킷(AI_GATEWAY_MODELS_BUCKET)의 아래 경로에 올려 둔다. 절차는 docs local/README.md,

@@ -16,13 +16,15 @@ header="# 생성 코드. scripts/generate-clients.sh로 만든다. 손으로 고
 target_of() {
   case "$1" in
     ai-client) echo "openapi/ai-gateway.yaml vlm_ai_client" ;;
+    analysis-client) echo "openapi/analysis-service.yaml vlm_analysis_client" ;;
+    stream-client) echo "openapi/stream-service.yaml vlm_stream_client" ;;
     *)
       echo "모르는 클라이언트: $1" >&2
       return 1
       ;;
   esac
 }
-all_targets=(ai-client)
+all_targets=(ai-client analysis-client stream-client)
 
 generate() {
   local lib="$1" out="${2:-}" contracts="${3:-${default_contracts}}" contract package
@@ -37,7 +39,9 @@ generate() {
       --custom-file-header "${header}"
   )
   # 로컬·CI·임시 경로 어디서 만들어도 같은 결과가 되도록 레포 설정을 직접 넘긴다.
-  ruff check --config "${root}/pyproject.toml" --fix-only --quiet "${out}"
+  # 생성기가 만드는 TypeAliasType 별칭(UP040)은 `type` 문으로 바꿔야 검사를 통과하는데, ruff가 이 수정을
+  # unsafe로 분류해 따로 허용한다(analysis-service.yaml, SPEC-027).
+  ruff check --config "${root}/pyproject.toml" --fix-only --unsafe-fixes --quiet "${out}"
   ruff format --config "${root}/pyproject.toml" --quiet "${out}"
 }
 

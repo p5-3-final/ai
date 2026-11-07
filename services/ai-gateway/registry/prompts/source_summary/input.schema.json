@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vlm.example/contracts/prompts/source_summary/input.schema.json",
+  "title": "SourceSummaryInput",
+  "description": "/v1/analyze 요청의 variables(taskType source_summary, 이미지 없음). 결과 파일의 타임라인·위험과 구역 이름, 영상 길이다. 이벤트 설명 원문은 넣지 않는다(SPEC-027 R-18).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["durationSec", "zones", "timeline", "risks"],
+  "properties": {
+    "durationSec": {"type": "number", "minimum": 0},
+    "zones": {
+      "type": "array",
+      "maxItems": 100,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["zoneId", "name", "kind"],
+        "properties": {
+          "zoneId": {"type": "string"},
+          "name": {"type": "string", "maxLength": 100},
+          "kind": {"type": "string"}
+        }
+      }
+    },
+    "timeline": {
+      "type": "array",
+      "description": "결과 파일 timeline 항목 그대로",
+      "items": {"type": "object"}
+    },
+    "risks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["riskId", "zoneId", "riskType", "status", "reason", "firstSeenMs", "resolvedAtMs", "carriedOver", "exposure"],
+        "properties": {
+          "riskId": {"type": "string"},
+          "zoneId": {"type": "string"},
+          "riskType": {"type": "string"},
+          "status": {"type": "string", "enum": ["active", "resolved"]},
+          "reason": {"type": "string"},
+          "firstSeenMs": {"type": "integer", "minimum": 0},
+          "resolvedAtMs": {"type": ["integer", "null"], "minimum": 0},
+          "carriedOver": {"type": "boolean"},
+          "exposure": {"type": "object"}
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "durationSec": 125.001,
+      "zones": [{"zoneId": "0192f100-0000-7000-8000-0000000000f1", "name": "A동 크레인 하부", "kind": "hazard"}],
+      "timeline": [
+        {"atMs": 100000, "kind": "risk_activated", "refId": "0192f500-0000-5000-8000-000000000004", "eventType": "ppe_missing", "zoneId": "0192f100-0000-7000-8000-0000000000f1", "severity": null}
+      ],
+      "risks": [
+        {"riskId": "0192f500-0000-5000-8000-000000000004", "zoneId": "0192f100-0000-7000-8000-0000000000f1", "riskType": "ppe_missing", "status": "active", "reason": "안전모 미착용", "firstSeenMs": 100000, "resolvedAtMs": null, "carriedOver": false, "exposure": {"activeSeconds": 25.001, "exposureCount": 1, "exposureSeconds": 20.0}}
+      ]
+    }
+  ]
+}

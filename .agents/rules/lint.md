@@ -35,4 +35,4 @@ ruff `select`와 그 규칙이 강제하는 이 레포의 규칙은 다음과 �
 ## 설정 단위 예외 (이 목록만 허용)
 - `tests/**`: `S101`(assert)을 `per-file-ignores`로 허용한다(pytest는 assert로 검증한다).
 - `notebooks/`: ruff와 mypy 대상에서 제외한다(실험용이며 `src`에서 import하지 않는다).
-- `libs/*-client/src/*/models.py`: `E501`(줄 길이)만 `per-file-ignores`로 허용한다. `scripts/generate-clients.sh`가 계약(OpenAPI)에서 생성하는 파일이고 손으로 고치지 않는다. 계약의 `description`이 `Field` 문자열로 그대로 들어가 100자를 넘는다. 그 밖의 ruff 규칙과 mypy strict는 그대로 검사한다(SPEC-021, #44).
+- `libs/*-client/src/*/models.py`: `E501`(줄 길이)과 `RUF001`(모호한 유니코드 문자)만 `per-file-ignores`로 허용한다. `scripts/generate-clients.sh`가 계약(OpenAPI)에서 생성하는 파일이고 손으로 고치지 않는다. 계약의 `description`이 `Field` 문자열로 그대로 들어가 100자를 넘고, 설명 안의 수식 기호(`−`, analysis-service.yaml)가 `RUF001`로 잡힌다. 둘 다 문자열 내용이라 동작과 무관하다. 그 밖의 ruff 규칙과 mypy strict는 그대로 검사한다(SPEC-021, #44, SPEC-027).

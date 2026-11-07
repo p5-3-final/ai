@@ -1,0 +1,19 @@
+# aggregator 프로필(SPEC-027). 기준값은 AI 담당자가 정하는 자리값이고, 바꾸면 결과 파일의
+# aggregateProfile(이름@내용 해시)이 바뀐다(R-21). 코드는 바꾸지 않는다.
+name = "aggregate-v1"
+# 청크 경계를 넘는 같은 사건의 최대 간격(R-6)
+merge_gap_ms = 10000
+# 위험구역 체류 기준(R-8)
+dwell_ms = 60000
+# 위험구역 배회: 창 길이와 진입 횟수(R-9)
+loiter_window_ms = 300000
+loiter_count = 3
+# 체류·배회·노출을 세는 트랙 클래스(R-8, R-9, R-16)
+person_classes = ["person"]
+# 규칙 이벤트 설명 템플릿(R-10). {zone}은 구역 이름, {seconds}·{count}는 기준값이다.
+dwell_description = "작업자가 '{zone}'에 {seconds}초 이상 머물렀습니다."
+loiter_description = "작업자가 '{zone}'에 {seconds}초 안에 {count}번 들어왔습니다."
+# 활성 위험 중 위험구역 접근 재판정의 job당 호출 상한(R-31, SPEC-028 R-8과 같은 계수)
+judge_call_limit = 20
+# 실시간 세션 상태를 S3에 스냅샷으로 남기는 창 간격(R-30)
+snapshot_every_windows = 30
