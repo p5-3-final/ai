@@ -29,6 +29,8 @@ FROM uv AS test
 COPY pyproject.toml uv.lock ./
 COPY libs libs
 COPY services services
+# evals도 workspace 멤버라 --all-packages가 그 pyproject를 찾는다(SPEC-030).
+COPY evals evals
 RUN --mount=type=cache,target=/root/.cache/uv uv sync --frozen --all-packages
 
 FROM uv AS build
