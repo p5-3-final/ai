@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vlm.example/contracts/prompts/state_compare/output.schema.json",
+  "title": "StateCompareOutput",
+  "description": "state_compare 결과. 형식의 원본은 서비스 간 계약 events/_state-compare.schema.json이고 aggregator 결과 파일 inventoryEvents로 다른 레포에 전달된다(SPEC-028). 예시는 mock Adapter 응답이다.",
+  "$ref": "../../events/_state-compare.schema.json",
+  "examples": [
+    {
+      "analysis": {
+        "eventType": "object_moved",
+        "eventDetected": true,
+        "verificationStatus": "confirmed",
+        "description": "통로 입구의 방호벽이 왼쪽으로 옮겨졌습니다.",
+        "beforeState": "방호벽이 통로 입구를 막고 있음",
+        "afterState": "방호벽이 통로 옆으로 옮겨짐",
+        "riskDetected": true,
+        "riskType": "barrier_not_restored",
+        "riskReason": "통로 입구 방호 해제",
+        "solution": "안전관리자 확인 필요. 방호벽 원위치",
+        "severity": "medium",
+        "evidenceStart": 41.0,
+        "evidenceEnd": 70.0
+      },
+      "changes": [
+        {"kind": "moved", "className": "safety_barrier", "description": "통로 입구에서 왼쪽으로 이동"}
+      ]
+    }
+  ]
+}

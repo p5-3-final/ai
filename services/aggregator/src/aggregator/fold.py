@@ -2,8 +2,8 @@
 
 `fold(state, events) → (state', delta)` 한 함수가 업로드 완료(R-1)·실시간 창(R-30)·늦은 벡터
 이벤트(R-27)의 상태 전이를 모두 맡는다. 순수 함수라 같은 상태와 이벤트면 같은 결과다(R-21).
-`SessionState`는 JSON으로 Redis·S3에 저장하므로 이벤트 본문을 두지 않는다. SPEC-028은 재고를 이
-상태에 더한다.
+`SessionState`는 JSON으로 Redis·S3에 저장하므로 청크 이벤트 본문을 두지 않는다. SPEC-028은 실시간
+세션의 재고 비교 결과(끝 재고·변화·재고 이벤트)를 이 상태에 더한다(R-19).
 """
 
 from collections.abc import Sequence
@@ -12,7 +12,14 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
-from vlm_contracts.aggregates import GLOBAL_ZONE, InitialState, StateSnapshot
+from vlm_contracts.aggregates import (
+    GLOBAL_ZONE,
+    InitialState,
+    InventoryChange,
+    InventoryEvent,
+    InventoryObject,
+    StateSnapshot,
+)
 
 from aggregator import ids
 from aggregator.model import InputEvent
@@ -56,6 +63,12 @@ class SessionState(_Stored):
         last_window_end_ms: 처리한 마지막 창 끝 시각(실시간).
         source_id: 이 상태의 영상(세션).
         from_source_id: 직전 영상(세션)에서 이어받았으면 그 영상(R-5, 실시간 회전).
+        inventory_at_ms: 마지막 재고 비교를 한 창 끝 시각(SPEC-028 R-19). 아직 안 했으면 None.
+        previous_inventory: 직전 세션의 끝 재고. 첫 청크 앞 재고로 놓는다(SPEC-028 R-6).
+        inventory: 마지막 재고 비교의 끝 재고. 회전하면 다음 세션의 `previous_inventory`가 된다.
+        inventory_changes: 마지막 재고 비교의 변화 후보와 판정. 다음 주기는 판정을 다시 쓴다.
+        inventory_events: 지금까지 만든 재고 이벤트.
+        pending_inventory: 다음 창 fold에 넣을 confirmed 재고 이벤트 ID.
     """
 
     zone_states: dict[str, str] = Field(default_factory=dict)
@@ -64,6 +77,12 @@ class SessionState(_Stored):
     last_window_end_ms: int = 0
     source_id: UUID | None = None
     from_source_id: UUID | None = None
+    inventory_at_ms: int | None = None
+    previous_inventory: tuple[InventoryObject, ...] = ()
+    inventory: tuple[InventoryObject, ...] = ()
+    inventory_changes: tuple[InventoryChange, ...] = ()
+    inventory_events: tuple[InventoryEvent, ...] = ()
+    pending_inventory: tuple[UUID, ...] = ()
 
     @classmethod
     def from_initial(cls, initial: InitialState, source_id: UUID | None = None) -> "SessionState":
@@ -91,7 +110,8 @@ class SessionState(_Stored):
     def carried_into(self, source_id: UUID) -> "SessionState":
         """다른 영상(실시간 회전)으로 넘긴 상태.
 
-        활성 위험은 이어 온 위험이 되고 창 순번은 처음부터다.
+        활성 위험은 이어 온 위험이 되고 창 순번은 처음부터다. 끝 재고는 다음 세션의 직전 재고가
+        된다(SPEC-028 R-6, R-19).
         """
         return SessionState(
             zone_states=dict(self.zone_states),
@@ -101,6 +121,7 @@ class SessionState(_Stored):
             ),
             source_id=source_id,
             from_source_id=self.source_id,
+            previous_inventory=self.inventory,
         )
 
 

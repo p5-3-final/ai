@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vlm.example/contracts/prompts/state_compare/input.schema.json",
+  "title": "StateCompareInput",
+  "description": "/v1/analyze 요청의 variables(taskType state_compare). 이미지는 요청의 images로 두 장(직전 객체의 대표 프레임, 이후 장면)을 따로 보낸다(SPEC-028 R-7).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["eventType", "changeKind", "expectedClasses", "zoneName", "beforeSec", "afterSec"],
+  "properties": {
+    "eventType": {
+      "$ref": "../../taxonomy/v2/taxonomy.schema.json#/$defs/eventType",
+      "description": "확정되면 만들 이벤트 유형(object_moved, object_removed, barrier_not_restored)"
+    },
+    "changeKind": {
+      "type": "string",
+      "enum": ["removed", "moved", "not_restored"],
+      "description": "재고 비교가 찾은 변화 후보의 종류"
+    },
+    "expectedClasses": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 10,
+      "items": {"$ref": "../../taxonomy/v2/taxonomy.schema.json#/$defs/className"},
+      "description": "직전 장면에 있었다고 본 객체 클래스"
+    },
+    "zoneName": {
+      "type": ["string", "null"],
+      "maxLength": 100,
+      "description": "객체가 있던 구역 이름. 구역이 없으면 null"
+    },
+    "beforeSec": {
+      "type": ["number", "null"],
+      "minimum": 0,
+      "description": "직전 장면 시각(정규화 사본 기준 초). 직전 영상 장면이면 null"
+    },
+    "afterSec": {
+      "type": ["number", "null"],
+      "minimum": 0,
+      "description": "이후 장면 시각(정규화 사본 기준 초)"
+    }
+  },
+  "examples": [
+    {
+      "eventType": "object_moved",
+      "changeKind": "moved",
+      "expectedClasses": ["safety_barrier"],
+      "zoneName": "통로 1",
+      "beforeSec": 41.0,
+      "afterSec": 70.0
+    },
+    {
+      "eventType": "barrier_not_restored",
+      "changeKind": "not_restored",
+      "expectedClasses": ["safety_barrier"],
+      "zoneName": null,
+      "beforeSec": null,
+      "afterSec": 0.0
+    }
+  ]
+}

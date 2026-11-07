@@ -770,3 +770,118 @@ async def test_spec027_r19_unconfigured_source_summary_returns_null_model(
 
     body = response.json()
     assert (body["modelId"], body["output"]) == (None, {"summary": None, "highlights": []})
+
+
+STATE_KEYS = [
+    f"sources/{SOURCE}/jobs/j/chunks/c1/executions/e1/blurred/static-s1.jpg",
+    f"sources/{SOURCE}/jobs/j/aggregate/frames/blurred/prev.jpg",
+]
+
+
+def _state_body(**changes: object) -> dict[str, object]:
+    body = analyze_body(
+        taskType="state_compare",
+        images=[{"storageKey": k, "ptsSec": None} for k in STATE_KEYS],
+        variables={
+            "eventType": "object_moved",
+            "changeKind": "moved",
+            "expectedClasses": ["safety_barrier"],
+            "zoneName": "통로 1",
+            "beforeSec": 41.0,
+            "afterSec": 70.0,
+        },
+    )
+    return body | changes
+
+
+def _put_state_images(storage: object) -> None:
+    for key in STATE_KEYS:
+        storage.put_bytes(key, b"jpeg", "image/jpeg")  # type: ignore[attr-defined]
+
+
+async def test_spec028_r7_state_compare_takes_two_frames_and_returns_contract(
+    registry_dir: Path,
+) -> None:
+    """[SPEC-028 R-7] 전후 두 장과 기대 객체로 부르고 계약 `_state-compare` 형식을 받는다.
+
+    직전 영상 프레임을 복사해 둔 이 job 폴더(aggregate/frames/blurred)도 받는다(D-17 A).
+    """
+    reply = PromptRegistry.load(registry_dir).get("state_compare")
+    assert reply is not None
+    adapter = FakeAdapter(reply=json.dumps(reply.output_example, ensure_ascii=False))
+
+    async with gateway(registry_dir, adapter=adapter, prepare=_put_state_images) as gw:
+        response = await post_analyze(gw.client, _state_body())
+
+    assert response.status_code == 200
+    assert response.json()["output"] == reply.output_example
+    [call] = adapter.calls
+    assert len(call.images) == 2
+
+
+async def test_spec028_r7_state_compare_needs_two_frames(registry_dir: Path) -> None:
+    """[SPEC-028 R-7] 프로필 하한(2장)보다 적으면 모델을 부르지 않고 400이다."""
+    images = [{"storageKey": STATE_KEYS[0], "ptsSec": None}]
+
+    async with gateway(registry_dir, prepare=_put_state_images) as gw:
+        response = await post_analyze(gw.client, _state_body(images=images))
+
+    assert response.status_code == 400
+    assert gw.adapter.calls == []
+
+
+FORECAST_VARIABLES: dict[str, object] = {
+    "riskType": "barrier_not_restored",
+    "zoneKind": "aisle",
+    "activeSeconds": 1200.0,
+    "exposureCount": 3,
+    "exposureSeconds": 95.5,
+    "zoneEntriesPerMinute": 0.8,
+}
+
+
+def _forecast_body() -> dict[str, object]:
+    return analyze_body(taskType="risk_forecast", images=[], variables=FORECAST_VARIABLES)
+
+
+async def test_spec028_r16_risk_forecast_is_answered_by_predictor_without_gate(
+    registry_dir: Path,
+) -> None:
+    """[SPEC-028 R-16] predictor가 답하고 VLM·결과 캐시·예산을 거치지 않으며 호출 로그를 남긴다."""
+    async with gateway(registry_dir) as gw:
+        first = await post_analyze(gw.client, _forecast_body())
+        second = await post_analyze(gw.client, _forecast_body())
+
+    assert first.status_code == 200
+    body = first.json()
+    assert (body["taskType"], body["modelId"]) == ("risk_forecast", "rule-forecast-v1")
+    assert body["promptVersion"].startswith("risk_forecast@")
+    assert body["output"]["method"] == "rule"
+    assert [h["horizonSec"] for h in body["output"]["horizons"]] == [600, 1800]
+    assert second.json()["output"] == body["output"]
+    assert gw.adapter.calls == []
+    assert (gw.cache.calls, gw.budget.reserves) == (0, 0)
+    assert [e.status for e in gw.call_log.entries] == ["success", "success"]
+    assert gw.call_log.entries[0].task_type == "risk_forecast"
+
+
+async def test_spec028_r15_unconfigured_risk_forecast_returns_empty_fallback(
+    registry_dir: Path,
+) -> None:
+    """[SPEC-028 R-15] 예측 Adapter가 없으면 modelId null과 빈 horizons 대체 결과다."""
+    tasks = {name: task.model_dump() for name, task in profile().tasks.items()} | {
+        "risk_forecast": {
+            **profile().tasks["risk_forecast"].model_dump(),
+            "adapter": None,
+            "model": None,
+        }
+    }
+
+    async with gateway(registry_dir, profile(extra={"tasks": tasks})) as gw:
+        response = await post_analyze(gw.client, _forecast_body())
+
+    body = response.json()
+    assert (body["modelId"], body["output"]) == (
+        None,
+        {"method": "rule", "horizons": [], "features": {}},
+    )

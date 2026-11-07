@@ -3,7 +3,7 @@
 from dataclasses import dataclass, field
 from uuid import UUID
 
-from vlm_contracts.aggregates import InitialState
+from vlm_contracts.aggregates import InitialState, InventoryObject
 from vlm_contracts.events import EventType, SessionRef, VLMAnalysis
 
 
@@ -75,3 +75,5 @@ class AggregateInput:
     tracks: tuple[TrackSpan, ...] = ()
     presences: tuple[Presence, ...] = ()
     zones: tuple[ZoneInfo, ...] = field(default=())
+    # 세션 직전 영상의 끝 재고(`final-state.staticObjects`, SPEC-028 R-6)
+    previous_inventory: tuple[InventoryObject, ...] = ()

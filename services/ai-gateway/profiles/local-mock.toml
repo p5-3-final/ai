@@ -83,3 +83,29 @@ model = "mock"
 max_output_tokens = 200
 timeout_s = 5
 max_retries = 0
+
+# 재고 비교 판정(SPEC-028 R-7). 직전 장면·이후 장면 두 장을 받는다.
+[tasks.state_compare]
+adapter = "mock"
+model = "mock"
+max_output_tokens = 800
+min_images = 2
+max_images = 2
+timeout_s = 5
+max_retries = 0
+
+# 위험 노출 예측(SPEC-028 R-16). 외부 모델이 아니라 규칙 점수라 mock 프로필에서도 실제 값을 쓴다.
+[adapters.rules]
+kind = "predictor"
+
+[adapters.rules.predictor]
+horizons_sec = [600, 1800]
+saturation_s = 1800
+
+[tasks.risk_forecast]
+adapter = "rules"
+model = "rule-forecast-v1"
+max_output_tokens = 200
+max_images = 1
+timeout_s = 1
+max_retries = 0

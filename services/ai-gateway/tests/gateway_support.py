@@ -96,7 +96,7 @@ def profile(extra: dict[str, object] | None = None, **task: object) -> GatewayPr
     """테스트 프로필. `task`로 event_judge 설정을, `extra`로 최상위 항목을 바꾼다.
 
     Registry의 taskType마다 설정이 있어야 해서 event_judge_escalate·track_attribute·
-    object_question도 같은 설정으로 둔다.
+    object_question·state_compare도 같은 설정으로 둔다. risk_forecast는 규칙 점수 predictor다.
     """
     event_judge: dict[str, object] = {
         "adapter": "fake",
@@ -111,7 +111,13 @@ def profile(extra: dict[str, object] | None = None, **task: object) -> GatewayPr
         {
             "callers": {"allowed": [CALLER]},
             "images": {"allowed_patterns": [r"^sources/{source_id}/.+/blurred/[^/]+\.(jpg|png)$"]},
-            "adapters": {"fake": {"kind": "mock"}},
+            "adapters": {
+                "fake": {"kind": "mock"},
+                "rules": {
+                    "kind": "predictor",
+                    "predictor": {"horizons_sec": [600, 1800], "saturation_s": 1800},
+                },
+            },
             "tasks": {
                 **{
                     name: event_judge
@@ -124,6 +130,13 @@ def profile(extra: dict[str, object] | None = None, **task: object) -> GatewayPr
                 },
                 # 이미지가 없는 taskType이지만 프로필 상한은 0보다 커야 한다(SPEC-027).
                 "source_summary": {**event_judge, "max_images": 1},
+                "state_compare": {**event_judge, "min_images": 2, "max_images": 2},
+                "risk_forecast": {
+                    **event_judge,
+                    "adapter": "rules",
+                    "model": "rule-forecast-v1",
+                    "max_images": 1,
+                },
             },
             "parse": parse_settings(),
             **(extra or {}),

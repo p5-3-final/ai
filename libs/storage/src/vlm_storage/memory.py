@@ -41,6 +41,9 @@ class InMemoryStorage:
     def exists(self, key: str) -> bool:
         return key in self._objects
 
+    def list_keys(self, prefix: str) -> list[str]:
+        return sorted(k for k in self._objects if k.startswith(prefix))
+
     def delete_prefix(self, prefix: str) -> int:
         keys = [k for k in self._objects if k.startswith(prefix)]
         for key in keys:

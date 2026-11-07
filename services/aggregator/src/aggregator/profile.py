@@ -12,7 +12,7 @@ DEFAULT_PROFILE_PATH = Path(__file__).resolve().parents[2] / "profiles" / "aggre
 
 
 class AggregateProfile(Profile):
-    """결과를 정하는 기준값(R-6, R-8~R-10, R-31). 기본값은 spec 4절의 기본값이다."""
+    """결과를 정하는 기준값(R-6, R-8~R-10, R-31, SPEC-028). 기본값은 spec 4절의 기본값이다."""
 
     name: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,80}$")
     merge_gap_ms: int = Field(default=10_000, ge=0)
@@ -24,6 +24,18 @@ class AggregateProfile(Profile):
     loiter_description: str = Field(min_length=1, max_length=300)
     judge_call_limit: int = Field(default=20, ge=0)
     snapshot_every_windows: int = Field(default=30, ge=1)
+    # SPEC-028: 재고 비교·장비 방치(R-3, R-5, R-6, R-11, R-19)
+    inventory_iou: float = Field(default=0.5, gt=0, le=1)
+    move_window_ms: int = Field(default=120_000, ge=0)
+    barrier_classes: tuple[str, ...] = ()
+    equipment_classes: tuple[str, ...] = ()
+    abandon_ms: int = Field(default=600_000, ge=1)
+    abandon_description: str = Field(
+        default="장비가 '{zone}'에 사람 없이 {minutes}분 이상 멈춰 있었습니다.",
+        min_length=1,
+        max_length=300,
+    )
+    stream_inventory_interval_s: int = Field(default=600, ge=1)
 
 
 @dataclass(frozen=True, slots=True)

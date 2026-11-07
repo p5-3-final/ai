@@ -6,7 +6,7 @@
 
 - durationSec: 영상 길이(초)
 - zones: 구역 ID·이름·종류
-- timeline: 시각(atMs) 순 항목. kind는 event(판정 이벤트), rule_event(체류·배회 규칙), risk_activated(위험 시작), risk_resolved(위험 해소)다.
+- timeline: 시각(atMs) 순 항목. kind는 event(판정 이벤트), rule_event(체류·배회 규칙), inventory_event(방호벽 이동·제거·미복구, 장비 방치), risk_activated(위험 시작), risk_resolved(위험 해소)다.
 - risks: 위험 상태와 노출 지표. carriedOver가 true면 앞 영상에서 이어 온 위험이다.
 
 작성 방법:

@@ -17,3 +17,15 @@ loiter_description = "작업자가 '{zone}'에 {seconds}초 안에 {count}번 �
 judge_call_limit = 20
 # 실시간 세션 상태를 S3에 스냅샷으로 남기는 창 간격(R-30)
 snapshot_every_windows = 30
+# SPEC-028 재고 비교. 이웃 청크의 같은 객체로 보는 박스 IoU 기준(R-3)과 제거·등장을 이동으로 합치는 창(R-5)
+inventory_iou = 0.5
+move_window_ms = 120000
+# 직전 영상에 있다가 돌아오지 않으면 미복구(not_restored)로 보는 방호 클래스(R-6). 탐지 프로필의 재고
+# 클래스와 맞춰 AI 담당자가 채운다.
+barrier_classes = ["safety_barrier"]
+# 장비 방치 규칙(R-11): 대상 클래스, 기준 시간, 일반 구역 템플릿 설명({zone}·{minutes})
+equipment_classes = ["forklift"]
+abandon_ms = 600000
+abandon_description = "장비가 '{zone}'에 사람 없이 {minutes}분 이상 멈춰 있었습니다."
+# 실시간 세션의 재고 비교·장비 방치 계산 주기(R-19)
+stream_inventory_interval_s = 600

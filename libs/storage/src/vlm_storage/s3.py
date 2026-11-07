@@ -93,6 +93,15 @@ class S3Storage:
             raise
         return True
 
+    def list_keys(self, prefix: str) -> list[str]:
+        # list_objects_v2는 키를 UTF-8 이진 순으로 준다. 쪽마다 최대 1000개라 끝까지 넘긴다.
+        paginator = self._client.get_paginator("list_objects_v2")
+        return [
+            obj["Key"]
+            for page in paginator.paginate(Bucket=self._bucket, Prefix=prefix)
+            for obj in page.get("Contents", [])
+        ]
+
     def delete_prefix(self, prefix: str) -> int:
         deleted = 0
         paginator = self._client.get_paginator("list_objects_v2")

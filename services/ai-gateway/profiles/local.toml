@@ -81,6 +81,36 @@ max_retries = 1
 # 프롬프트·스키마 약 1200 + 타임라인·위험 JSON(이벤트 수에 비례, 상한 없음. plan 7절)
 estimated_input_tokens = 3000
 
+# 재고 비교 판정(SPEC-028 R-7). 직전 장면·이후 장면 두 장. 모델·문안은 AI 담당자 몫이고 로컬은 판정과
+# 같은 모델을 자리값으로 둔다.
+[tasks.state_compare]
+adapter = "ollama"
+model = "qwen3-vl:4b-instruct"
+max_output_tokens = 800
+min_images = 2
+max_images = 2
+timeout_s = 120
+max_retries = 1
+# 프롬프트·스키마 약 1500 + 이미지 두 장
+estimated_input_tokens = 2000
+
+# 위험 노출 예측(SPEC-028 R-16). 1단계는 외부 모델이 아니라 규칙 점수 predictor다. 구간·포화 시간은 AI
+# 담당자가 정하는 자리값이다. 이미지가 없어도 상한은 0보다 커야 한다.
+[adapters.rules]
+kind = "predictor"
+
+[adapters.rules.predictor]
+horizons_sec = [600, 1800]
+saturation_s = 1800
+
+[tasks.risk_forecast]
+adapter = "rules"
+model = "rule-forecast-v1"
+max_output_tokens = 200
+max_images = 1
+timeout_s = 1
+max_retries = 0
+
 # 이미지·질의 인코더(SPEC-011). frame-encoder와 같은 모델 ID여야 같은 인덱스를 찾는다.
 # 가중치: Hugging Face timm/MobileCLIP2-S0-OpenCLIP의 open_clip_model.safetensors(Apple AMLR, 비상용)를
 # manifest와 함께 모델 버킷(AI_GATEWAY_MODELS_BUCKET)의 아래 경로에 올려 둔다. 절차는 docs local/README.md,

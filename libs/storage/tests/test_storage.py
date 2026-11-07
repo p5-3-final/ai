@@ -89,3 +89,12 @@ def test_conditional_create_keeps_one_winner(storage: ObjectStorage) -> None:
     winner = storage.get_bytes("snapshot")
     assert not storage.put_bytes_if_absent("snapshot", b"changed", "text/plain")
     assert storage.get_bytes("snapshot") == winner
+
+
+def test_spec028_r2_list_keys_returns_only_that_prefix_in_order(storage: ObjectStorage) -> None:
+    """[SPEC-028 R-2] 접두사 아래 키를 사전 순으로 모두 돌려준다(S3·메모리 같은 결과)."""
+    for key in ["sources/a/inv/2.json", "sources/a/inv/1.json", "sources/a/other", "sources/ab/1"]:
+        storage.put_bytes(key, b"x", "application/json")
+
+    assert storage.list_keys("sources/a/inv/") == ["sources/a/inv/1.json", "sources/a/inv/2.json"]
+    assert storage.list_keys("sources/none/") == []

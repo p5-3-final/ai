@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vlm.example/contracts/prompts/risk_forecast/output.schema.json",
+  "title": "RiskForecastOutput",
+  "description": "risk_forecast 결과. 형식의 원본은 서비스 간 계약 events/_risk-forecast.schema.json이고 aggregator 결과 파일 forecasts로 다른 레포에 전달된다(SPEC-028). 예시는 mock Adapter 응답이다.",
+  "$ref": "../../events/_risk-forecast.schema.json",
+  "examples": [
+    {
+      "method": "rule",
+      "horizons": [
+        {"horizonSec": 600, "exposureProbability": 0.42},
+        {"horizonSec": 1800, "exposureProbability": 0.71}
+      ],
+      "features": {"active_seconds": 1200.0, "zone_entries_per_minute": 0.8}
+    }
+  ]
+}

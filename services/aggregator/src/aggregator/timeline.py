@@ -2,7 +2,7 @@
 
 from collections.abc import Sequence
 
-from vlm_contracts.aggregates import TimelineItem
+from vlm_contracts.aggregates import TimelineItem, TimelineKind
 from vlm_contracts.events import EventType, RuleEvent
 
 from aggregator.fold import RiskRecord
@@ -13,23 +13,33 @@ def build_timeline(
     representatives: Sequence[InputEvent],
     rule_events: Sequence[RuleEvent],
     risks: Sequence[RiskRecord],
+    inventory: Sequence[InputEvent] = (),
 ) -> list[TimelineItem]:
     """병합 대표 이벤트(판정 상태와 상관없이), 규칙 이벤트, 위험 활성·해소를 (atMs, refId) 순으로
     놓는다. 이어 온 위험은 이 영상에서 활성된 것이 아니라 활성 항목을 넣지 않는다.
 
+    `inventory`는 confirmed 재고 이벤트이고 종류 `inventory_event`로 넣는다(SPEC-028 R-9).
+
     위험 항목의 유형은 그 전이를 만든 이벤트의 유형이다(riskType은 자유 문장이라 유형이 아니다).
     """
-    type_of: dict[object, EventType] = {e.event_id: e.event_type for e in representatives}
+    type_of: dict[object, EventType] = {
+        e.event_id: e.event_type for e in (*representatives, *inventory)
+    }
+    kinds: tuple[tuple[TimelineKind, Sequence[InputEvent]], ...] = (
+        ("event", representatives),
+        ("inventory_event", inventory),
+    )
     items = [
         TimelineItem(
             at_ms=e.start_ms,
-            kind="event",
+            kind=kind,
             ref_id=e.event_id,
             event_type=e.event_type,
             zone_id=str(e.zone_id) if e.zone_id is not None else None,
             severity=e.analysis.severity,
         )
-        for e in representatives
+        for kind, group in kinds
+        for e in group
     ]
     items += [
         TimelineItem(

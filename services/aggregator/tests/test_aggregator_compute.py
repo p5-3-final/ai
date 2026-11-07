@@ -21,6 +21,7 @@ from agg_support import (
 from aggregator.compute import compute
 from aggregator.model import AggregateInput
 from aggregator.result import build_result, empty_summary, encode_result
+from vlm_contracts.aggregates import InventoryEvent
 
 
 def _scenario() -> AggregateInput:
@@ -94,3 +95,66 @@ def test_spec027_us1_no_confirmed_events_gives_empty_lists() -> None:
     computed = compute(source, loaded)
 
     assert (computed.snapshots, computed.risks, len(computed.confirmed)) == ((), (), 0)
+
+
+def _inventory_event(n: int, status: str, *, risk: bool = True) -> InventoryEvent:
+    return InventoryEvent.model_validate(
+        {
+            "eventId": str(uid(n)),
+            "eventType": "object_moved",
+            "startMs": 41_000,
+            "endMs": 70_000,
+            "zoneId": str(HAZARD),
+            "judgmentMethod": "inventory+state_compare",
+            "evidenceFrameKeys": [],
+            "analysis": json.loads(
+                analysis(
+                    "object_moved",
+                    status,
+                    risk=risk,
+                    risk_type="barrier_not_restored",
+                    risk_reason="방호 해제",
+                    after_state="방호벽이 옮겨짐",
+                    evidence_end=70.0,
+                ).model_dump_json(by_alias=True)
+            ),
+            "callId": None,
+        }
+    )
+
+
+def test_spec028_r9_confirmed_inventory_event_enters_state_exposure_and_timeline() -> None:
+    """[SPEC-028 R-9] confirmed 재고 이벤트는 상태 계산·노출 지표·타임라인에 들어간다.
+
+    타임라인 종류는 inventory_event이고 시각은 이벤트 시작이다.
+    """
+    source = inputs(
+        tracks=(person(10, 0, 400_000),),
+        presences=(stay(10, HAZARD, 80_000, 90_000),),
+    )
+
+    computed = compute(source, profile(), inventory=(_inventory_event(700, "confirmed"),))
+
+    [risk] = computed.risks
+    assert (risk.risk_type, risk.first_seen_ms, risk.related_event_ids) == (
+        "barrier_not_restored",
+        70_000,
+        [uid(700)],
+    )
+    assert risk.exposure.exposure_count == 1
+    [snapshot] = computed.snapshots
+    assert snapshot.current_state == "방호벽이 옮겨짐"
+    kinds = [(t.kind, t.ref_id) for t in computed.timeline]
+    assert ("inventory_event", uid(700)) in kinds
+    assert next(t for t in computed.timeline if t.kind == "inventory_event").at_ms == 41_000
+
+
+def test_spec028_r9_unconfirmed_inventory_event_is_left_out() -> None:
+    """[SPEC-028 R-9·R-10] confirmed가 아니면 상태 계산·타임라인에 넣지 않는다."""
+    computed = compute(
+        inputs(),
+        profile(),
+        inventory=(_inventory_event(701, "unknown"), _inventory_event(702, "rejected")),
+    )
+
+    assert (computed.risks, computed.snapshots, computed.timeline) == ((), (), ())

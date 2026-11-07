@@ -1,4 +1,5 @@
-"""실제 Kafka로 aggregator 워커 전체를 검증한다(SPEC-027 R-1, R-22, R-23, R-30, R-32, NFR-4).
+"""실제 Kafka로 aggregator 워커 전체를 검증한다(SPEC-027 R-1, R-22, R-23, R-30, R-32, NFR-4,
+SPEC-028 R-1, R-9).
 
 analysis-api·ai-gateway·stream-service는 MockTransport, 저장소는 메모리, Redis는 메모리 구현으로
 대신한다.
@@ -13,7 +14,11 @@ from collections.abc import Callable, Iterator
 import httpx
 import pytest
 from agg_support import (
+    AISLE,
+    CHUNK_A,
+    CHUNK_B,
     FALL_STREAM,
+    FORECAST_OUTPUT,
     STREAM_JOB,
     STREAM_SOURCE,
     UP_STREAM,
@@ -23,6 +28,7 @@ from agg_support import (
     event_errors,
     job_event_json,
     risk_event,
+    state_compare_output,
     stream_analyzed,
     stream_completed,
     stream_manifest,
@@ -31,9 +37,10 @@ from aggregator.__main__ import Transports, build_clients, build_worker
 from aggregator.kv import MemoryStore
 from aggregator.settings import AggregatorSettings, WorkerSettings
 from confluent_kafka import Consumer
+from inv_support import chunk_inventory, manifest_of, static
 from vlm_common.health import HealthState
 from vlm_contracts.aggregates import result_key
-from vlm_contracts.events import Event, SourceCompleted, StateUpdated
+from vlm_contracts.events import AnalysisCounts, Event, SourceCompleted, StateUpdated
 from vlm_messaging.publisher import KafkaPublisher
 from vlm_storage.memory import InMemoryStorage
 from vlm_testing import containers
@@ -96,6 +103,10 @@ def _analysis_api(request: httpx.Request) -> httpx.Response:
 
 def _gateway(request: httpx.Request) -> httpx.Response:
     body = json.loads(request.content)
+    outputs: dict[str, object] = {
+        "state_compare": state_compare_output(),
+        "risk_forecast": FORECAST_OUTPUT,
+    }
     return httpx.Response(
         200,
         json={
@@ -104,7 +115,7 @@ def _gateway(request: httpx.Request) -> httpx.Response:
             "modelId": "mock",
             "promptVersion": f"{body['taskType']}@0123456789ab",
             "taxonomyVersion": None,
-            "output": {"summary": "요약", "highlights": []},
+            "output": outputs.get(body["taskType"], {"summary": "요약", "highlights": []}),
         },
     )
 
@@ -271,3 +282,45 @@ def test_spec027_r30_r32_r34_stream_windows_then_session(running: _Running, boot
     assert all(event_errors(u, "state.updated") == [] for u in updates)
     sent = SourceCompleted.model_validate(done)
     assert (sent.job_id, sent.revision) == (STREAM_JOB, 1)
+
+
+def test_spec028_r1_r9_two_manifests_and_completion_give_object_moved(
+    running: _Running, bootstrap: str
+) -> None:
+    """[SPEC-028 R-1·R-9] 성공 지표의 테스트판.
+
+    방호벽 이동이 담긴 chunk.manifest 두 건과 analysis.completed가 object_moved 재고 이벤트가 든
+    source.completed로 이어진다.
+    """
+    source = uuid.uuid4()
+    far = (0.7, 0.1, 0.2, 0.15)
+    manifests = [
+        chunk_inventory(
+            CHUNK_A,
+            0,
+            60_000,
+            static("s1", CHUNK_A, zone=AISLE, last=41_000, source=source),
+            source=source,
+        ),
+        chunk_inventory(
+            CHUNK_B,
+            60_000,
+            120_000,
+            static("s2", CHUNK_B, box=far, zone=AISLE, first=70_000, source=source),
+            source=source,
+        ),
+    ]
+    for inventory in manifests:
+        _publish(bootstrap, "chunk.manifest", manifest_of(inventory))
+    message = completed(source=source).model_copy(
+        update={"counts": AnalysisCounts(chunks=2, segments=2, events=0, tracks=0)}
+    )
+    _publish(bootstrap, "analysis.completed", message)
+
+    [payload] = _collect(bootstrap, "source.completed", source, 1, timeout_s=60)
+
+    sent = SourceCompleted.model_validate(payload)
+    assert event_errors(sent, "source.completed") == []
+    assert sent.counts.inventory_events == 1
+    result = json.loads(running.storage.get_bytes(result_key(source, sent.job_id)))
+    assert [e["eventType"] for e in result["inventoryEvents"]] == ["object_moved"]
