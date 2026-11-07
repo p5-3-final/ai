@@ -3,7 +3,7 @@
 from pathlib import Path
 from threading import Lock
 
-from vlm_storage.storage import ObjectNotFoundError
+from vlm_storage.storage import ObjectNotFoundError, check_expiry
 
 
 class InMemoryStorage:
@@ -46,3 +46,8 @@ class InMemoryStorage:
         for key in keys:
             del self._objects[key]
         return len(keys)
+
+    def presigned_get_url(self, key: str, *, expires_s: int) -> str:
+        """실제로 열 수 없는 가짜 주소. 서비스 테스트는 이 주소를 가짜 미디어 도구로 받는다."""
+        check_expiry(expires_s)
+        return f"memory://{key}"

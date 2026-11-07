@@ -46,3 +46,17 @@ class ObjectStorage(Protocol):
     def delete_prefix(self, prefix: str) -> int:
         """`prefix`로 시작하는 객체를 모두 지우고 지운 수를 돌려준다(영상 삭제 전파용)."""
         ...
+
+    def presigned_get_url(self, key: str, *, expires_s: int) -> str:
+        """`key`를 자격 증명 없이 `expires_s`초 동안 읽을 수 있는 주소. 객체가 있는지는 보지 않는다.
+
+        ffmpeg처럼 HTTP 범위 요청으로 일부만 읽는 도구에 넘긴다(SPEC-026). `expires_s`가 1보다
+        작으면 `ValueError`.
+        """
+        ...
+
+
+def check_expiry(expires_s: int) -> None:
+    """서명 주소 만료 시간을 확인한다. 구현이 함께 쓴다."""
+    if expires_s < 1:
+        raise ValueError("expires_s must be at least 1")
