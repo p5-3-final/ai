@@ -1,7 +1,7 @@
 ---
 spec: SPEC-030
 repo: ai
-updated: 2026-11-06
+updated: 2026-11-07
 ---
 
 # Tasks: SPEC-030 매칭 규칙·성능 Gate CI 명령 (evals) — ai
@@ -30,14 +30,14 @@ updated: 2026-11-06
 
 ## Phase 2: US-4 성능 Gate 명령 (P2)
 
-- [x] T007 [R-19] `quality-service.yaml` 생성 모델과 생성 코드 비교 CI — 구현 `ev/quality_models.py`(생성), 생성 스크립트·`.github/workflows/checks.yml`
-- [x] T008 [R-19] `evaluateStageGate` 호출: 요청 본문·`X-Caller`, 503·연결 실패 2회 재시도, 응답 검증 — 테스트 `et/test_evals_stage_gate.py`, 구현 `ev/stage_gate.py`
+- [x] T007 [R-19] `quality-service.yaml` 생성 모델과 생성 코드 비교 — 구현 `libs/quality-client/src/vlm_quality_client/models.py`(생성), `scripts/generate-clients.sh` 표 한 줄, 테스트 `libs/quality-client/tests/test_quality_client_generated.py`
+- [x] T008 [R-19] `evaluateStageGate` 호출: 요청 본문·`X-Caller`, 503·연결 실패 2회 재시도, 응답 검증 — 테스트 `libs/quality-client/tests/test_quality_client.py`, 구현 `libs/quality-client/src/vlm_quality_client/client.py`
 - [x] T009 [R-19] CLI 종료 코드(`passed` true 0, false 1, 호출·입력 오류 2)와 단계별 JSON 로그 — 테스트 `et/test_evals_stage_gate.py`
-- [ ] T010 README(명령, 환경변수), `.env.example`
+- [x] T010 README(명령, 환경변수). `.env.example`은 권한 설정에 막혀 README 환경변수 표에만 적음
 
 ## 완료 조건
 
-- [ ] R-11, R-12, R-19 테스트 통과
+- [x] R-11, R-12, R-19 테스트 통과
 - [ ] ruff, mypy, pytest 통과
-- [ ] plan.md와 실제 구현이 일치함
+- [x] plan.md와 실제 구현이 일치함
 - [ ] docs 레포 spec 상태 갱신(backend 구현과 함께 `Implementing` / `Done`)
