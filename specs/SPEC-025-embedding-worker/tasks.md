@@ -35,20 +35,20 @@ updated: 2026-11-06
 - [x] T010 [확인] [R-7] event·segment_annotation metadata(시각 ms, 유형·severity·verificationStatus, segmentId, null 필드 생략) — 테스트 `t/test_embedding_texts.py`, 구현 `ew/texts.py`
 - [x] T011 [확인] [R-7] track metadata: 번역표에서 className·startMs·endMs, trackId·보호구·역할. 번역표 없음은 재시도, trackId 없음은 `NonRetryableError` — 테스트 `t/test_embedding_tracks.py`, 구현 `ew/tracks.py`
 - [x] T012 [P] [R-8] eventId = uuid5(itemKind·itemId·modelId), 벡터 파일 경로 — 테스트 `t/test_embedding_ids.py`, 구현 `ew/ids.py`, `ew/files.py`
-- [ ] T013 [R-6] [R-8] 핸들러: `embed_text` 문장 1개 호출 → 파일 저장 → `embedding.ready` 발행(파일·이벤트 계약 스키마 통과, 모델 ID·차원·textFormat 기록) — 테스트 `t/test_embedding_service.py`, 구현 `ew/service.py`
-- [ ] T014 [R-13] 단계 블록 `embedding.call`(문장 수)·`embedding.store`(파일 수) — 테스트 `t/test_embedding_service.py`, 구현 `ew/service.py`
+- [x] T013 [R-6] [R-8] 핸들러: `embed_text` 문장 1개 호출 → 파일 저장 → `embedding.ready` 발행(파일·이벤트 계약 스키마 통과, 모델 ID·차원·textFormat 기록) — 테스트 `t/test_embedding_service.py`, 구현 `ew/service.py`
+- [x] T014 [R-13] 단계 블록 `embedding.call`(문장 수)·`embedding.store`(파일 수) — 테스트 `t/test_embedding_service.py`, 구현 `ew/service.py`
 
 ## Phase 2: US-2 쓸모없는 항목은 건너뜀 (P2)
 
-- [ ] T015 [R-4] 빈 문장·조건 밖 track이면 호출·저장·발행 없이 이유 코드를 로그 — 테스트 `t/test_embedding_service.py`, 구현 `ew/texts.py`, `ew/service.py`
+- [x] T015 [R-4] 빈 문장·조건 밖 track이면 호출·저장·발행 없이 이유 코드를 로그 — 테스트 `t/test_embedding_service.py`, 구현 `ew/texts.py`, `ew/service.py`
 
 ## Phase 3: US-3 장애 (P2)
 
-- [ ] T016 [R-9] 재시도 끝의 503·연결 실패·시간 초과는 그대로 던짐, `AI_MODEL_NOT_CONFIGURED`·`AI_BUDGET_EXCEEDED`는 `NonRetryableError` — 테스트 `t/test_embedding_service.py`, 구현 `ew/service.py`
-- [ ] T017 [확인] [R-9] 502·504·그 밖의 5xx 처리(기본안: 그대로 던짐) — 테스트 `t/test_embedding_service.py`, 구현 `ew/service.py`
-- [ ] T018 [R-10] 4xx, `AI_INVALID_RESPONSE`, 벡터 수 1이 아님, 길이 ≠ 차원이면 발행 없이 `NonRetryableError` — 테스트 `t/test_embedding_service.py`, 구현 `ew/service.py`
-- [ ] T019 [R-12] 저장·발행 오류는 그대로 던지고 다시 처리하면 같은 경로·같은 eventId — 테스트 `t/test_embedding_service.py`
-- [ ] T020 [NFR-2] 로그에 문장 원문·벡터가 없음 — 테스트 `t/test_embedding_service.py`
+- [x] T016 [R-9] 재시도 끝의 503·연결 실패·시간 초과는 그대로 던짐, `AI_MODEL_NOT_CONFIGURED`·`AI_BUDGET_EXCEEDED`는 `NonRetryableError` — 테스트 `t/test_embedding_service.py`, 구현 `ew/service.py`
+- [x] T017 [확인] [R-9] 502·504·그 밖의 5xx 처리(기본안: 그대로 던짐) — 테스트 `t/test_embedding_service.py`, 구현 `ew/service.py`
+- [x] T018 [R-10] 4xx, `AI_INVALID_RESPONSE`, 벡터 수 1이 아님, 길이 ≠ 차원이면 발행 없이 `NonRetryableError` — 테스트 `t/test_embedding_service.py`, 구현 `ew/service.py`
+- [x] T019 [R-12] 저장·발행 오류는 그대로 던지고 다시 처리하면 같은 경로·같은 eventId — 테스트 `t/test_embedding_service.py`
+- [x] T020 [NFR-2] 로그에 문장 원문·벡터가 없음 — 테스트 `t/test_embedding_service.py`
 
 ## Phase 4: 워커와 배포
 
