@@ -67,7 +67,7 @@ updated: 2026-11-07
 - [x] T029 기동 조립: 설정, 프로필, 탐지기 로드(기동 때 한 번), 저장소, `route`, health, 측정 발행 — 테스트 `t/test_grounding_main.py`, 구현 `gw/{__main__,settings}.py`
 - [x] T030 [R-15] [R-16] [NFR-3] 워커 e2e(Kafka·SeaweedFS testcontainer, mock 탐지기, 서비스 이미지의 ffmpeg): 정상 발행, 재사용, 잘못된 메시지·`normalizedKey` 불일치 DLQ, 긴 처리 중 커밋 — 테스트 `t/test_grounding_worker_e2e.py`(`ffmpeg` 마커, 구현 뒤 작성이면 PR에 "Red 없음"으로 적음)
 - [x] T031 README, 레포 `.env.example`, CI `service-images` 이미지 빌드·ffmpeg 테스트(`.env.example`은 에이전트 권한 설정으로 수정하지 못해 README 환경변수 표로 대신했다)
-- [ ] T032 docs `local/`: compose 서비스(1.5G), 토픽 `grounding.requested`·`grounding.completed`·재시도·`grounding-worker.dlq`, `local/.env.example`, `local/README.md`(docs 레포 PR)
+- [x] T032 docs `local/`: compose 서비스(1.5G), 토픽 `grounding.requested`·`grounding.completed`·재시도·`grounding-worker.dlq`, `local/.env.example`, `local/README.md`(docs 레포 PR) — 완료: docs #142(로컬 compose에 서비스 1.5G·토픽·DLQ, README 메모리 표)
 - [ ] T033 [확인] [NFR-1] [NFR-2] 로컬 compose 측정(CPU, 1080p 30fps 10초 구간 p95 30초, 메모리 1.5GB). 실제 탐지기 결정 뒤. 결과는 아래 "측정 기록"에만 짧게 적음
 
 ## 측정 기록

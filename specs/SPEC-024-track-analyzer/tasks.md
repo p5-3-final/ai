@@ -23,7 +23,7 @@ updated: 2026-11-07
 - [x] T002 [R-3] `PpeState`·`WorkerRole`, `TrackAttribute`, `ObjectAnswer`, `TrackAnalyzed`(READY·FAILED와 reason별 결과 규칙), `EVENT_MODELS` 등록 — 테스트 `lc/tests/test_event_contracts.py`(자동 계약 검사), `lc/tests/test_track_attribute_contracts.py`, 구현 `vlm_contracts/events.py`
 - [x] T003 [R-7] `AttributeRequested`(`question`이면 질문 필수, 아니면 질문 null·장면 프레임 없음), `EVENT_MODELS` 등록 — 테스트 `lc/tests/test_event_contracts.py`, `lc/tests/test_track_attribute_contracts.py`
 - [x] T004 [R-6] 크롭·장면 프레임 경로가 `sources/<sourceId>/` 밖이거나 `.`·`..`·빈 조각이 있으면 검증 실패 — 테스트 `lc/tests/test_track_attribute_contracts.py`, 구현 `vlm_contracts/events.py`
-- [ ] T005 [P] (보류: SPEC-022 작업자가 `vlm_contracts/tracks.py`를 만드는 중이라 SPEC-022가 4.1.0 계약대로 넣는다) 트랙 요약 파일 모델에 `representativeCrops`. SPEC-022 모델이 아직 없으면 건너뛰고 SPEC-022가 4.0.0 계약대로 넣는다 — 테스트 SPEC-022의 트랙 파일 계약 테스트, 구현 `vlm_contracts/tracks.py`
+- [x] T005 [P] (보류: SPEC-022 작업자가 `vlm_contracts/tracks.py`를 만드는 중이라 SPEC-022가 4.1.0 계약대로 넣는다) 트랙 요약 파일 모델에 `representativeCrops`. SPEC-022 모델이 아직 없으면 건너뛰고 SPEC-022가 4.0.0 계약대로 넣는다 — 테스트 SPEC-022의 트랙 파일 계약 테스트, 구현 `vlm_contracts/tracks.py` — 완료: SPEC-022가 `vlm_contracts/tracks.py`에 `representative_crops`를 넣었다(2026-11-07 확인)
 - [x] T006 `services/track-analyzer` 패키지 뼈대(pyproject, `.gitkeep` 삭제, 루트 `members`·mypy `files`·`mypy_path`·pytest `pythonpath` 등록, `ta_support.py`)
 
 ## Phase 1: ai-gateway (US-1·US-2·US-3, P1)
