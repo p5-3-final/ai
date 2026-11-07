@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vlm.example/contracts/prompts/risk_forecast/input.schema.json",
+  "title": "RiskForecastInput",
+  "description": "/v1/analyze 요청의 variables(taskType risk_forecast, 이미지 없음). 영상 끝에 활성인 위험 하나의 변수다(SPEC-028 R-14).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["riskType", "zoneKind", "activeSeconds", "exposureCount", "exposureSeconds", "zoneEntriesPerMinute"],
+  "properties": {
+    "riskType": {"type": "string", "minLength": 1, "maxLength": 100, "description": "위험 유형(결과 파일 risks[].riskType)"},
+    "zoneKind": {"type": ["string", "null"], "maxLength": 32, "description": "구역 종류(hazard, aisle 등). global 위험이면 null"},
+    "activeSeconds": {"type": "number", "minimum": 0, "description": "영상 끝까지 활성인 시간(초)"},
+    "exposureCount": {"type": "integer", "minimum": 0, "description": "활성 동안 노출된 사람 트랙 수"},
+    "exposureSeconds": {"type": "number", "minimum": 0, "description": "활성 동안 사람 트랙이 겹친 시간 합(초)"},
+    "zoneEntriesPerMinute": {"type": "number", "minimum": 0, "description": "그 구역의 분당 사람 진입 수(global은 분당 사람 트랙 수)"}
+  },
+  "examples": [
+    {
+      "riskType": "barrier_not_restored",
+      "zoneKind": "aisle",
+      "activeSeconds": 1200.0,
+      "exposureCount": 3,
+      "exposureSeconds": 95.5,
+      "zoneEntriesPerMinute": 0.8
+    }
+  ]
+}

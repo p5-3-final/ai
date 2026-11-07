@@ -408,3 +408,61 @@ def test_spec024_r11_r12_committed_profiles_need_one_image(name: str, task_type:
     path = Path(__file__).resolve().parents[1] / "profiles" / name
 
     assert load_profile(path, GatewayProfile).tasks[task_type].min_images == 1
+
+
+PREDICTOR = """
+[adapters.rules]
+kind = "predictor"
+
+[adapters.rules.predictor]
+horizons_sec = [600, 1800]
+saturation_s = 1800
+"""
+
+
+def test_spec028_r16_predictor_adapter_loads_and_is_allowed_in_production(
+    tmp_path: Path,
+) -> None:
+    """[SPEC-028 R-16] predictor는 외부 모델이 아니라 mock 허용 없이 운영 프로필에서도 쓴다."""
+    profile = _load(tmp_path, VALID + PREDICTOR)
+
+    settings = profile.adapters["rules"].predictor
+    assert settings is not None
+    assert (settings.horizons_sec, settings.saturation_s) == ((600, 1800), 1800)
+    check_profile(profile, allow_mock=False, has_openai_key=False)
+
+
+@pytest.mark.parametrize(
+    ("old", "new"),
+    [
+        ("horizons_sec = [600, 1800]", "horizons_sec = []"),
+        ("horizons_sec = [600, 1800]", "horizons_sec = [30]"),
+        ("saturation_s = 1800", "saturation_s = 0"),
+        ("[adapters.rules.predictor]\nhorizons_sec = [600, 1800]\nsaturation_s = 1800", ""),
+    ],
+)
+def test_spec028_r16_invalid_predictor_profile_fails(tmp_path: Path, old: str, new: str) -> None:
+    with pytest.raises(ProfileError):
+        _load(tmp_path, VALID + PREDICTOR.replace(old, new))
+
+
+def test_spec028_r16_predictor_cannot_serve_parse_or_embed(tmp_path: Path) -> None:
+    """[SPEC-028 R-16] predictor는 /v1/analyze taskType만 처리한다."""
+    text = (VALID + PREDICTOR).replace(
+        "[parse]\nmax_query_chars = 200",
+        '[parse]\nmax_query_chars = 200\nadapter = "rules"\nmodel = "x"',
+    )
+
+    with pytest.raises(ProfileError, match="predictor"):
+        _load(tmp_path, text)
+
+
+@pytest.mark.parametrize("name", ["local.toml", "local-mock.toml"])
+def test_spec028_r16_committed_profiles_use_rule_predictor(name: str) -> None:
+    path = Path(__file__).resolve().parents[1] / "profiles" / name
+    profile = load_profile(path, GatewayProfile)
+
+    task = profile.tasks["risk_forecast"]
+    assert task.adapter is not None
+    assert profile.adapters[task.adapter].kind == "predictor"
+    assert profile.tasks["state_compare"].min_images == 2

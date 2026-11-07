@@ -39,7 +39,7 @@ updated: 2026-11-07
 
 ## Phase 3: US-1 판정 (P1)
 
-- [ ] T013 [R-7] ai-gateway `state_compare` 등록(입출력 스키마, 자리 표시 프롬프트, `fallback.json`, 두 프로필, 도우미, 계약 파일 배치) — 테스트 `gt/test_prompts.py`, `gt/test_analyze_api.py`, 구현 `registry/prompts/state_compare/`, 프로필, `tests/conftest.py`, Dockerfile
+- [x] T013 [R-7] ai-gateway `state_compare` 등록(입출력 스키마, 자리 표시 프롬프트, `fallback.json`, 두 프로필, 도우미, 계약 파일 배치) — 테스트 `gt/test_prompts.py`, `gt/test_analyze_api.py`, 구현 `registry/prompts/state_compare/`, 프로필, `tests/conftest.py`, Dockerfile
 - [ ] T014 [R-7] 후보마다 이미지 두 장·변수로 `state_compare`, `appeared`는 호출 없이 기록 — 테스트 `t/test_aggregator_judge.py`, 구현 `agg/judge.py`
 - [ ] T015 [R-8] 직전 시각 순 판정, 상한에서 멈추고 남은 후보는 `eventId`·`verificationStatus` null — 테스트 `t/test_aggregator_judge.py`
 - [ ] T016 [R-9] 유형별 재고 이벤트, `confirmed`면 상태·노출·타임라인(`inventory_event`)에 들어감 — 테스트 `t/test_aggregator_judge.py`, `t/test_aggregator_compute.py`, 구현 `agg/compute.py`
@@ -56,9 +56,9 @@ updated: 2026-11-07
 
 ## Phase 6: US-4 예측 (P3)
 
-- [ ] T021 [R-16] `predictor` Adapter 종류·프로필 검증·규칙 점수(결정적, 0~1, 두 입력만 사용) — 테스트 `gt/test_predictor_adapter.py`, `gt/test_profile.py`, 구현 `gw/adapters/predictor.py`, `gw/profile.py`
-- [ ] T022 [R-16] (확인 대기: plan 5절 2) `risk_forecast` 등록과 `/v1/analyze` predictor 경로(게이트 없음, 출력 검증, 호출 로그) — 테스트 `gt/test_analyze_api.py`, `gt/test_prompts.py`, 구현 `gw/{analyze,main}.py`, `registry/prompts/risk_forecast/`, 프로필
-- [ ] T023 [NFR-3] `risk_forecast` p95 20ms — 테스트 `gt/test_overhead.py`
+- [x] T021 [R-16] `predictor` Adapter 종류·프로필 검증·규칙 점수(결정적, 0~1, 두 입력만 사용) — 테스트 `gt/test_predictor_adapter.py`, `gt/test_profile.py`, 구현 `gw/adapters/predictor.py`, `gw/profile.py`
+- [x] T022 [R-16] (plan 5절 2 A안: 계약 4.1.0 `horizons` 최소 0개) `risk_forecast` 등록과 `/v1/analyze` predictor 경로(게이트 없음, 출력 검증, 호출 로그) — 테스트 `gt/test_analyze_api.py`, `gt/test_prompts.py`, 구현 `gw/{analyze,main}.py`, `registry/prompts/risk_forecast/`, 프로필
+- [x] T023 [NFR-3] `risk_forecast` p95 20ms — 테스트 `gt/test_overhead.py`
 - [ ] T024 [R-14] 영상 끝 활성 위험마다 변수(구역 분당 진입 수 포함)로 호출, `forecasts` — 테스트 `t/test_aggregator_forecast.py`, 구현 `agg/forecast.py`
 - [ ] T025 [R-15] 미설정이면 `not_configured`, 오류면 `failed`, 나머지 발행 — 테스트 `t/test_aggregator_forecast.py`, `t/test_aggregator_service.py`
 

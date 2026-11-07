@@ -21,3 +21,16 @@
 - 남은 시간 반영은 공급자 Adapter를 부르는 경로(`/v1/analyze`, `embed_text`, parse LLM)에만 한다. 사전 해석과 인코더(`embed_image`, `embed_visual_text`)는 받을 때 지난 마감만 검사한다. 인코더는 스레드의 CPU 작업이라 중간에 멈출 수 없다.
 - 마감은 호출자 시계, 비교는 ai-gateway 시계다. 같은 클러스터의 NTP 오차는 무시한다.
 - 호출자는 `libs/ai-client`의 `AiGatewayClient`를 쓰면 헤더와 재시도 규칙(analyze는 연결 실패만, embed·parse는 503·연결 실패)이 맞춰진다.
+
+## predictor Adapter와 `risk_forecast` (SPEC-028)
+
+Adapter 종류 `predictor`는 외부 모델을 부르지 않고 코드로 답한다. `/v1/analyze` taskType만 처리하고 `[parse]`·`embed_text`에는 쓸 수 없다. 외부 비용이 없어 운영 프로필에서도 쓸 수 있다(mock 허용 검사 대상이 아니다).
+
+| 항목 | 동작 |
+| --- | --- |
+| 프로필 | `[adapters.<이름>] kind = "predictor"`와 `[adapters.<이름>.predictor]`(`horizons_sec` 60~86400초 1~6개, `saturation_s`). taskType은 `[tasks.risk_forecast] adapter = "<이름>"`, `model`은 결과의 `modelId`다 |
+| 1단계 규칙 점수 | λ = `zoneEntriesPerMinute` / 60 × min(1, `activeSeconds` / `saturation_s`), 구간마다 p = 1 − exp(−λ × `horizonSec`), 소수 셋째 자리. `features`에 두 입력값을 싣는다. 공식은 AI 담당자가 바꾸는 자리값이다 |
+| 게이트 | 결과 캐시·예산·분당 한도(`ModelGate`)를 거치지 않는다. 출력은 출력 스키마로 검증하고 호출 로그를 남긴다 |
+| 미설정 | `adapter`·`model`이 없으면 다른 taskType처럼 `modelId: null`과 `fallback.json`(빈 `horizons`)이다 |
+
+`state_compare`(전후 프레임 두 장, VLM)는 다른 taskType과 같은 경로다. 직전 영상 프레임은 aggregator가 이 영상 job 폴더 `aggregate/frames/blurred/`로 복사해 보내므로 이미지 경로 패턴(`^sources/{source_id}/.+/blurred/…`)을 바꾸지 않는다.

@@ -5,13 +5,16 @@
 
 import re
 from decimal import Decimal
-from typing import Literal, Self
+from typing import Annotated, Literal, Self
 
 from pydantic import Field, HttpUrl, model_validator
 from vlm_common.profile import Profile, ProfileError
 from vlm_encoders.loader import EncoderProfile
 
-AdapterKind = Literal["openai", "openai_compatible", "mock"]
+AdapterKind = Literal["openai", "openai_compatible", "mock", "predictor"]
+# 외부 모델을 부르지 않고 코드로 답하는 Adapter 종류(SPEC-028 R-16).
+# /v1/analyze taskType만 처리한다.
+PREDICTOR_KIND = "predictor"
 
 # `/v1/parse`가 쓰는 Prompt Registry taskType. 설정은 [tasks]가 아니라 [parse]에 있다(SPEC-012).
 QUERY_PARSE_TASK = "query_parse"
@@ -50,14 +53,32 @@ class ImagesProfile(Profile):
         return self
 
 
+class PredictorSettings(Profile):
+    """`risk_forecast` 1단계 규칙 점수의 자리값(SPEC-028 R-16). AI 담당자가 바꾼다.
+
+    Attributes:
+        horizons_sec: 예측 구간(초). 계약 `_risk-forecast` 범위(60~86400, 최대 6개)다.
+        saturation_s: 활성 시간이 이 값에 이르면 진입률을 그대로 쓴다. 그보다 짧으면 비례해 줄인다.
+    """
+
+    horizons_sec: tuple[Annotated[int, Field(ge=60, le=86400)], ...] = Field(
+        min_length=1, max_length=6
+    )
+    saturation_s: float = Field(gt=0)
+
+
 class AdapterProfile(Profile):
     kind: AdapterKind
     base_url: HttpUrl | None = None
+    # kind predictor일 때만 둔다.
+    predictor: PredictorSettings | None = None
 
     @model_validator(mode="after")
     def _base_url(self) -> Self:
         if self.kind == "openai_compatible" and self.base_url is None:
             raise ValueError("openai_compatible adapter requires base_url")
+        if (self.kind == PREDICTOR_KIND) != (self.predictor is not None):
+            raise ValueError("predictor settings are required for, and only for, kind predictor")
         return self
 
 
@@ -230,13 +251,17 @@ class GatewayProfile(Profile):
 
     @model_validator(mode="after")
     def _adapter_refs(self) -> Self:
-        refs = [(name, task.adapter) for name, task in self.tasks.items()]
+        # predictor는 /v1/analyze taskType만 처리한다(SPEC-028 R-16).
+        others = [("parse", self.parse.adapter)]
         if self.embed.embed_text is not None:
-            refs.append(("embed_text", self.embed.embed_text.adapter))
-        refs.append(("parse", self.parse.adapter))
+            others.append(("embed_text", self.embed.embed_text.adapter))
+        refs = [(name, task.adapter) for name, task in self.tasks.items()] + others
         for name, adapter in refs:
             if adapter is not None and adapter not in self.adapters:
                 raise ValueError(f"task {name} refers to unknown adapter {adapter!r}")
+        for name, adapter in others:
+            if adapter is not None and self.adapters[adapter].kind == PREDICTOR_KIND:
+                raise ValueError(f"{name} cannot use predictor adapter {adapter!r}")
         self._check_guards()
         return self
 

@@ -49,12 +49,14 @@ COPY services/ai-gateway/registry/prompts /app/registry/prompts
 COPY services/ai-gateway/registry/query /app/registry/query
 COPY --from=docs-contracts taxonomy /app/registry/taxonomy
 # 출력 형식 중 event.analyzed·track.analyzed·aggregator 결과 파일로 다른 레포에 나가는 것은 계약이
-# 원본이다(SPEC-020, SPEC-024, SPEC-027).
+# 원본이다(SPEC-020, SPEC-024, SPEC-027, SPEC-028).
 COPY --from=docs-contracts \
     events/_vlm-analysis.schema.json \
     events/_track-attribute.schema.json \
     events/_object-answer.schema.json \
     events/_source-summary.schema.json \
+    events/_state-compare.schema.json \
+    events/_risk-forecast.schema.json \
     /app/registry/events/
 COPY services/ai-gateway/profiles /app/profiles
 ENV AI_GATEWAY_REGISTRY_DIR=/app/registry \

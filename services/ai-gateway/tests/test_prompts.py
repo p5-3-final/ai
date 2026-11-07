@@ -418,3 +418,55 @@ def test_spec027_r18_source_summary_input_has_no_event_descriptions(registry_dir
     ok = {"durationSec": 125.0, "zones": [], "timeline": [], "risks": []}
     assert task.input_errors(ok) == []
     assert task.input_errors({**ok, "descriptions": ["x"]}) != []
+
+
+@pytest.mark.parametrize(
+    ("task_type", "contract"),
+    [("state_compare", "_state-compare"), ("risk_forecast", "_risk-forecast")],
+)
+def test_spec028_r7_r16_tasks_load_with_contract_output(
+    registry_dir: Path, task_type: str, contract: str
+) -> None:
+    """[SPEC-028 R-7·R-16] state_compare·risk_forecast는 Registry 폴더 하나이고 출력은 계약이다."""
+    task = PromptRegistry.load(registry_dir).get(task_type)
+    assert task is not None
+    schema = json.loads(
+        (registry_dir / f"events/{contract}.schema.json").read_text(encoding="utf-8")
+    )
+
+    assert re.fullmatch(rf"{task_type}@[0-9a-f]{{12}}", task.version)
+    for example in schema["examples"]:
+        assert task.output_errors(example) == []
+
+
+def test_spec028_r10_state_compare_fallback_keeps_type_and_no_changes(registry_dir: Path) -> None:
+    """[SPEC-028 R-10] 대체 결과는 후보 유형과 상태만 있고 변화는 빈 목록이다."""
+    task = PromptRegistry.load(registry_dir).get("state_compare")
+    assert task is not None
+
+    output = task.fallback({"eventType": "object_moved"}, "unknown")
+
+    assert output["changes"] == []
+    assert output["analysis"] == {
+        "eventType": "object_moved",
+        "eventDetected": None,
+        "verificationStatus": "unknown",
+        "description": None,
+        "beforeState": None,
+        "afterState": None,
+        "riskDetected": None,
+        "riskType": None,
+        "riskReason": None,
+        "solution": None,
+        "severity": None,
+        "evidenceStart": None,
+        "evidenceEnd": None,
+    }
+
+
+def test_spec028_r15_risk_forecast_fallback_has_no_horizons(registry_dir: Path) -> None:
+    """[SPEC-028 R-15] 예측 모델 미설정 대체 결과는 값을 지어내지 않고 horizons가 비어 있다."""
+    task = PromptRegistry.load(registry_dir).get("risk_forecast")
+    assert task is not None
+
+    assert task.fallback({}, "unverified") == {"method": "rule", "horizons": [], "features": {}}

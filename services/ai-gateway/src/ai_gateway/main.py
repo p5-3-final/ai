@@ -23,6 +23,7 @@ from vlm_storage.storage import ObjectStorage
 from ai_gateway.adapters.base import Adapter, TextEmbeddingAdapter, VlmAdapter
 from ai_gateway.adapters.mock import MockAdapter
 from ai_gateway.adapters.openai import OpenAiAdapter
+from ai_gateway.adapters.predictor import Predictor, RuleForecastPredictor
 from ai_gateway.analyze import AnalyzeService, CallLogWriter
 from ai_gateway.api import router
 from ai_gateway.budget import Budget
@@ -33,7 +34,12 @@ from ai_gateway.gate import BudgetStore, CacheStore, Limiter, ModelGate
 from ai_gateway.images import ImageReader
 from ai_gateway.parse import ParseService
 from ai_gateway.problems import install_problem_handlers
-from ai_gateway.profile import QUERY_PARSE_TASK, GatewayProfile, check_profile
+from ai_gateway.profile import (
+    PREDICTOR_KIND,
+    QUERY_PARSE_TASK,
+    GatewayProfile,
+    check_profile,
+)
 from ai_gateway.prompts import PromptRegistry
 from ai_gateway.query_dictionary import QueryDictionary
 from ai_gateway.rate_limit import RateLimiter
@@ -85,6 +91,7 @@ def create_app(build: Callable[[], Awaitable[GatewayDeps]]) -> FastAPI:
             deps.adapters,
             deps.call_log,
             gate,
+            build_predictors(deps.profile),
         )
         app.state.embed = EmbedService(
             deps.profile,
@@ -176,6 +183,15 @@ def load_encoder(
     return load_shared_encoder(profile.encoder, models, cache_dir)
 
 
+def build_predictors(profile: GatewayProfile) -> dict[str, Predictor]:
+    """kind predictor Adapter마다 예측기를 만든다(SPEC-028 R-16). 외부 자원이 없어 프로필만 쓴다."""
+    return {
+        name: RuleForecastPredictor(adapter.predictor)
+        for name, adapter in profile.adapters.items()
+        if adapter.kind == PREDICTOR_KIND and adapter.predictor is not None
+    }
+
+
 def build_adapters(
     profile: GatewayProfile, prompts: PromptRegistry, api_key: str | None
 ) -> dict[str, Adapter]:
@@ -183,6 +199,8 @@ def build_adapters(
     text = profile.embed.embed_text
     adapters: dict[str, Adapter] = {}
     for name, adapter in profile.adapters.items():
+        if adapter.kind == PREDICTOR_KIND:
+            continue
         if adapter.kind == "mock":
             dimension = text.dimension if text and text.adapter == name and text.dimension else 8
             adapters[name] = MockAdapter(prompts, embedding_dimension=dimension)

@@ -13,6 +13,7 @@ from ai_gateway.adapters.base import (
     ProviderUnavailableError,
     VlmAdapter,
 )
+from ai_gateway.adapters.predictor import Predictor
 from ai_gateway.call_log import CallLogEntry, CallStatus, new_call_id
 from ai_gateway.deadline import Deadline, cap
 from ai_gateway.errors import (
@@ -25,7 +26,7 @@ from ai_gateway.gate import GateCall, ModelGate, Produced, cache_key
 from ai_gateway.images import ImagePolicy, ImageReader
 from ai_gateway.output import ParsedOutput, parse_output
 from ai_gateway.profile import GatewayProfile, TaskProfile
-from ai_gateway.prompts import PromptRegistry
+from ai_gateway.prompts import PromptRegistry, PromptTask
 
 type JsonObject = dict[str, object]
 # 결과가 unverified인 이유(SPEC-016 R-23). 호출자가 재판정 큐를 사유로 나눈다.
@@ -70,6 +71,7 @@ class AnalyzeService:
         adapters: dict[str, VlmAdapter],
         call_log: CallLogWriter,
         gate: ModelGate,
+        predictors: dict[str, Predictor] | None = None,
     ) -> None:
         self._profile = profile
         self._prompts = prompts
@@ -78,6 +80,7 @@ class AnalyzeService:
         self._adapters = adapters
         self._call_log = call_log
         self._gate = gate
+        self._predictors = predictors or {}
 
     async def analyze(self, command: AnalyzeCommand) -> AnalyzeResult:
         started = time.perf_counter()
@@ -111,6 +114,9 @@ class AnalyzeService:
             return call.result(output, unverified_reason="model_unavailable")
 
         adapter, model = settings.adapter, settings.model
+        predictor = self._predictors.get(adapter)
+        if predictor is not None:
+            return await self._predict(call, task, predictor, model)
 
         async def invoke() -> Produced[tuple[Completion, ParsedOutput]]:
             completion = await self._adapters[adapter].complete(
@@ -206,6 +212,21 @@ class AnalyzeService:
             )
         )
         return call.result(parsed.output)
+
+    async def _predict(
+        self, call: "_Call", task: PromptTask, predictor: Predictor, model: str
+    ) -> AnalyzeResult:
+        """predictor 경로(SPEC-028 R-16). 외부 비용·지연이 없어 결과 캐시·예산·분당 한도를 거치지
+        않는다. 출력은 VLM과 같이 출력 스키마로 검증하고 호출 로그를 남긴다."""
+        variables = call.command.variables
+        output = predictor.predict(model=model, variables=variables)
+        if task.output_errors(output):
+            # 규칙이 계약과 어긋나면 값을 내보내지 않고 판단할 수 없음으로 둔다(R-5와 같은 처리).
+            fallback = task.fallback(variables, "unknown")
+            await self._record(call.entry("invalid_output", output=fallback))
+            return call.result(fallback)
+        await self._record(call.entry("success", output=output))
+        return call.result(output)
 
     async def _record(self, entry: CallLogEntry) -> None:
         await self._call_log.save(entry)

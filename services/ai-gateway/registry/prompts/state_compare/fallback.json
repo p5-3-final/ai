@@ -1,0 +1,18 @@
+{
+  "analysis": {
+    "eventType": "$input.eventType",
+    "eventDetected": null,
+    "verificationStatus": "$status",
+    "description": null,
+    "beforeState": null,
+    "afterState": null,
+    "riskDetected": null,
+    "riskType": null,
+    "riskReason": null,
+    "solution": null,
+    "severity": null,
+    "evidenceStart": null,
+    "evidenceEnd": null
+  },
+  "changes": []
+}
