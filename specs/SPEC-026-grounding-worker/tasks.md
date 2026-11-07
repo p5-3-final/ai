@@ -38,23 +38,23 @@ updated: 2026-11-06
 - [x] T012 [P] [R-9] eventId = uuid5(groundingId·groundingModel), 클립·결과 경로 — 테스트 `t/test_grounding_ids.py`, 구현 `gw/ids.py`, `gw/keys.py`
 - [x] T013 [R-2] `FfmpegTool` probe와 샘플 프레임 rgb24 추출 — 테스트 `t/test_grounding_media.py`(`ffmpeg` 마커), 구현 `gw/media.py`
 - [x] T014 [R-4] `FfmpegTool` 클립 렌더링: H.264, 원본 fps, 오디오 유지, 박스 위치 픽셀 확인 — 테스트 `t/test_grounding_media.py`(`ffmpeg` 마커), 구현 `gw/media.py`
-- [ ] T015 [R-1] [R-6] 핸들러: 구간 순서대로 처리, 클립 → 결과 파일 순서로 저장, 구간마다 READY 발행(계약 스키마 통과) — 테스트 `t/test_grounding_service.py`, 구현 `gw/service.py`
-- [ ] T016 [R-3] 기준 신뢰도 미만 탐지는 결과에서 뺌 — 테스트 `t/test_grounding_service.py`
-- [ ] T017 [R-7] `frames`에 샘플마다 모든 대상어 수(없으면 0) — 테스트 `t/test_grounding_service.py`
-- [ ] T018 [R-17] 결과 파일 `groundingModel`·`scoreThreshold`·`sampleFps`, 이벤트 `groundingModel` — 테스트 `t/test_grounding_service.py`
-- [ ] T019 [R-18] 단계 블록 `grounding.sample`·`detect`·`render`·`store` — 테스트 `t/test_grounding_service.py`
+- [x] T015 [R-1] [R-6] 핸들러: 구간 순서대로 처리, 클립 → 결과 파일 순서로 저장, 구간마다 READY 발행(계약 스키마 통과) — 테스트 `t/test_grounding_service.py`, 구현 `gw/service.py`
+- [x] T016 [R-3] 기준 신뢰도 미만 탐지는 결과에서 뺌 — 테스트 `t/test_grounding_service.py`
+- [x] T017 [R-7] `frames`에 샘플마다 모든 대상어 수(없으면 0) — 테스트 `t/test_grounding_service.py`
+- [x] T018 [R-17] 결과 파일 `groundingModel`·`scoreThreshold`·`sampleFps`, 이벤트 `groundingModel` — 테스트 `t/test_grounding_service.py`
+- [x] T019 [R-18] 단계 블록 `grounding.sample`·`detect`·`render`·`store` — 테스트 `t/test_grounding_service.py`
 
 ## Phase 3: US-2 같은 주석을 다시 만들지 않음 (P2)
 
-- [ ] T020 [R-8] 결과 파일이 있으면 탐지·인코딩 없이 그 내용으로 같은 eventId 발행 — 테스트 `t/test_grounding_service.py`, 구현 `gw/service.py`
-- [ ] T021 [R-14] 저장·발행 오류는 그대로 던지고, 다시 처리하면 끝난 구간은 재사용 — 테스트 `t/test_grounding_service.py`
+- [x] T020 [R-8] 결과 파일이 있으면 탐지·인코딩 없이 그 내용으로 같은 eventId 발행 — 테스트 `t/test_grounding_service.py`, 구현 `gw/service.py`
+- [x] T021 [R-14] 저장·발행 오류는 그대로 던지고, 다시 처리하면 끝난 구간은 재사용 — 테스트 `t/test_grounding_service.py`
 
 ## Phase 4: US-3 실패를 알림 (P2)
 
-- [ ] T022 [R-10] `endMs <= startMs`이거나 영상 길이를 넘으면 `GROUNDING_SEGMENT_OUT_OF_RANGE` FAILED — 테스트 `t/test_grounding_service.py`
-- [ ] T023 [R-11] 원본 없음·probe·디코딩 실패면 `GROUNDING_SOURCE_UNREADABLE` FAILED — 테스트 `t/test_grounding_service.py`, `t/test_grounding_media.py`(`ffmpeg` 마커, 깨진 파일)
-- [ ] T024 [R-12] `DetectorError`면 `GROUNDING_DETECTOR_FAILED` FAILED — 테스트 `t/test_grounding_service.py`
-- [ ] T025 [R-13] 구간 제한 시간(기본 120초)을 넘으면 멈추고 `GROUNDING_TIMEOUT` FAILED, ffmpeg 프로세스 종료 — 테스트 `t/test_grounding_service.py`, `t/test_grounding_media.py`(`ffmpeg` 마커), 구현 `gw/service.py`, `gw/media.py`
+- [x] T022 [R-10] `endMs <= startMs`이거나 영상 길이를 넘으면 `GROUNDING_SEGMENT_OUT_OF_RANGE` FAILED — 테스트 `t/test_grounding_service.py`
+- [x] T023 [R-11] 원본 없음·probe·디코딩 실패면 `GROUNDING_SOURCE_UNREADABLE` FAILED — 테스트 `t/test_grounding_service.py`, `t/test_grounding_media.py`(`ffmpeg` 마커, 깨진 파일)
+- [x] T024 [R-12] `DetectorError`면 `GROUNDING_DETECTOR_FAILED` FAILED — 테스트 `t/test_grounding_service.py`
+- [x] T025 [R-13] 구간 제한 시간(기본 120초)을 넘으면 멈추고 `GROUNDING_TIMEOUT` FAILED, ffmpeg 프로세스 종료 — 테스트 `t/test_grounding_service.py`, `t/test_grounding_media.py`(`ffmpeg` 마커), 구현 `gw/service.py`, `gw/media.py`
 
 ## Phase 5: 실제 탐지기 (사용자 확인 뒤)
 
