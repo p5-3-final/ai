@@ -18,13 +18,14 @@ target_of() {
     ai-client) echo "openapi/ai-gateway.yaml vlm_ai_client" ;;
     analysis-client) echo "openapi/analysis-service.yaml vlm_analysis_client" ;;
     stream-client) echo "openapi/stream-service.yaml vlm_stream_client" ;;
+    quality-client) echo "openapi/quality-service.yaml vlm_quality_client" ;;
     *)
       echo "모르는 클라이언트: $1" >&2
       return 1
       ;;
   esac
 }
-all_targets=(ai-client analysis-client stream-client)
+all_targets=(ai-client analysis-client stream-client quality-client)
 
 generate() {
   local lib="$1" out="${2:-}" contracts="${3:-${default_contracts}}" contract package

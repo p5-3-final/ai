@@ -6,7 +6,10 @@
 .mypy_cache
 .ruff_cache
 notebooks
-evals
+# evals는 workspace 멤버라 test 단계 `uv sync --all-packages`가 패키지 정의만 쓴다. 평가 결과 파일은 넣지 않는다.
+evals/*
+!evals/pyproject.toml
+!evals/src
 .env
 .env.*
 docs-repo

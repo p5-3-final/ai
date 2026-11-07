@@ -16,6 +16,7 @@ members = [
     "libs/contracts",
     "libs/encoders",
     "libs/messaging",
+    "libs/quality-client",
     "libs/storage",
     "libs/stream-client",
     "libs/testing",
@@ -29,6 +30,7 @@ members = [
     "services/embedding-worker",
     "services/grounding-worker",
     "services/aggregator",
+    "evals",
 ]
 
 [tool.uv.sources]
@@ -100,6 +102,7 @@ files = [
     "services/embedding-worker",
     "services/grounding-worker",
     "services/aggregator",
+    "evals",
 ]
 explicit_package_bases = true
 mypy_path = [
@@ -109,6 +112,7 @@ mypy_path = [
     "$MYPY_CONFIG_FILE_DIR/libs/contracts/src",
     "$MYPY_CONFIG_FILE_DIR/libs/encoders/src",
     "$MYPY_CONFIG_FILE_DIR/libs/messaging/src",
+    "$MYPY_CONFIG_FILE_DIR/libs/quality-client/src",
     "$MYPY_CONFIG_FILE_DIR/libs/storage/src",
     "$MYPY_CONFIG_FILE_DIR/libs/stream-client/src",
     "$MYPY_CONFIG_FILE_DIR/libs/testing/src",
@@ -125,6 +129,9 @@ mypy_path = [
     # 폴더 이름에 하이픈이 없어 mypy가 tests를 `services.aggregator.tests` 패키지로 올려 잡는다.
     # 테스트 도우미(agg_support)를 pytest pythonpath와 같은 이름으로 찾게 tests를 기준 폴더로 둔다.
     "$MYPY_CONFIG_FILE_DIR/services/aggregator/tests",
+    "$MYPY_CONFIG_FILE_DIR/evals/src",
+    # evals/tests도 하이픈이 없어 `evals.tests`로 잡히면 패키지 `evals`와 겹친다. 같은 이유로 기준 폴더로 둔다.
+    "$MYPY_CONFIG_FILE_DIR/evals/tests",
 ]
 
 [tool.pytest.ini_options]
@@ -142,10 +149,15 @@ pythonpath = [
     "services/embedding-worker/tests",
     "services/grounding-worker/tests",
     "services/aggregator/tests",
+    "evals/tests",
 ]
+# importlib 모드는 __init__.py 없는 테스트를 레포 기준 이름(`evals.tests.test_x`)으로 올리면서 빈 `evals`
+# 모듈을 만들어 같은 이름의 패키지 `evals`를 가린다. pythonpath에서 바로 import되는 테스트는 그 이름을 쓴다
+# (SPEC-030).
+consider_namespace_packages = true
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
-testpaths = ["libs", "services"]
+testpaths = ["libs", "services", "evals"]
 markers = [
   "integration: Docker로 실제 Kafka 등 외부 구성 요소를 띄우는 테스트",
   "ffmpeg: 시스템 ffmpeg가 필요한 테스트. 서비스 이미지 안에서 실행한다(scripts/test-in-docker.sh)",
