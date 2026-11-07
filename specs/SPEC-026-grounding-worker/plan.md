@@ -198,9 +198,9 @@ sequenceDiagram
   - 필터 주입: 대상어는 라벨 파일로만 넘기고, 스크립트의 경로는 허용 문자를 검사한다(단위 테스트).
   - presigned 주소의 만료 시간은 구간 제한 시간보다 길게 잡는다.
 - spec·계약과 맞춰 볼 점(계약대로 구현하고 보고한다)
-  - C-8: R-17은 `grounding.completed`에도 기준 신뢰도를 기록하라고 하지만 계약에 그 필드가 없다. 결과 파일 `scoreThreshold`에만 기록한다(spec 문구 수정 필요).
-  - C-9: R-9 eventId가 groundingId·탐지기 버전만 쓰면 FAILED 뒤 다시 요청해 READY가 나오거나 다른 requestId가 클립을 재사용할 때 소비자가 중복으로 버린다. requestId·outcome을 더 넣는다. 같은 요청의 재처리는 여전히 같은 eventId다(spec 문구 수정 필요).
-  - C-10: R-10 영상 길이 비교에 허용 오차가 없으면 마지막 구간 `endMs`가 ffprobe 길이보다 몇 ms 길 때 FAILED가 된다. 프레임 간격 하나(1000/fps ms)만큼 허용하고, 샘플 시각은 영상 길이 미만만 쓴다(spec 문구 수정 필요).
+  - C-8: R-17은 `grounding.completed`에도 기준 신뢰도를 기록하라고 하지만 계약에 그 필드가 없다. 결과 파일 `scoreThreshold`에만 기록한다(docs #141에서 spec 반영).
+  - C-9: R-9 eventId가 groundingId·탐지기 버전만 쓰면 FAILED 뒤 다시 요청해 READY가 나오거나 다른 requestId가 클립을 재사용할 때 소비자가 중복으로 버린다. requestId·outcome을 더 넣는다. 같은 요청의 재처리는 여전히 같은 eventId다(docs #141에서 spec 반영).
+  - C-10: R-10 영상 길이 비교에 허용 오차가 없으면 마지막 구간 `endMs`가 ffprobe 길이보다 몇 ms 길 때 FAILED가 된다. 프레임 간격 하나(1000/fps ms)만큼 허용하고, 샘플 시각은 영상 길이 미만만 쓴다(docs #141에서 spec 반영).
   - 결과 파일 `sampleFps`는 이름은 fps인데 설명은 "샘플 간격"이다. 1000 ÷ 간격(ms)으로 기록한다.
 - 사용자 확인이 필요한 항목
   - 영상 처리를 ffmpeg·ffprobe 프로세스로 하는 것과 runtime 이미지에 `ffmpeg`·`fonts-dejavu-core` 시스템 패키지를 넣는 것
