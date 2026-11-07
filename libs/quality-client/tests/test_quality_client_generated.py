@@ -7,28 +7,16 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from pydantic import Field
-from pydantic_settings import BaseSettings
+from vlm_testing.contracts import contracts_dir
 
 _ROOT = Path(__file__).resolve().parents[3]
 _SCRIPT = _ROOT / "scripts" / "generate-clients.sh"
 _COMMITTED = _ROOT / "libs" / "quality-client" / "src" / "vlm_quality_client" / "models.py"
 
 
-def _default_contracts_dir() -> Path:
-    # 로컬은 작업 공간(project/repos/ai) 두 단계 위 docs 레포, CI는 CONTRACTS_DIR(docs ADR-0013)
-    parents = Path(__file__).resolve().parents
-    return parents[5] / "service-contracts" if len(parents) > 5 else Path("/contracts")
-
-
-class _ContractSettings(BaseSettings):
-    contracts_dir: Path = Field(default_factory=_default_contracts_dir)
-
-
 def test_spec030_r19_committed_models_match_regenerated(tmp_path: Path) -> None:
     """[SPEC-030 R-19] 계약을 올리고 다시 생성하지 않으면 이 테스트가 실패한다."""
-    contracts = _ContractSettings().contracts_dir
-    assert (contracts / "openapi").is_dir(), f"계약이 없다: {contracts} (CONTRACTS_DIR 확인)"
+    contracts = contracts_dir()
     out = tmp_path / "models.py"
     bash = shutil.which("bash")
     assert bash is not None

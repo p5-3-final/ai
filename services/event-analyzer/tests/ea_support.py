@@ -5,17 +5,11 @@ import json
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from functools import cache
 from pathlib import Path
 from typing import Literal
 from uuid import UUID, uuid5
 
 from event_analyzer.rejudge_state import Prior
-from jsonschema import Draft202012Validator
-from pydantic import Field
-from pydantic_settings import BaseSettings
-from referencing import Registry, Resource
-from referencing.jsonschema import DRAFT202012, Schema
 from vlm_ai_client.client import AiGatewayError
 from vlm_ai_client.models import AnalyzeRequest, AnalyzeResponse
 from vlm_contracts.events import (
@@ -33,6 +27,8 @@ from vlm_contracts.events import (
     VectorCandidate,
     VerificationStatus,
 )
+from vlm_testing.contracts import contracts_dir as contracts_dir
+from vlm_testing.contracts import event_errors as shared_event_errors
 
 PROFILE_PATH = Path(__file__).resolve().parents[1] / "profiles" / "local.toml"
 SOURCE = UUID("0192f0d2-1a2b-7c3d-8e4f-5a6b7c8d9e0f")
@@ -293,47 +289,9 @@ class RecordingPublisher:
         self.published.append((topic, event, key, traceparent))
 
 
-# 로컬은 작업 공간(project/repos/ai) 두 단계 위 docs 레포의 service-contracts/를 읽는다.
-# CI는 service-contracts.lock 버전을 받아 CONTRACTS_DIR로 준다(docs ADR-0013).
-def _default_contracts_dir() -> Path:
-    parents = Path(__file__).resolve().parents
-    # 컨테이너처럼 루트 구조가 아니면 기본값이 없다. 그때는 CONTRACTS_DIR이 꼭 있어야 한다.
-    return parents[5] / "service-contracts" if len(parents) > 5 else Path("/contracts")
-
-
-class _ContractSettings(BaseSettings):
-    contracts_dir: Path = Field(default_factory=_default_contracts_dir)
-
-
-def contracts_dir() -> Path:
-    """docs 계약 원본 폴더."""
-    return _ContractSettings().contracts_dir
-
-
-@cache
-def _event_registry() -> tuple[Registry[Schema], str]:
-    path = contracts_dir()
-    # 원본이 없으면 계약 검증이 빠진 채 통과하므로 건너뛰지 않고 실패시킨다.
-    assert (path / "events").is_dir(), f"계약을 찾을 수 없다: {path} (CONTRACTS_DIR 확인)"
-    # 스키마는 서로를 상대 경로로 참조하므로 각자의 $id로 등록한다.
-    resources = []
-    for schema in [
-        *sorted((path / "events").glob("*.schema.json")),
-        path / "taxonomy/v2/taxonomy.schema.json",
-    ]:
-        raw = json.loads(schema.read_text(encoding="utf-8"))
-        resources.append((str(raw["$id"]), Resource.from_contents(raw, DRAFT202012)))
-    envelope = json.loads((path / "events/_envelope.schema.json").read_text(encoding="utf-8"))
-    return Registry().with_resources(resources), str(envelope["$id"])
-
-
 def event_errors(event: Event) -> list[str]:
     """발행한 이벤트를 JSON으로 바꿔 docs 원본 스키마로 검증하고 오류 메시지를 돌려준다."""
-    registry, envelope_id = _event_registry()
-    schema_id = envelope_id.replace("_envelope", event.event_type)
-    validator = Draft202012Validator({"$ref": schema_id}, registry=registry)
-    body = json.loads(event.model_dump_json(by_alias=True))
-    return [e.message for e in validator.iter_errors(body)]
+    return shared_event_errors(event)
 
 
 @dataclass

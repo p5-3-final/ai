@@ -3,8 +3,6 @@
 import json
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from functools import cache
-from pathlib import Path
 from uuid import UUID
 
 from aggregator.kv import MemoryStore
@@ -14,11 +12,6 @@ from aggregator.profile import DEFAULT_PROFILE_PATH, LoadedProfile, load_aggrega
 from aggregator.reader import JobReader
 from aggregator.service import AggregatorService
 from aggregator.stream import StreamAggregator
-from jsonschema import Draft202012Validator
-from pydantic import BaseModel, Field
-from pydantic_settings import BaseSettings
-from referencing import Registry, Resource
-from referencing.jsonschema import DRAFT202012, Schema
 from vlm_ai_client.client import AiGatewayError
 from vlm_ai_client.models import AnalyzeRequest, AnalyzeResponse
 from vlm_analysis_client.client import (
@@ -53,6 +46,9 @@ from vlm_contracts.events import (
 from vlm_messaging.worker import MessageContext
 from vlm_storage.memory import InMemoryStorage
 from vlm_stream_client.models import ZoneList as StreamZoneList
+from vlm_testing.contracts import contracts_dir as contracts_dir
+from vlm_testing.contracts import event_errors as event_errors
+from vlm_testing.contracts import schema_errors
 
 SOURCE = UUID("0192f0d2-1a2b-7c3d-8e4f-5a6b7c8d9e0f")
 OWNER = UUID("0192f0c4-6d1e-7a3b-9c2d-1e2f3a4b5c6d")
@@ -205,52 +201,12 @@ def inputs(
     )
 
 
-# 로컬은 작업 공간(project/repos/ai) 두 단계 위 docs 레포의 service-contracts/를 읽는다.
-# CI는 service-contracts.lock 버전을 받아 CONTRACTS_DIR로 준다(docs ADR-0013).
-def _default_contracts_dir() -> Path:
-    parents = Path(__file__).resolve().parents
-    return parents[5] / "service-contracts" if len(parents) > 5 else Path("/contracts")
-
-
-class _ContractSettings(BaseSettings):
-    contracts_dir: Path = Field(default_factory=_default_contracts_dir)
-
-
-def contracts_dir() -> Path:
-    path = _ContractSettings().contracts_dir
-    # 원본이 없으면 계약 검증이 빠진 채 통과하므로 건너뛰지 않고 실패시킨다.
-    assert (path / "events").is_dir(), f"계약을 찾을 수 없다: {path} (CONTRACTS_DIR 확인)"
-    return path
-
-
-@cache
-def _registry() -> Registry[Schema]:
-    path = contracts_dir()
-    files = [
-        *sorted((path / "events").glob("*.schema.json")),
-        *sorted((path / "aggregates" / "v1").glob("*.schema.json")),
-        path / "taxonomy/v2/taxonomy.schema.json",
-    ]
-    resources = []
-    for schema in files:
-        raw = json.loads(schema.read_text(encoding="utf-8"))
-        resources.append((str(raw["$id"]), Resource.from_contents(raw, DRAFT202012)))
-    return Registry().with_resources(resources)
-
-
 def contract_errors(schema_id: str, body: object) -> list[str]:
     """`body`(JSON 값)를 계약 스키마(`$id`)로 검증한 오류 메시지."""
-    validator = Draft202012Validator({"$ref": schema_id}, registry=_registry())
-    return [f"{list(e.path)}: {e.message}" for e in validator.iter_errors(body)]
+    return schema_errors(schema_id, body)
 
 
-EVENTS_ID = "https://vlm.example/contracts/events/"
 RESULT_ID = "https://vlm.example/contracts/aggregates/v1/source-result.schema.json"
-
-
-def event_errors(event: BaseModel, topic: str) -> list[str]:
-    body = json.loads(event.model_dump_json(by_alias=True))
-    return contract_errors(f"{EVENTS_ID}{topic}.schema.json", body)
 
 
 # ---- 가짜 analysis-api(읽기 클라이언트 프로토콜) ----
