@@ -85,7 +85,13 @@ def create_topics(bootstrap: str, names: Sequence[str]) -> None:
 @contextmanager
 def seaweedfs() -> Iterator[str]:
     """S3 게이트웨이를 켠 SeaweedFS를 띄우고 S3 주소를 돌려준다."""
-    container = DockerContainer(SEAWEEDFS_IMAGE).with_command("server -s3 -dir=/data")
+    # 볼륨 개수 한도가 없으면 디스크 여유 공간 / 볼륨 크기(1GB)로 자동 산정된다. 여유가 작은
+    # Docker Desktop에서는 32개 안팎이고, 버킷마다 첫 쓰기에서 볼륨을 7개씩 잡아 버킷 5개쯤부터
+    # PutObject가 InternalError가 된다. 볼륨 파일은 미리 할당하지 않아 한도를 늘려도
+    # 디스크를 쓰지 않는다.
+    container = DockerContainer(SEAWEEDFS_IMAGE).with_command(
+        "server -s3 -dir=/data -volume.max=200"
+    )
     container.with_exposed_ports(8333)
     with container:
         yield f"http://{container.get_container_host_ip()}:{container.get_exposed_port(8333)}"
