@@ -19,7 +19,7 @@ updated: 2026-11-07
 
 빈 자리인 `services/aggregator`에 Kafka 워커를 만든다. `analysis.completed`를 받으면 analysis-api 내부 읽기 API로 job의 이벤트·트랙·구역 머문 구간을 마지막 쪽까지 읽고 영상의 구역과 (세션이면) 직전 영상의 `final-state`를 읽는다. 그 입력으로 병합·시간 규칙·상태 스냅샷·위험·노출 지표·타임라인을 **순수 함수**로 계산하고, ai-gateway `source_summary`로 요약을 붙여 결과 파일을 저장한 뒤 `source.completed`를 발행한다.
 
-analysis-api 읽기 클라이언트는 새 lib `libs/analysis-client`에 두고 요청·응답 모델은 `openapi/analysis-service.yaml`에서 datamodel-code-generator로 생성한다(SPEC-021 R-6과 같은 방식, 손으로 쓴 모델 없음). 재시도·마감 계산은 SPEC-021이 ai-client에 만드는 것을 `libs/common`으로 옮겨 두 클라이언트가 같이 쓴다.
+analysis-api 읽기 클라이언트는 새 lib `libs/analysis-client`에 두고 요청·응답 모델은 `openapi/analysis-service.yaml`에서 datamodel-code-generator로 생성한다(SPEC-021 R-6과 같은 방식, 손으로 쓴 모델 없음). 재시도·마감 계산은 SPEC-021이 이미 `libs/common`(`vlm_common.http_call`)에 두었으므로 그대로 쓴다.
 
 ai-gateway에는 `source_summary` Registry 폴더(입력·출력 스키마, 자리 표시 프롬프트, `fallback.json`)와 두 로컬 프로필의 `[tasks.source_summary]`만 더한다. 프롬프트 문안과 시간 규칙 기준값은 AI 담당자 몫이고 여기서는 자리값만 둔다.
 
@@ -48,7 +48,7 @@ ai-gateway에는 `source_summary` Registry 폴더(입력·출력 스키마, 자�
 | R-24 | `agg/service.py` 단계 블록, `vlm_contracts.stages` | `t/test_aggregator_service.py`, `libs/contracts/tests/test_stage_contracts.py` |
 | R-4(v5.1: `rule*`만 대조, `partial`) | `agg/reader.py`(판정 방식 `rule*` 수·트랙 수 대조, 재시도 상한 뒤 `partial`·`missingCounts`) | `t/test_aggregator_reader.py::test_spec027_r4_*`, `t/test_aggregator_service.py::test_spec027_r4_partial` |
 | R-25, R-26 | `agg/pending.py` `PendingVectors`(Redis `pending-vector:<jobId>`, TTL 7일), `agg/service.py` `on_event_analyzed`, `agg/reader.py`(읽은 이벤트와 합치기, eventId 중복 제거) | `t/test_aggregator_pending.py`(integration, Redis), `t/test_aggregator_service.py::test_spec027_r25_*`·`r26_*` |
-| R-27, R-28 | `agg/revision.py` `recompute_with_late_event`, `agg/result.py`(`inputEventIds`·`revision`), `agg/ids.py`(`source.completed` eventId = `uuid5(jobId, revision)`) | `t/test_aggregator_revision.py`, `t/test_aggregator_service.py::test_spec027_r27_*` |
+| R-27, R-28 | `agg/service.py`(늦은 확정 이벤트 재계산), `agg/result.py`(옆 파일 `source-result.meta.json`의 `inputEventIds`·`revision`), `agg/ids.py`(`source.completed` eventId = `uuid5(jobId, revision)`) | `t/test_aggregator_service.py::test_spec027_r27_*`, `t/test_aggregator_ids.py::test_spec027_r28_*` |
 | R-29 | `agg/pending.py` `PendingWindow`(Redis `pending:<sourceId>:<chunkId>`, TTL 1시간), `agg/service.py` `on_track_detected`·`on_event_analyzed`(`STREAM` 분기) | `t/test_aggregator_pending.py`, `t/test_aggregator_stream_service.py::test_spec027_r29_*` |
 | R-30 | `agg/fold.py` `fold`(R-11~R-17을 상태 입력·출력으로 감쌈), `agg/stream.py` `WindowFolder`, `agg/session_state.py`(Redis·S3 스냅샷·직전 세션·빈 상태) | `t/test_aggregator_fold.py`(업로드 한 번 fold = 창 단위 fold 누적), `t/test_aggregator_stream_service.py::test_spec027_r30_*`, `t/test_aggregator_session_state.py`(integration) |
 | R-31 | `agg/stream.py`(`hazard_zone_access` 재판정), `agg/judge_budget.py`(Redis 계수 `agg:judge-calls:<jobId>`, SPEC-028 `judge_call_limit` 공유) | `t/test_aggregator_stream_service.py::test_spec027_r31_*`, `t/test_aggregator_judge_budget.py`(integration) |
@@ -84,7 +84,7 @@ ai-gateway에는 `source_summary` Registry 폴더(입력·출력 스키마, 자�
 | `libs/contracts/.../events.py` | `AnalysisCompleted`, `SourceCompleted`, `SessionRef`, 개수 모델 |
 | `libs/contracts/.../aggregates.py` (새 파일) | 결과 파일 `SourceResult`와 하위 모델(`MergeGroup`, `RuleEvent`, `Snapshot`, `Risk`, `Exposure`, `TimelineItem`, `Summary`, `InitialState`) |
 | `libs/contracts/.../stages.py` | 단계 ID 6개(`aggregator.queue_wait`·`aggregator.handle`·`aggregate.read`·`compute`·`summary`·`store`) |
-| `libs/common/.../http_call.py` (새 파일) | SPEC-021의 `CallRetry`·마감 계산·호출 종류별 재시도 판정을 ai-client에서 옮김(동작 변경 없음) |
+| `libs/common/.../http_call.py` | 변경 없음. SPEC-021이 이미 `CallRetry`·마감 계산·호출 종류별 재시도 판정을 이곳에 두었다 |
 | `libs/analysis-client/` (새 멤버, `vlm-analysis-client`) | 생성 모델 `vlm_analysis_client/models.py`, 얇은 호출부 `client.py` `AnalysisApiClient`, `AnalysisApiError` |
 | `services/aggregator/` (새 멤버) | 워커, 프로필 `profiles/aggregate-v1.toml`, Dockerfile, README |
 | `services/ai-gateway/registry/prompts/source_summary/` | `prompt.md`(자리 표시), `input.schema.json`, `output.schema.json`(`$ref ../../events/_source-summary.schema.json`), `fallback.json` |
@@ -92,6 +92,7 @@ ai-gateway에는 `source_summary` Registry 폴더(입력·출력 스키마, 자�
 | `services/ai-gateway` 테스트 배치·`registry_bundle.py`·Dockerfile | 계약 `events/_source-summary.schema.json`을 Registry에 함께 넣음(`_vlm-analysis` 선례의 세 곳) |
 | 루트 `pyproject.toml` | 새 멤버 2개를 `members`·mypy `files`·`mypy_path`·pytest `pythonpath`(`services/aggregator/tests`)에 추가 |
 | `.github/workflows/checks.yml` | aggregator runtime 이미지 빌드, 생성 코드 비교에 `analysis-service.yaml` 추가 |
+| `libs/testing/.../analysis_api.py` (새 파일) | analysis-api 내부 읽기 API 자리 표시 서버(5절 B안). 시나리오 JSON을 쪽 단위로 돌려준다 |
 
 ### 패키지(aggregator)
 
@@ -291,7 +292,7 @@ analysis-api 자리 표시 서버(로컬 compose, spec 성공 지표)는 **사�
 - 대조는 판정 방식이 `rule`로 시작하는 이벤트 수와 트랙 수만 한다(벡터 이벤트는 완료 뒤에도 올 수 있다). 재시도 상한(기본 5회)을 넘으면 `partial: true`, `missingCounts: {events, tracks}`를 실어 발행한다.
 - 워커가 `event.analyzed`(소비 그룹 aggregator)를 받으면 `jobType != STREAM`이고 판정 방식이 `vector`로 시작할 때 Redis 해시 `pending-vector:<jobId>`에 `eventId → 요약(JSON)`을 넣는다(HSET, TTL 7일). 그 밖의 업로드 이벤트는 무시한다.
 - `analysis.completed(job)` 처리는 R-3 읽기 결과와 이 해시를 eventId로 중복 제거해 합친다(R-26). 결과 파일에 `inputEventIds`(정렬)와 `revision`(처음 1)을 기록하고 `source.completed.revision`을 싣는다(R-28). `source.completed`의 eventId는 `uuid5(vlm:source.completed:<jobId>:<revision>)`이라 재발행도 결정적이다.
-- 이미 발행한 job(Redis `agg:published:<jobId>` = `{revision, resultKey}`, TTL 7일. 없으면 S3 결과 파일로 판단)에 `vector*`·`confirmed` 이벤트가 오고 그 eventId가 결과 파일의 `inputEventIds`에 없으면(R-27): R-3 읽기 + 대기 집합 + 이 이벤트로 전체를 다시 계산해 같은 경로에 저장하고 `revision + 1`로 `source.completed`를 낸다. `confirmed`가 아닌 늦은 이벤트는 대기 집합에만 둔다.
+- 이미 발행한 job(S3 옆 파일 `source-result.meta.json`이 있으면 발행한 것으로 판단한다. Redis 키를 따로 두지 않는다)에 `vector*`·`confirmed` 이벤트가 오고 그 eventId가 결과 파일의 `inputEventIds`에 없으면(R-27): R-3 읽기 + 대기 집합 + 이 이벤트로 전체를 다시 계산해 같은 경로에 저장하고 `revision + 1`로 `source.completed`를 낸다. `confirmed`가 아닌 늦은 이벤트는 대기 집합에만 둔다.
 
 ### `STREAM` 창 처리(R-29~R-32)
 
@@ -322,3 +323,18 @@ analysis-api 자리 표시 서버(로컬 compose, spec 성공 지표)는 **사�
 | 늦은 벡터 이벤트 재계산 범위 | 전체 재계산(R-3 다시 읽기). 증분 fold는 순서가 바뀐 이벤트를 넣을 수 없다 |
 | `STREAM`의 R-5 직전 영상 상태 | `session.previousSourceId`(회전)의 Redis·S3 마지막 상태. analysis-api `final-state`는 부르지 않는다 |
 | 창 `FoldDelta` 저장 | 세션 마무리(R-32) 입력으로 S3에 창마다 남긴다. 대기 집합(TTL 1시간)만으로는 24시간 세션을 마무리할 수 없다 |
+
+### 구현에서 바꾼 것(2026-11-07)
+
+| 항목 | plan의 설계 | 구현 | 이유 |
+| --- | --- | --- | --- |
+| 재시도·마감 도우미(T005) | ai-client에서 `libs/common`으로 옮김 | 옮기지 않음 | SPEC-021이 이미 `vlm_common.http_call`에 두었다 |
+| `inputEventIds`·`revision` 위치 | 결과 파일 필드 | 옆 파일 `aggregate/source-result.meta.json`(`AggregateMeta`) | 계약 `source-result`가 `additionalProperties: false`이고 두 필드가 없다(계약 변경 필요로 보고) |
+| 발행 여부 판단 | Redis `agg:published:<jobId>` | S3 옆 파일 | 결과 파일과 같은 저장 단위라 Redis를 잃어도 어긋나지 않는다 |
+| 늦은 이벤트 재계산 | `agg/revision.py` | `agg/service.py` 안 | 읽기·계산·저장 단계를 업로드 경로와 같이 쓴다 |
+| 모듈 추가 | - | `agg/ports.py`(발행 포트·설정·`CountMismatchError`), `agg/kv.py`(Redis·메모리 구현), `agg/pending.py`, `agg/judge_budget.py`, `agg/session_state.py`, `agg/stream.py`, `agg/fold.py` | `service.py`와 `stream.py`의 순환 import를 끊고, SPEC-028이 fold·세션 상태·재판정 계수를 그대로 쓰게 나눴다 |
+| 노출 계산(R-16) | 위험마다 `exposure_of` | job마다 `ExposureSpans`를 한 번 만들고 위험마다 `exposure_in` | NFR-1 입력에서 p95 5.92초가 0.71초로 줄었다 |
+| 세션 역할 `ROTATION` | - | `source.completed`·결과 파일의 `session`을 null로 낸다 | 두 계약의 `role` enum에 `ROTATION`이 없다(계약 변경 필요로 보고) |
+| `state.updated` `riskType` | - | 64자로 자른다 | `state.updated`는 최대 64자, 결과 파일은 100자다(계약 변경 필요로 보고) |
+| STREAM 체류·배회 | R-8~R-10을 창마다 적용 | 내지 않고 구역 노출은 0 | STREAM 계약에 머문 구간(zone presence)이 없다(계약 변경 필요로 보고) |
+| 이미지 프로필 경로 | - | Dockerfile이 `/app/profiles`에 넣고 `AGGREGATOR_PROFILE_PATH`를 지정한다 | 가상환경에 복사 설치된 패키지는 레포 경로의 기본 프로필을 찾지 못한다 |

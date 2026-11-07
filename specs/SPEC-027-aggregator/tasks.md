@@ -83,7 +83,7 @@ updated: 2026-11-07
 - [x] T039 [NFR-4] [R-23] 워커 e2e: 정상 발행 뒤 커밋, 잘못된 메시지·400 DLQ, 503 소진 재시도 토픽 — 테스트 `t/test_aggregator_worker_e2e.py`
 - [x] T040 [NFR-3] 로그에 요약 문장·이벤트 설명 원문이 없음 — 테스트 `t/test_aggregator_service.py`
 - [x] T041 [NFR-1] 생성 입력(이벤트 2,000·트랙 5,000·머문 구간 20,000)으로 `compute` p95 5초 — 테스트 `t/test_aggregator_performance.py`
-- [ ] T042 Dockerfile, README(환경변수 표), CI `service-images`에 aggregator runtime 빌드
+- [x] T042 Dockerfile, README(환경변수 표), CI `service-images`에 aggregator runtime 빌드
 - [ ] T043 [NFR-2] 로컬 compose(docs PR: aggregator 256M, 토픽 4개)와 analysis-api 자리 표시 서버(plan 5절 사용자 확인 뒤)로 성공 지표·메모리 측정, 아래에 측정 기록
 
 ## Phase 9: v5.1 추가(계약 묶음 4.0.0)
@@ -104,7 +104,17 @@ updated: 2026-11-07
 
 ## 측정 기록
 
-(T043에서 채운다)
+측정일 2026-11-07, Apple Silicon macOS 호스트(Docker 4 CPU·8GB), Python 3.12.
+
+| 항목 | 조건 | 결과 | 목표 |
+| --- | --- | --- | --- |
+| NFR-1 `compute` | 이벤트 2,000·트랙 5,000·머문 구간 20,000, 10회 | 노출 색인 전 p95 5.92초, 색인 뒤 p50 0.375초·p95 0.708초 | p95 5초 |
+| NFR-2 메모리(호스트 프로세스) | NFR-1 크기를 자리 표시 서버(같은 프로세스, ASGI)에서 쪽 1000으로 읽고 계산·결과 직렬화 | 최대 RSS 120MB(시작 67MB), 결과 파일 0.4MB | 컨테이너 256MB |
+| 창 처리(T056) | 창 180개, 창마다 이벤트 5·트랙 20, 메모리 저장소 | p50 1.0ms, p95 4.0ms, 최대 14.9ms | p95 2초 |
+
+- NFR-2는 컨테이너 제한(256MB)이 아니라 호스트 프로세스의 최대 RSS다. 자리 표시 서버와 시나리오를 같은 프로세스에 두었으므로 실제 워커보다 크게 잡힌다.
+- 창 처리 측정은 Redis·S3 왕복을 뺀 값이다.
+- 로컬 compose 측정(T043)은 하지 않았다. compose 파일이 docs 레포 `local/`에 있고 aggregator 서비스·토픽 추가가 docs PR이어서 이번 작업 범위 밖이다.
 
 ## 완료 조건
 
