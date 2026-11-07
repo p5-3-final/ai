@@ -84,7 +84,7 @@ updated: 2026-11-07
 - [x] T040 [NFR-3] 로그에 요약 문장·이벤트 설명 원문이 없음 — 테스트 `t/test_aggregator_service.py`
 - [x] T041 [NFR-1] 생성 입력(이벤트 2,000·트랙 5,000·머문 구간 20,000)으로 `compute` p95 5초 — 테스트 `t/test_aggregator_performance.py`
 - [x] T042 Dockerfile, README(환경변수 표), CI `service-images`에 aggregator runtime 빌드
-- [ ] T043 [NFR-2] 로컬 compose(docs PR: aggregator 256M, 토픽 4개)와 analysis-api 자리 표시 서버(plan 5절 사용자 확인 뒤)로 성공 지표·메모리 측정, 아래에 측정 기록
+- [x] T043 [NFR-2] 로컬 compose(docs PR: aggregator 256M, 토픽 4개)와 analysis-api 자리 표시 서버(plan 5절 사용자 확인 뒤)로 성공 지표·메모리 측정, 아래에 측정 기록 — 완료: 아래 측정 기록
 
 ## Phase 9: v5.1 추가(계약 묶음 4.0.0)
 
@@ -100,9 +100,11 @@ updated: 2026-11-07
 - [x] T053 [R-31] `hazard_zone_access`와 활성 위험이 겹치면 대표 프레임으로 `event_judge`, `rule+vlm` 기록, Redis 계수로 세션당 상한(SPEC-028 T032와 같은 계수) — 테스트 `t/test_aggregator_stream_service.py`, `t/test_aggregator_judge_budget.py`(integration), 구현 `agg/stream.py`, `agg/judge_budget.py`
 - [x] T054 [R-32] `analysis.completed(job, STREAM)`: 세션 상태 + 창 delta 전체로 노출·타임라인·요약 → 결과 파일 → `source.completed(revision 1)` — 테스트 `t/test_aggregator_stream_service.py`, 구현 `agg/stream.py`, `agg/result.py`
 - [x] T055 [R-34] 단계 `aggregate.fold`와 STREAM e2e(창 2개 → `state.updated` 2건, job → `source.completed` 1건, 계약 통과) — 테스트 `t/test_aggregator_stream_service.py`, `t/test_aggregator_worker_e2e.py`, `libs/contracts/tests/test_stage_contracts.py`, 구현 `agg/stream.py`, `vlm_contracts/stages.py`
-- [ ] T056 README(대기 집합·revision·STREAM·Redis 키 표), `.env.example`, 로컬 compose 토픽 `state.updated`·소비 그룹(docs PR), 창 처리 p95 측정(목표 2초). 측정 기록에 남긴다
+- [ ] T056 (보류: stream-service(SPEC-036)가 없어 로컬에서 STREAM을 처리하지 못한다) README(대기 집합·revision·STREAM·Redis 키 표), `.env.example`, 로컬 compose 토픽 `state.updated`·소비 그룹(docs PR), 창 처리 p95 측정(목표 2초). 측정 기록에 남긴다
 
 ## 측정 기록
+
+### 호스트 프로세스
 
 측정일 2026-11-07, Apple Silicon macOS 호스트(Docker 4 CPU·8GB), Python 3.12.
 
@@ -114,7 +116,19 @@ updated: 2026-11-07
 
 - NFR-2는 컨테이너 제한(256MB)이 아니라 호스트 프로세스의 최대 RSS다. 자리 표시 서버와 시나리오를 같은 프로세스에 두었으므로 실제 워커보다 크게 잡힌다.
 - 창 처리 측정은 Redis·S3 왕복을 뺀 값이다.
-- 로컬 compose 측정(T043)은 하지 않았다. compose 파일이 docs 레포 `local/`에 있고 aggregator 서비스·토픽 추가가 docs PR이어서 이번 작업 범위 밖이다.
+
+### 로컬 compose
+
+2026-11-07, 로컬 compose mock 프로필(M1 Pro, Docker 10 CPU·25GB), docs `scripts/e2e/run.sh measure`
+
+| 항목 | 기준 | 결과 |
+| --- | --- | --- |
+| 성공 지표 `analysis.completed` → `source.completed` | 이벤트·결과 파일 계약 통과 | 통과(analysis-api 자리 표시 서버, 입력 이벤트 2,000건) |
+| NFR-2 메모리 | 256MB 안 | 최대 96MiB(이벤트 2,000건, `aggregate.compute` 9ms) |
+
+- NFR-1 규모 중 트랙 5,000개·구역 머문 구간 20,000건은 자리 표시 서버 시나리오에 넣지 않았다(도우미 없음). 이벤트 2,000건만 확인했다.
+- "같은 입력으로 두 번 집계한 결과가 같다"는 compose에서 재지 않았다. 집계 기록이 Redis에 남아 두 번째는 다시 계산하지 않기 때문이다. 같은 조건은 단위 테스트(SPEC-028 R-17 `test_spec028_r17_same_input_gives_identical_result_file`)가 검증한다.
+- T056 창 처리는 위 호스트 프로세스 측정(p95 4ms, Redis·S3 왕복 제외)만 있고 compose에서는 재지 못했다. aggregator는 Redis와 stream-service 주소가 모두 있어야 실시간 처리기를 만드는데 stream-service(SPEC-036)가 로컬에 없다.
 
 ## 완료 조건
 

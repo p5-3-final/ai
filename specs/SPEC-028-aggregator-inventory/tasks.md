@@ -68,7 +68,7 @@ updated: 2026-11-07
 - [x] T027 [R-17] 같은 입력·프로필이면 판정·예측 결과를 뺀 결과 파일이 같음(입력 순서를 섞어도) — 테스트 `t/test_aggregator_compute.py`
 - [x] T028 [NFR-1] 청크 60 × 객체 100 이어 맞추기 p95 2초 — 테스트 `t/test_aggregator_performance.py`
 - [x] T029 [R-1] [R-9] 워커에 `chunk.manifest` 경로, e2e(`chunk.manifest` 두 건 + `analysis.completed` → `object_moved`가 든 `source.completed`) — 테스트 `t/test_aggregator_worker_e2e.py`, 구현 `agg/__main__.py`
-- [ ] T030 [NFR-2] 로컬 compose 토픽(docs PR)과 `chunk.manifest` 처리 p95 측정, README 갱신, 아래에 측정 기록
+- [x] T030 [NFR-2] 로컬 compose 토픽(docs PR)과 `chunk.manifest` 처리 p95 측정, README 갱신, 아래에 측정 기록 — 완료: README에 재고 흐름이 있고, 측정은 아래 기록
 
 ## Phase 8: v5.1 추가(계약 묶음 4.0.0)
 
@@ -78,7 +78,14 @@ updated: 2026-11-07
 
 ## 측정 기록
 
-(T030에서 채운다)
+2026-11-07, 로컬 compose mock 프로필(M1 Pro, Docker 10 CPU·25GB), docs `scripts/e2e/run.sh measure`
+
+| 항목 | 기준 | 결과 |
+| --- | --- | --- |
+| 성공 지표(방호벽 이동이 담긴 `chunk.manifest` 2건 + `analysis.completed`) | `object_moved` 재고 이벤트가 든 `source.completed`, 결과 파일 계약 통과 | `object_moved` 1건, 계약 통과 |
+| NFR-2 `chunk.manifest` 하나(`aggregate.inventory_store`가 든 `aggregator.handle`) | p95 300ms | p95 9ms(22건) |
+
+- 재고 판정(`state_compare`)은 테스트에서 기준 프레임 이미지를 올리지 않아 `AI_IMAGE_NOT_FOUND`로 실패했고, 결과 파일과 이벤트는 그대로 나왔다(판정 실패 처리 경로).
 
 ## 완료 조건
 

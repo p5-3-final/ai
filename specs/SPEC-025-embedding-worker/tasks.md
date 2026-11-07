@@ -55,12 +55,17 @@ updated: 2026-11-07
 - [x] T021 기동 조립: 설정, ai-client, 저장소, 세 `route`, health, 측정 발행 — 테스트 `t/test_embedding_main.py`, 구현 `ew/{__main__,settings}.py`
 - [x] T022 [R-11] [NFR-3] 워커 e2e(Kafka testcontainer, `MockTransport`): 세 토픽 정상 발행, 잘못된 메시지 DLQ, `AI_MODEL_NOT_CONFIGURED` DLQ, 503 재시도 토픽, 발행 뒤 커밋 — 테스트 `t/test_embedding_worker_e2e.py`(구현 뒤 작성이면 PR에 "Red 없음"으로 적음)
 - [x] T023 Dockerfile, README, 레포 `.env.example`(권한 설정으로 막혀 README 표에만 적음), CI `service-images` 이미지 빌드
-- [ ] T024 (보류: docs 레포 `local/`은 이 작업에서 고치지 않는다) docs `local/`: compose 서비스(256M), 토픽 `segment.annotated`·`embedding.ready`·재시도 3개·`embedding-worker.dlq`, `local/.env.example`, `local/README.md`(docs 레포 PR)
-- [ ] T025 (보류: T024 compose가 있어야 측정한다) [NFR-1] 로컬 compose 측정(mock 프로필, p95 500ms). 결과는 아래 "측정 기록"에만 짧게 적음
+- [x] T024 (보류: docs 레포 `local/`은 이 작업에서 고치지 않는다) docs `local/`: compose 서비스(256M), 토픽 `segment.annotated`·`embedding.ready`·재시도 3개·`embedding-worker.dlq`, `local/.env.example`, `local/README.md`(docs 레포 PR) — 완료: docs #142(로컬 compose에 서비스 256M·토픽·DLQ, README 메모리 표)
+- [x] T025 [NFR-1] 로컬 compose 측정(mock 프로필, p95 500ms). 결과는 아래 "측정 기록"에만 짧게 적음 — 완료: 아래 측정 기록
 
 ## 측정 기록
 
-(T025에서 채운다)
+2026-11-07, 로컬 compose mock 프로필(M1 Pro, Docker 10 CPU·25GB), docs `scripts/e2e/run.sh measure`
+
+| 항목 | 기준 | 결과 |
+| --- | --- | --- |
+| 성공 지표 `event.analyzed` 20건 | `embedding.ready` 20건, 텍스트 벡터 파일 계약 통과 | 20건, 이벤트·파일 계약 통과 |
+| NFR-1 메시지 하나(`embedding-worker.handle`) | p95 500ms | p95 22ms(20건) |
 
 ## 완료 조건
 

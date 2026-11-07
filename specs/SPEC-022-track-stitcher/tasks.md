@@ -67,11 +67,22 @@ updated: 2026-11-07
 - [x] T031 기동 조립: 설정, 프로필(R-22로 실패), Redis, 저장소, 세 경로의 워커, 주기 확인 스레드, health — 테스트 `t/test_stitcher_main.py`, 구현 `ts/__main__.py`, `ts/settings.py` (6801bda)
 - [x] T032 [R-18] [R-20] 워커 e2e(Kafka·SeaweedFS·Redis testcontainer): 청크 5개와 벡터 5개 → `track.detected` 4건 + `track.manifest` 1건(계약 스키마 통과), 잘못된 메시지·없는 트랙 파일은 DLQ — 테스트 `t/test_stitcher_worker_e2e.py` (8855a93)
 - [x] T033 Dockerfile(멀티스테이지, non-root), README, CI `service-images`에 runtime 이미지 빌드, `services/track-stitcher/.env.example` (3e978b2)
-- [ ] T034 (보류: docs `local/` compose PR이 아직 없다. docs 레포는 이 작업 범위 밖이다) 로컬 compose 확인(docs `local/` PR 뒤): 성공 지표 두 가지(이벤트 수·스키마, 섞은 순서의 같은 번역표). 결과를 아래 "측정 기록"에 남긴다
+- [x] T034 로컬 compose 확인(docs `local/` PR 뒤): 성공 지표 두 가지(이벤트 수·스키마, 섞은 순서의 같은 번역표). 결과를 아래 "측정 기록"에 남긴다 — 완료: 아래 측정 기록
 
 ## Phase 9: v5.1 추가(계약 묶음 4.0.0)
 
 - [x] T035 [R-23] 잠금 4.0.0, `ChunkBoundary`·`SegmentEmbedded`·`TrackDetected`의 선택 필드(`jobType`, `trackIdEpoch`), `STREAM`이면 상태 없이 건너뛰고 로그·계수 — 테스트 `libs/contracts/tests/test_event_contracts.py`, `t/test_stitcher_service.py`, 구현 `vlm_contracts/events.py`, `ts/service.py` (b436d53, cb08a39)
+
+## 측정 기록
+
+2026-11-07, 로컬 compose mock 프로필(M1 Pro, Docker 10 CPU·25GB), docs `scripts/e2e/run.sh measure`
+
+| 항목 | 기준 | 결과 |
+| --- | --- | --- |
+| `chunk.boundary` 5건·`segment.embedded` 5건 입력 | `track.detected` 4건, `track.manifest` 1건, 계약 통과 | 4건·1건, 이벤트 5건과 번역표 파일 계약 통과 |
+| 같은 메시지를 순서만 섞어 다시 입력 | 같은 번역표 | 같다(만든 시각 제외 전체 비교) |
+
+- 확정한 job은 다시 받아도 다시 발행하지 않으므로(R-17) 섞은 입력 전에 그 job의 Redis 상태(`ts:{sourceId}:job:<jobId>:*`)를 지워 처음 받는 상태로 맞췄다.
 
 ## 완료 조건 (Definition of Done)
 

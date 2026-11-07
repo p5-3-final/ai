@@ -55,7 +55,7 @@ updated: 2026-11-07
 - [x] T022 [R-16] 기동 조립: 프로필 경로·저장소 설정, 프로필 검증 실패면 기동 실패, `event.candidate` route 추가 — 테스트 `t/test_analyzer_main.py`, 구현 `ea/{__main__,settings}.py`
 - [x] T023 [R-14] [R-2] [NFR-2] 워커 e2e: `event.candidate` 정상 발행(분석 + manifest), 잘못된 메시지·없는 후보 파일 DLQ, 긴 판정 중 커밋(구현 뒤 작성, Red 없음) — 테스트 `t/test_analyzer_worker_e2e.py`
 - [x] T024 Dockerfile(`profiles` 복사, `EVENT_ANALYZER_PROFILE_PATH`), README(경로·환경변수·프로필 표), 레포 `.env.example`
-- [ ] T025 [NFR-1] 로컬 compose 측정: VLM 후보 50개 메시지 10초 안, 성공 지표 묶음(VLM 3, 규칙 1, 병합될 후보 2) → 분석 4건·`mergedCount: 2`(docs compose PR 뒤)
+- [x] T025 [NFR-1] 로컬 compose 측정: VLM 후보 50개 메시지 10초 안, 성공 지표 묶음(VLM 3, 규칙 1, 병합될 후보 2) → 분석 4건·`mergedCount: 2`(docs compose PR 뒤) — 완료: 아래 측정 기록
 
 ## Phase 8: v5.1 추가(계약 묶음 4.0.0)
 
@@ -68,7 +68,18 @@ updated: 2026-11-07
 - [x] T032 [R-21] [R-23] `alert.candidate` 핸들러: pending 즉시 발행 → `event_judge` → confirmed 또는 dismissed(`rejected`·`unverified`·`unknown`, 계약 enum), `event.analyzed` 없음 — 테스트 `t/test_analyzer_alert_service.py`, 구현 `ea/alerts.py`, `ea/ids.py`
 - [x] T033 [R-22] 같은 candidateId의 `alert.candidate`·`event.candidate` 요청 본문이 같음(이미지 순서·변수). `alert.candidate`에 없는 `triggerClass`·`zoneName`은 예외(계약 변경 필요) — 테스트 `t/test_analyzer_alert_service.py`, 구현 `ea/service.py`(`_detector_request` 공유)
 - [x] T034 [R-24] 단계 `analyzer.alert`, 워커 경로 `alert.candidate` 추가와 e2e(pending → confirmed 2건, 잘못된 메시지 DLQ) — 테스트 `t/test_analyzer_alert_service.py`, `t/test_analyzer_worker_e2e.py`, 구현 `ea/alerts.py`, `ea/__main__.py`
-- [ ] T035 README(carry·상한·Redis·긴급 경로), 로컬 compose 측정: `alert.candidate` 받은 뒤 pending 발행 p95(목표 500ms), 창 2개에 걸친 carry 확인. 측정 기록에 남긴다
+- [x] T035 README(carry·상한·Redis·긴급 경로), 로컬 compose 측정: `alert.candidate` 받은 뒤 pending 발행 p95(목표 500ms), 창 2개에 걸친 carry 확인. 측정 기록에 남긴다 — 완료: README에 carry·상한·Redis·긴급 경로가 있고, 측정은 아래 기록
+
+## 측정 기록
+
+2026-11-07, 로컬 compose mock 프로필(M1 Pro, Docker 10 CPU·25GB), docs `scripts/e2e/run.sh measure`
+
+| 항목 | 기준 | 결과 |
+| --- | --- | --- |
+| 성공 지표(VLM 3, 규칙 1, 병합될 후보 2) | `event.analyzed` 4건, `mergedCount: 2`, 계약 통과 | 4건, `mergedCount: 2`, 5건 계약 통과 |
+| NFR-1 VLM 후보 50개 메시지 | 10초 안 | 0.43초(발행부터 `event.manifest`까지) |
+| T035 `alert.candidate` → pending `alert.raised` 20회 | p95 500ms | p95 21ms |
+| T035 실시간 창 2개(같은 트랙 ppe_missing 5초·25초) | 두 번째 창이 `rule+carry` | `rule+carry` |
 
 ## 완료 조건
 

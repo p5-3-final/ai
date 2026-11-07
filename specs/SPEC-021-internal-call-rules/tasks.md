@@ -61,7 +61,17 @@ updated: 2026-11-06
 - [x] T027 계약과 구현 일치 확인: ai-gateway 응답 계약 테스트, 생성 모델 비교 테스트를 `CONTRACTS_DIR`(잠금 4.1.0)로 실행
 - [x] T028 로그 확인: 504가 JSON 로그·호출 로그에 `AI_DEADLINE_EXCEEDED`로, 클라이언트 재시도 로그에 시도 번호·남은 시간
 - [x] T029 README 갱신(`services/ai-gateway/README.md` 마감 헤더, `services/event-analyzer/README.md` 재시도 규칙, `libs/ai-client/pyproject.toml` description에 embed·parse·생성 방법). 환경변수 추가 없음
-- [ ] T030 로컬 compose 확인(성공 지표): 지난 마감으로 `/v1/analyze`를 부르면 504이고 호출 로그에 모델 호출이 없음. 결과를 아래 "측정 기록"에 남긴다 — 보류: 로컬 compose는 `repos/ai`(main 체크아웃)에서 이미지를 빌드해 이 브랜치를 반영하지 못한다. 머지 뒤 확인한다. 같은 조건(지난 마감이면 504, 호출 로그·Adapter 호출 0)은 `gwt/test_deadline_api.py`가 검증한다
+- [x] T030 로컬 compose 확인(성공 지표): 지난 마감으로 `/v1/analyze`를 부르면 504이고 호출 로그에 모델 호출이 없음. 결과를 아래 "측정 기록"에 남긴다 — 완료: 아래 측정 기록
+
+## 측정 기록
+
+2026-11-07, 로컬 compose mock 프로필(M1 Pro, Docker 10 CPU·25GB), docs `scripts/e2e/run.sh measure`
+
+| 항목 | 기준 | 결과 |
+| --- | --- | --- |
+| 지난 마감 `/v1/analyze` 50회 | 504 `AI_DEADLINE_EXCEEDED` | 50회 모두 504 `AI_DEADLINE_EXCEEDED` |
+| 호출 로그(`ai.ai_call_log`) | 추가 0건 | 0건 |
+| NFR-1 응답 p95 | 20ms 이하 | 2.0ms(호스트 왕복 포함) |
 
 ## 완료 조건 (Definition of Done)
 
