@@ -54,8 +54,8 @@ updated: 2026-11-07
 
 ## Phase 6: v5.1 추가(계약 묶음 4.0.0)
 
-- [ ] T023 [R-21] 잠금 4.0.0, ai-client 모델 재생성, `EventAnalyzed.unverified_reason`, `unverified` 최종 결과에 응답 사유 전달 — 테스트 `t/test_judgment.py`, `t/test_analyzer_service.py`, `libs/contracts/tests/test_event_contracts.py`, 구현 `ea/judgment.py`, `ea/service.py`, `vlm_contracts/events.py`, `libs/ai-client`(생성)
-- [ ] T024 [R-22] `EventCandidateVector.job_type` → `EventAnalyzed.job_type` 전달, 없으면 생략 — 테스트 `t/test_analyzer_service.py`, 구현 `ea/service.py`, `vlm_contracts/events.py`
+- [x] T023 [R-21] 잠금 4.0.0, ai-client 모델 재생성, `EventAnalyzed.unverified_reason`, `unverified` 최종 결과에 응답 사유 전달 — 테스트 `t/test_judgment.py`, `t/test_analyzer_service.py`, `libs/contracts/tests/test_event_contracts.py`, 구현 `ea/judgment.py`, `ea/service.py`, `vlm_contracts/events.py`, `libs/ai-client`(생성)
+- [x] T024 [R-22] `EventCandidateVector.job_type` → `EventAnalyzed.job_type` 전달, 없으면 생략 — 테스트 `t/test_analyzer_service.py`, 구현 `ea/service.py`, `vlm_contracts/events.py`
 
 ## 측정 기록 (T022, 2026-11-06)
 

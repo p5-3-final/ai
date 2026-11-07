@@ -100,3 +100,37 @@ def test_spec020_r10_risk_detected_requires_risk_type(load_schema: SchemaLoader)
 
     with pytest.raises(ValidationError, match="riskType"):
         _analysis_model().model_validate(example)
+
+
+def _rule_example(load_schema: SchemaLoader) -> JsonObject:
+    examples = cast(list[JsonObject], load_schema("event.analyzed")["examples"])
+    return copy.deepcopy(next(e for e in examples if e["judgmentMethod"] == "rule"))
+
+
+def test_spec023_r9_rule_method_requires_detector_candidate(load_schema: SchemaLoader) -> None:
+    example = _rule_example(load_schema)
+    del example["detectorCandidate"]
+
+    with pytest.raises(ValidationError, match="detectorCandidate"):
+        EVENT_MODELS["event.analyzed"].model_validate(example)
+
+
+@pytest.mark.parametrize("method", ["rule", "rule+carry"])
+def test_spec023_r4_no_call_methods_have_no_judgments(
+    load_schema: SchemaLoader, method: str
+) -> None:
+    example = _rule_example(load_schema)
+    vector = _example(load_schema, "event.analyzed")
+    example.update(judgmentMethod=method, judgments=vector["judgments"])
+
+    with pytest.raises(ValidationError, match="judgments"):
+        EVENT_MODELS["event.analyzed"].model_validate(example)
+
+
+@pytest.mark.parametrize("method", ["rule+vlm", "rule+vlm+escalate"])
+def test_spec023_r7_vlm_methods_need_a_judgment(load_schema: SchemaLoader, method: str) -> None:
+    example = _rule_example(load_schema)
+    example.update(judgmentMethod=method, judgments=[])
+
+    with pytest.raises(ValidationError, match="judgments"):
+        EVENT_MODELS["event.analyzed"].model_validate(example)

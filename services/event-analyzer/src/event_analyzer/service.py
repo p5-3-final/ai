@@ -1,52 +1,23 @@
 """`event.candidate.vector` 하나를 후보마다 판정해 `event.analyzed`로 발행한다(SPEC-020)."""
 
 import asyncio
-import logging
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Protocol
 
-from pydantic import ValidationError
-from vlm_ai_client.client import AiGatewayError
-from vlm_ai_client.models import AnalyzeRequest, AnalyzeResponse, ImageRef
+from vlm_ai_client.models import AnalyzeRequest, ImageRef
 from vlm_contracts.events import (
     Event,
     EventAnalyzed,
     EventCandidateVector,
     VectorCandidate,
     VectorEvidence,
-    VLMAnalysis,
 )
-from vlm_messaging.publisher import prepare_event
-from vlm_messaging.worker import MessageContext, NonRetryableError
+from vlm_messaging.worker import MessageContext
 
 from event_analyzer import ids
+from event_analyzer.calls import AnalyzeClient, EventPublisher, judge, publish
 from event_analyzer.judgment import Decision, Outcome, Stage, decide, needs_escalation
-
-_TASK_TYPES: dict[Stage, str] = {"judge": "event_judge", "escalate": "event_judge_escalate"}
-# 이미지가 없거나 분당 한도 차례를 얻지 못하면 그 후보만 판정 실패로 남긴다(SPEC-020 R-14).
-# 분당 한도는 메시지 전체의 문제가 아니라서 DLQ로 보내지 않는다.
-_RECORDED_CLIENT_ERRORS = frozenset({"AI_IMAGE_NOT_FOUND", "AI_RATE_LIMITED"})
-_INVALID_RESPONSE = "AI_INVALID_RESPONSE"
-
-logger = logging.getLogger(__name__)
-
-
-class AnalyzeClient(Protocol):
-    """ai-gateway `/v1/analyze` 호출. 운영은 `vlm_ai_client.client.AiGatewayClient`다."""
-
-    async def analyze(
-        self, request: AnalyzeRequest, *, traceparent: str | None = None
-    ) -> AnalyzeResponse: ...
-
-
-class EventPublisher(Protocol):
-    """이벤트 발행기. 운영은 `vlm_messaging.publisher.KafkaPublisher`다."""
-
-    def publish(
-        self, topic: str, event: Event, *, key: str | None = None, traceparent: str | None = None
-    ) -> None: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -120,29 +91,14 @@ class EventAnalyzerService:
         limit: asyncio.Semaphore,
         traceparent: str | None,
     ) -> Outcome:
-        """판정 호출 하나. 결과를 못 받은 호출은 `Outcome.failed`로 남긴다(R-12~R-14).
-
-        Raises:
-            NonRetryableError: ai-gateway가 `AI_IMAGE_NOT_FOUND`·`AI_RATE_LIMITED` 외의 4xx로
-                거절했을 때(R-15).
-                호출자·경로·taskType 설정 문제라 같은 메시지의 다른 후보도 같이 거절된다.
-        """
-        try:
-            async with limit:
-                response = await self._client.analyze(
-                    _request(message, candidate, _TASK_TYPES[stage]), traceparent=traceparent
-                )
-            analysis = _analysis(response)
-        except AiGatewayError as e:
-            if _rejects_message(e):
-                raise NonRetryableError(f"ai-gateway rejected the call: {e.code}") from e
-            logger.warning(
-                "judgment call failed",
-                extra={"candidateId": str(candidate.candidate_id), "stage": stage, "code": e.code},
-            )
-            return Outcome.failed(stage, candidate.event_type, e.code)
-        return Outcome.called(
-            stage, response.call_id, response.model_id, response.prompt_version, analysis
+        return await judge(
+            self._client,
+            _request(message, candidate),
+            candidate_id=candidate.candidate_id,
+            event_type=candidate.event_type,
+            stage=stage,
+            limit=limit,
+            traceparent=traceparent,
         )
 
     def _analyzed(
@@ -153,6 +109,8 @@ class EventAnalyzerService:
             occurred_at=self._clock(),
             source_id=message.source_id,
             owner_id=message.owner_id,
+            # SPEC-020 R-22: 소비자가 Job 유형별로 처리를 나누므로 받은 값을 그대로 옮긴다.
+            job_type=message.job_type,
             job_id=message.job_id,
             chunk_id=message.chunk_id,
             execution_id=message.execution_id,
@@ -174,20 +132,17 @@ class EventAnalyzerService:
             judgments=decision.judgments,
             review_required=decision.review_required,
             review_reasons=decision.review_reasons,
+            unverified_reason=decision.unverified_reason,
         )
 
     def _publish(self, event: Event, traceparent: str | None) -> None:
-        self._publisher.publish(
-            event.event_type, prepare_event(event, self._clock()), traceparent=traceparent
-        )
+        publish(self._publisher, event, self._clock, traceparent)
 
 
-def _request(
-    message: EventCandidateVector, candidate: VectorCandidate, task_type: str
-) -> AnalyzeRequest:
-    """판정 요청. 재판정도 같은 입력이다(SPEC-020 R-1~R-3)."""
+def _request(message: EventCandidateVector, candidate: VectorCandidate) -> AnalyzeRequest:
+    """1차 판정 요청. 재판정도 같은 입력이다(SPEC-020 R-1~R-3)."""
     return AnalyzeRequest(
-        task_type=task_type,
+        task_type="event_judge",
         source_id=message.source_id,
         images=[ImageRef(storage_key=key) for key in candidate.frame_keys],
         variables={
@@ -205,25 +160,6 @@ def _request(
             },
         },
     )
-
-
-def _analysis(response: AnalyzeResponse) -> VLMAnalysis:
-    try:
-        return VLMAnalysis.model_validate(response.output)
-    except ValidationError as e:
-        # ai-gateway가 출력 스키마로 검증해 돌려주므로 계약이 어긋난 경우다. 후보는 버리지 않는다.
-        raise AiGatewayError(
-            _INVALID_RESPONSE,
-            "analysis output does not match VLMAnalysis",
-            status=200,
-            retryable=False,
-        ) from e
-
-
-def _rejects_message(error: AiGatewayError) -> bool:
-    status = error.status
-    is_client_error = status is not None and 400 <= status < 500
-    return is_client_error and error.code not in _RECORDED_CLIENT_ERRORS
 
 
 async def _gather(calls: Sequence[Awaitable[Outcome]]) -> list[Outcome]:

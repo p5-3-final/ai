@@ -4,7 +4,7 @@ from uuid import UUID
 
 import pytest
 from event_analyzer.judgment import Outcome, decide, needs_escalation
-from vlm_contracts.events import Severity, VerificationStatus, VLMAnalysis
+from vlm_contracts.events import Severity, UnverifiedReason, VerificationStatus, VLMAnalysis
 
 CALL = UUID("0192f0e1-0000-7000-8000-000000000001")
 
@@ -163,3 +163,66 @@ def test_spec020_r7_agreement_or_undecided_needs_no_review(
     )
 
     assert (decision.review_required, decision.review_reasons) == (False, [])
+
+
+@pytest.mark.parametrize("reason", ["budget_exceeded", "model_unavailable"])
+def test_spec020_r21_unverified_final_carries_response_reason(reason: UnverifiedReason) -> None:
+    unverified = Outcome.called(
+        "judge",
+        CALL,
+        None,
+        "event_judge@0123456789ab",
+        _analysis("unverified", severity=None, detected=None),
+        unverified_reason=reason,
+    )
+
+    decision = decide(unverified, None)
+
+    assert decision.unverified_reason == reason
+
+
+def test_spec020_r21_decided_final_has_no_unverified_reason() -> None:
+    first = Outcome.called(
+        "judge",
+        CALL,
+        None,
+        "event_judge@0123456789ab",
+        _analysis(severity="high"),
+        unverified_reason="budget_exceeded",
+    )
+
+    assert decide(first, None).unverified_reason is None
+    assert decide(_failed_judge(), None).unverified_reason is None
+
+
+def test_spec023_r6_ambiguous_score_escalates_even_when_decided_low() -> None:
+    first = _judge(_analysis(severity="low"))
+
+    assert needs_escalation(first, ambiguous=True)
+    assert not needs_escalation(first, ambiguous=False)
+
+
+@pytest.mark.parametrize(
+    "first",
+    [
+        Outcome.failed("judge", "fall", "AI_TIMEOUT"),
+        Outcome.called(
+            "judge",
+            CALL,
+            None,
+            "event_judge@0123456789ab",
+            VLMAnalysis.unknown("fall").model_copy(update={"verification_status": "unverified"}),
+        ),
+    ],
+)
+def test_spec023_r6_ambiguous_does_not_escalate_failed_or_unverified(first: Outcome) -> None:
+    assert not needs_escalation(first, ambiguous=True)
+
+
+def test_spec023_r7_detector_path_methods() -> None:
+    first = _judge(_analysis(severity="high"))
+    second = _escalate(_analysis(severity="high"))
+
+    assert decide(first, None, path="rule").method == "rule+vlm"
+    assert decide(first, second, path="rule").method == "rule+vlm+escalate"
+    assert decide(first, None).method == "vector+vlm"
