@@ -4,13 +4,13 @@ repo: ai
 status: Approved
 owner: <이름>
 created: 2026-11-06
-updated: 2026-11-06
+updated: 2026-11-07
 ---
 
 # Plan: SPEC-026 grounding-worker 검색 상위 구간 bbox 주석 클립 — ai
 
 - spec: docs 레포 `docs/specs/SPEC-026-grounding-worker/spec.md`
-- 계약: `events/grounding.requested`·`grounding.completed`, `groundings/v1/grounding-result`, `models/manifest`(탐지기 가중치), `stages/v1`, `asyncapi/grounding-worker.yaml`. 잠금 계약 묶음 3.14.0
+- 계약: `events/grounding.requested`·`grounding.completed`, `groundings/v1/grounding-result`, `models/manifest`(탐지기 가중치), `stages/v1`, `asyncapi/grounding-worker.yaml`. 잠금 계약 묶음 4.1.0(단계 ID 포함)
 
 ## 1. 요약
 
@@ -51,12 +51,12 @@ updated: 2026-11-06
 | 원칙 | 준수 | 비고 |
 | --- | --- | --- |
 | I 스펙 우선 | ☑ | SPEC-026 Approved (docs #121) |
-| II 계약 우선 | ☑ | docs #121 머지. 잠금을 3.14.0으로 올린 뒤 구현한다(T001) |
+| II 계약 우선 | ☑ | docs #121 머지. 잠금 4.1.0에 계약과 단계 ID가 이미 있다(T001 확인) |
 | III 테스트 우선 | ☑ | R-1~R-18, NFR-3 테스트 매핑. NFR-1·NFR-2는 로컬 측정. 탐지기는 인터페이스를 가짜로 바꿔 끼워 검증한다 |
 | IV 서비스 자율성 | ☑ | DB 없음. search-service·notification-service 코드에 의존하지 않고 계약만 따른다 |
 | V 단순성 | △ | 새 Python 패키지는 탐지기 라이브러리 결정 전까지 없다. ffmpeg `drawtext`용 글꼴 시스템 패키지를 이미지에 더한다. 탐지기 라이브러리는 사용자 확인 필요(5절) |
 | VI 관측 가능성 | ☑ | 단계 `grounding.sample`·`detect`·`render`·`store`, health, `traceparent` 전파, 결과에 탐지기 버전·기준 신뢰도 |
-| VII 보안 | ☑ | ffmpeg 인자는 목록으로 넘기고 셸을 쓰지 않는다. 대상어는 계약 패턴으로 검증한 값만 필터 스크립트에 넣고 이스케이프한다. `normalizedKey` 폴더 검사(R-15). 클립은 외부 모델로 보내지 않아 블러 대상이 아니다(spec 제외) |
+| VII 보안 | ☑ | ffmpeg 인자는 목록으로 넘기고 셸을 쓰지 않는다. 대상어는 필터 스크립트에 넣지 않고 라벨 파일(`textfile`)로 넘긴다. 스크립트에 들어가는 경로(글꼴, 작업 폴더)는 `[A-Za-z0-9_./-]`만 허용해 이스케이프가 필요 없다. `normalizedKey` 폴더 검사(R-15). 클립은 외부 모델로 보내지 않아 블러 대상이 아니다(spec 제외) |
 | VIII 문서·주석 | ☑ | 계약 모델 테스트, README, 색·샘플 규칙에 R-ID 주석 |
 | IX GitOps | ☑ | 운영 배포·토픽은 사용자 지시 시 infra·gitops |
 
@@ -71,16 +71,16 @@ updated: 2026-11-06
 | `libs/contracts/.../stages.py` | 단계 ID 6개 |
 | `libs/storage/.../storage.py` 외 | `ObjectStorage.presigned_get_url(key, expires_s)` 추가. S3는 boto3 `generate_presigned_url`, 메모리 구현은 테스트용 가짜 주소 |
 | `gw/settings.py` | 환경변수 `GROUNDING_WORKER_`: 소비 그룹, 프로필 경로, mock 허용, 모델 캐시 폴더, 구간 제한 시간(기본 120초), 샘플 간격(기본 1000ms, 200ms 이상), 최대 샘플 수(12, 상한 12), 작업 폴더 |
-| `gw/profile.py` | 프로필(TOML) `[detector]`: `kind`, `manifest`, `manifest_sha256`, `score_threshold`, mock은 `version`. `[render]`: x264 preset·crf, 선 두께, 글꼴 경로 |
+| `gw/profile.py` | 프로필(TOML) `[detector]`: 지금은 `kind = "mock"`, `version`, `score_threshold`만 받는다. 실제 탐지기의 `manifest`·`manifest_sha256`은 판별 공용체로 T027에서 더한다. `[render]`: x264 preset·crf, 선 두께, 글꼴 경로(허용 문자 제한)·크기 |
 | `gw/detector.py` | `GroundingDetector` Protocol, `Detection`, `RgbFrame`, `DetectorError`, `MockDetector`, `load_detector`(프로필 → 구현) |
 | `gw/sampling.py` | 샘플 시각 계산 |
 | `gw/render.py` | 대상어 색, 샘플별 표시 구간, ffmpeg 필터 스크립트 생성 |
-| `gw/media.py` | `MediaTool` Protocol과 `FfmpegTool`(probe, 샘플 프레임 추출, 클립 렌더링) |
+| `gw/media.py` | `MediaTool` Protocol(async)과 `FfmpegTool`(probe, 샘플 프레임 추출, 클립 렌더링), `MediaInfo.frame_interval_ms` |
 | `gw/keys.py` | `sources/<sourceId>/groundings/<groundingId>/<groundingModel>/{clip.mp4,result.json}` |
-| `gw/ids.py` | eventId = uuid5(`vlm:grounding.completed:<groundingId>:<groundingModel>`) |
+| `gw/ids.py` | eventId = uuid5(`vlm:grounding.completed:<groundingId>:<groundingModel>:<requestId>:<outcome>`). 7절 C-9 |
 | `gw/service.py` | 핸들러 |
 | `gw/__main__.py` | 조립·기동(프로필 검증과 탐지기 로드는 기동 때 한 번) |
-| `services/grounding-worker/profiles/` | `local.toml`(실제 탐지기 자리, 라이브러리 결정 뒤), `local-mock.toml` |
+| `services/grounding-worker/profiles/` | `local-mock.toml`. `local.toml`(실제 탐지기)은 T027에서 더한다 |
 
 ### 탐지기 인터페이스
 
@@ -104,7 +104,7 @@ class GroundingDetector(Protocol):
 - 입력: 저장소 presigned GET 주소를 ffmpeg·ffprobe에 직접 넘긴다. 정규화 사본은 `+faststart`라 HTTP 범위 요청으로 구간만 읽는다. 10초 구간 때문에 영상 전체를 내려받지 않는다(5절 대안).
 - probe: `ffprobe`로 길이·fps·너비·높이·오디오 유무. normalize의 `probe.py`와 같은 해석을 쓰되 서비스 사이 import는 하지 않는다(필요한 필드만 다시 구현).
 - 샘플: 시각 `startMs + k × 간격`(`< endMs`, k < 최대 수)마다 `-ss <t> -i <url> -frames:v 1 -f rawvideo -pix_fmt rgb24 -`. 프레임마다 프로세스 하나라 메모리는 1080p 한 장(약 6MB) 단위다. 결과의 `ptsMs`는 요청 시각이다.
-- 렌더링: 프로세스 하나로 `-ss <start> -t <길이> -i <url>`, 필터 스크립트(`-filter_script:v`)의 `drawbox`·`drawtext`를 `enable='between(t,a,b)'`로 켠다. 샘플 i의 표시 구간은 이웃 샘플과의 중간점 사이다. 그래서 모든 원본 프레임이 표시 시각이 가장 가까운 샘플의 박스를 받는다(R-4). 출력은 `libx264 -pix_fmt yuv420p`, 원본 fps 유지(`-fps_mode passthrough`), 오디오가 있으면 `-map 0:a:0? -c:a aac`, `+faststart`.
+- 렌더링: 프로세스 하나로 `-ss <start> -t <길이> -i <url>`, 필터 스크립트(`-/filter:v`, ffmpeg 7)의 `drawbox`·`drawtext`를 반열린 구간 `enable='gte(t,a)*lt(t,b)'`로 켠다(`between`은 경계 프레임에서 두 샘플이 겹친다). 샘플 i의 표시 구간은 이웃 샘플과의 중간점 사이다. 그래서 모든 원본 프레임이 표시 시각이 가장 가까운 샘플의 박스를 받는다(R-4). 출력은 `libx264 -pix_fmt yuv420p`, 원본 fps 유지(`-fps_mode passthrough`), 오디오가 있으면 `-map 0:a:0 -c:a aac`(probe로 오디오 유무를 미리 안다), `+faststart`.
 - 출력 클립을 다시 probe해 결과 파일 `clip`(fps, 너비, 높이, `durationMs`, `audio`)을 채운다.
 - 프로세스는 `asyncio.create_subprocess_exec`로 띄운다. 제한 시간으로 취소되면 `finally`에서 kill하고 기다린다(R-13). normalize의 `subprocess.run`과 다른 이유다.
 - 글꼴: `drawtext`는 글꼴 파일이 필요하다. runtime 이미지에 `fonts-dejavu-core`(Debian 패키지)를 설치하고 프로필 `[render] font_path`로 가리킨다.
@@ -120,7 +120,8 @@ class GroundingDetector(Protocol):
 7. `grounding.store`(count 2): `clip.mp4` 저장 → `result.json` 저장(R-6). 결과 파일이 마지막이라, 결과 파일이 있으면 클립도 있다.
 8. READY `grounding.completed` 발행. `frames`는 샘플마다 모든 대상어 키를 담고 탐지가 없으면 0이다(R-7).
 
-- 2~6을 `asyncio.timeout(구간 제한 시간)`으로 감싼다. 넘으면 `GROUNDING_TIMEOUT`으로 FAILED다(R-13).
+- 2~6을 `asyncio.timeout(구간 제한 시간)`으로 감싼다. 넘으면 `GROUNDING_TIMEOUT`으로 FAILED다(R-13). 저장(7)은 제한 시간 밖이다. 스레드에서 도는 업로드를 중간에 끊으면 결과 파일만 남을 수 있다. 제한 시간 판정은 `asyncio.timeout`의 `expired()`로 하고, 그 밖의 `TimeoutError`(저장소 연결 등)는 재시도로 던진다.
+- 탐지기 결과가 대상어 밖이거나 0~1 밖이면 `GROUNDING_DETECTOR_FAILED`다. 기준 신뢰도 이상인 탐지를 신뢰도 순으로 최대 100개(결과 파일 계약 상한) 남긴다.
 - FAILED도 같은 eventId 규칙(R-9)으로 발행하고 `clipKey`·`resultKey`·`frames`는 null이다.
 - 저장소·발행 오류는 그대로 던져 메시지 전체가 재시도 토픽으로 간다. 다시 처리하면 끝난 구간은 1단계에서 재사용된다(R-14).
 - 구간 작업 폴더는 처리마다 임시 폴더로 만들고 끝나면 지운다(클립 파일만 잠깐 디스크에 둔다).
@@ -160,6 +161,7 @@ sequenceDiagram
 | B. `onnxruntime` + ONNX로 내보낸 YOLOE | 런타임은 MIT. 이미지가 작고 CPU 추론이 빠르다 | 보통 내보내기는 클래스를 고정하므로 텍스트 임베딩을 입력으로 받는 그래프로 따로 내보내야 한다(AI 담당자 작업). 대상어 텍스트 임베딩은 lock에 있는 open_clip(MobileCLIP)로 만들 수 있다. 가중치 자체의 라이선스도 AI 담당자 확인이 필요하다 | 확인 필요 |
 | C. `transformers`의 OWLv2·Grounding DINO 계열 | Apache-2.0, 임의 문장 클래스 지원 | 새 의존성이 크고 CPU에서 프레임당 수 초라 NFR-1(30초)이 빠듯하다 | |
 
+- 2026-11-07 진행안: B(`onnxruntime`)를 추천한다. A는 AGPL-3.0이라 서버 배포 라이선스 위험이 있고, C는 CPU에서 느리다. ONNX 가중치와 텍스트 임베딩 입력 그래프 내보내기는 AI 담당자 몫이고 새 외부 패키지는 사용자 확인 사항이라, 가중치가 준비된 뒤 T026~T028·T033을 진행한다.
 - 어느 쪽이든 서비스 코드는 `GroundingDetector`만 쓴다. 결정 전에는 mock으로 R-1~R-18을 모두 구현·검증하고, 결정 뒤 구현 태스크(T026~T028)만 더한다.
 - 모델 manifest 계약은 `kind: detector`면 `classes`(1개 이상)가 필수다. 개방 어휘 탐지기는 고정 클래스가 없어 manifest 작성 방식(AI 담당자)을 확인해야 한다(7절).
 
@@ -169,7 +171,7 @@ sequenceDiagram
 | --- | --- | --- | --- |
 | ffmpeg·ffprobe 프로세스(normalize와 같은 방식) | 새 Python 패키지 없음, 코덱·오디오 처리를 ffmpeg가 맡음 | 시스템 패키지·글꼴이 이미지에 필요 | ☑(사용자 확인 필요) |
 | PyAV 등 바인딩 | 프레임 단위 제어 | 새 패키지 | |
-| 박스를 ffmpeg 필터(`drawbox`·`drawtext`)로 그림 | 프레임 데이터가 Python을 거치지 않아 메모리·CPU가 적다. 프로세스 하나 | 필터 문자열 이스케이프를 테스트로 지켜야 함 | ☑ |
+| 박스를 ffmpeg 필터(`drawbox`·`drawtext`)로 그림 | 프레임 데이터가 Python을 거치지 않아 메모리·CPU가 적다. 프로세스 하나 | 필터 문법 주입을 막아야 함(라벨 파일·경로 허용 문자로 해결) | ☑ |
 | 원본 프레임을 파이프로 받아 Pillow로 그린 뒤 다시 인코딩 | 그리기가 자유롭다 | 1080p 300장을 Python으로 옮겨 느리고 프로세스가 둘. Pillow를 직접 의존성으로 더함 | |
 | presigned 주소로 ffmpeg가 직접 읽음 | 구간만 읽는다. 디스크 사용이 적다 | `ObjectStorage`에 메서드가 하나 늘어남 | ☑ |
 | 정규화 영상 전체를 내려받음 | 저장소 인터페이스 그대로 | 긴 영상이면 10초 구간에 수 GB를 받는다 | |
@@ -177,7 +179,7 @@ sequenceDiagram
 
 ## 6. 테스트 전략
 
-- 단위: 샘플 시각(경계, 12장 상한, 간격 설정), 색(sha256 앞 3바이트), 표시 구간(중간점, 첫·마지막 샘플), 필터 스크립트 이스케이프(`'`·`:`가 든 대상어), 경로, ID
+- 단위: 샘플 시각(경계, 12장 상한, 간격 설정), 색(sha256 앞 3바이트), 표시 구간(중간점, 첫·마지막 샘플), 라벨이 필터 문자열에 들어가지 않음(`'`가 든 대상어), 허용하지 않는 경로 거부, 경로, ID
 - 서비스: 가짜 `MediaTool`(probe 값·프레임·클립 파일을 돌려줌, 오류 주입)·가짜 `GroundingDetector`·`InMemoryStorage`·기록 발행기로 핸들러 전체. 결과 파일과 이벤트를 docs 계약 스키마로 검증한다. 제한 시간은 느린 가짜와 짧은 설정으로 확인한다.
 - 탐지기: `MockDetector` 결정성, mock 허용 설정 없이 기동 실패, `load_detector` 프로필 검증
 - ffmpeg(`ffmpeg` 마커, 서비스 이미지 안): 테스트가 만든 짧은 합성 영상(오디오 있음·없음)으로 샘플 프레임 크기, 클립 코덱 h264·fps·길이·오디오, 박스 위치 픽셀 색, 깨진 파일의 `MediaReadError`, 취소 시 프로세스 종료
@@ -190,12 +192,12 @@ sequenceDiagram
 
 - 리스크
   - 탐지기 라이브러리 결정 전에는 mock만 있어 NFR-1·NFR-2를 실제 모델로 잴 수 없다. 측정 태스크는 결정 뒤에 한다.
-  - `drawtext` 이스케이프 실수는 ffmpeg 오류나 필터 주입으로 이어진다. 대상어는 계약 패턴(`[a-z0-9 '-]`)으로 먼저 걸러지고, 이스케이프는 단위 테스트로 지킨다.
+  - 필터 주입: 대상어는 라벨 파일로만 넘기고, 스크립트의 경로는 허용 문자를 검사한다(단위 테스트).
   - presigned 주소의 만료 시간은 구간 제한 시간보다 길게 잡는다.
 - spec·계약과 맞춰 볼 점(계약대로 구현하고 보고한다)
-  - R-17은 `grounding.completed`에도 기준 신뢰도를 기록하라고 하지만 계약에 그 필드가 없다. 결과 파일 `scoreThreshold`에만 기록한다.
-  - R-9 eventId는 groundingId·탐지기 버전만 쓴다. FAILED 뒤 다시 요청해 READY가 나와도, 다른 requestId의 요청이어도 같은 eventId라 소비자가 중복으로 버릴 수 있다.
-  - R-10 영상 길이 비교에 허용 오차가 없다. 마지막 구간 `endMs`가 ffprobe 길이보다 몇 ms 길면 FAILED가 된다.
+  - C-8: R-17은 `grounding.completed`에도 기준 신뢰도를 기록하라고 하지만 계약에 그 필드가 없다. 결과 파일 `scoreThreshold`에만 기록한다(spec 문구 수정 필요).
+  - C-9: R-9 eventId가 groundingId·탐지기 버전만 쓰면 FAILED 뒤 다시 요청해 READY가 나오거나 다른 requestId가 클립을 재사용할 때 소비자가 중복으로 버린다. requestId·outcome을 더 넣는다. 같은 요청의 재처리는 여전히 같은 eventId다(spec 문구 수정 필요).
+  - C-10: R-10 영상 길이 비교에 허용 오차가 없으면 마지막 구간 `endMs`가 ffprobe 길이보다 몇 ms 길 때 FAILED가 된다. 프레임 간격 하나(1000/fps ms)만큼 허용하고, 샘플 시각은 영상 길이 미만만 쓴다(spec 문구 수정 필요).
   - 결과 파일 `sampleFps`는 이름은 fps인데 설명은 "샘플 간격"이다. 1000 ÷ 간격(ms)으로 기록한다.
   - 모델 manifest 계약은 `kind: detector`에 `classes`가 필수라 개방 어휘 탐지기 manifest 작성 방식이 정해지지 않았다.
 - 사용자 확인이 필요한 항목
@@ -205,7 +207,7 @@ sequenceDiagram
 
 ## 8. 배포 고려사항
 
-- 환경변수: `GROUNDING_WORKER_PROFILE_PATH`, `GROUNDING_WORKER_ALLOW_MOCK`, `GROUNDING_WORKER_MODEL_CACHE_DIR`, `GROUNDING_WORKER_ITEM_TIMEOUT_S`, `GROUNDING_WORKER_SAMPLE_INTERVAL_MS`, `GROUNDING_WORKER_MAX_SAMPLES`, `GROUNDING_WORKER_WORK_DIR`와 공통 `KAFKA_BOOTSTRAP`·`STORAGE_*`·`MODEL_STORAGE_*`·`HEALTH_PORT`. 레포 `.env.example`과 README에 적는다. 비밀값은 없다.
+- 환경변수: `GROUNDING_WORKER_PROFILE_PATH`, `GROUNDING_WORKER_ALLOW_MOCK`, `GROUNDING_WORKER_ITEM_TIMEOUT_S`, `GROUNDING_WORKER_SAMPLE_INTERVAL_MS`, `GROUNDING_WORKER_MAX_SAMPLES`, `GROUNDING_WORKER_WORK_DIR`와 공통 `KAFKA_BOOTSTRAP`·`S3_*`·`HEALTH_PORT`. 모델 버킷·캐시 폴더 설정은 실제 탐지기(T027)와 함께 더한다. README에 적는다(레포 `.env.example`은 에이전트 권한 설정으로 수정하지 못했다). 비밀값은 없다.
 - 이미지: normalize처럼 runtime 단계에 ffmpeg, 그리고 글꼴 패키지. 가중치는 이미지에 넣지 않고 기동 때 받는다(모델 캐시 폴더에 emptyDir).
 - 로컬 compose(docs `local/`): grounding-worker(1.5G, overview "로컬 개발 환경" 표), 토픽 `grounding.requested`, `grounding.completed`, `grounding.requested.grounding-worker.retry`, `grounding-worker.dlq`를 `kafka-init`과 `local/README.md`에 더한다. 로컬은 생산자(search-service)가 없으므로 측정은 테스트가 직접 넣는다.
 - 운영 배포·토픽은 사용자 지시 시 infra·gitops에서 한다.
