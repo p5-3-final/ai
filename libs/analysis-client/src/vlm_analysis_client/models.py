@@ -130,6 +130,13 @@ class EventSummary(BaseModel):
         extra="forbid",
         populate_by_name=True,
     )
+    unverified_reason: Annotated[
+        Literal["budget_exceeded", "model_unavailable", "call_cap_reached"] | None,
+        Field(
+            alias="unverifiedReason",
+            description="verificationStatus가 unverified인 이유(v5.1, event.analyzed.unverifiedReason 그대로). 없으면 사유 없음. 생산자 analysis-api 확인 필요 (SPEC-031 R-23)",
+        ),
+    ] = None
     event_id: Annotated[UUID, Field(alias="eventId")]
     source_id: Annotated[UUID, Field(alias="sourceId")]
     event_type: Annotated[EventType, Field(alias="eventType")]
@@ -284,6 +291,25 @@ class SnapshotList(BaseModel):
     items: list[Snapshot]
 
 
+class MissingCounts(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    events: Annotated[int | None, Field(ge=0)] = None
+    tracks: Annotated[int | None, Field(ge=0)] = None
+
+
+class UnverifiedCounts(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    budget_exceeded: Annotated[int | None, Field(ge=0)] = None
+    call_cap_reached: Annotated[int | None, Field(ge=0)] = None
+    model_unavailable: Annotated[int | None, Field(ge=0)] = None
+
+
 class Highlight(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -335,6 +361,30 @@ class SourceSummary(BaseModel):
         extra="forbid",
         populate_by_name=True,
     )
+    partial: Annotated[
+        bool | None,
+        Field(
+            description="개수 대조 재시도 상한 뒤 빠진 이벤트가 있는 채로 집계됨(v5.1, source.completed.partial 그대로). 없으면 false. 생산자 analysis-api 확인 필요 (SPEC-031 R-22)"
+        ),
+    ] = None
+    missing_counts: Annotated[
+        MissingCounts | None,
+        Field(
+            alias="missingCounts",
+            description="partial일 때 빠진 수(source.completed.missingCounts 그대로)",
+        ),
+    ] = None
+    revision: Annotated[
+        int | None,
+        Field(description="활성 결과의 발행 차수(source.completed.revision). 없으면 1", ge=1),
+    ] = None
+    unverified_counts: Annotated[
+        UnverifiedCounts | None,
+        Field(
+            alias="unverifiedCounts",
+            description="활성 분석 버전에서 unverified로 남은 이벤트 수를 사유별로 센 값(v5.1). 화면이 첫 쪽만 세지 않게 한다. 생산자 analysis-api 확인 필요 (SPEC-031 R-23)",
+        ),
+    ] = None
     source_id: Annotated[UUID, Field(alias="sourceId")]
     status: Annotated[
         Literal["NOT_ANALYZED", "READY"],

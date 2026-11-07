@@ -18,7 +18,7 @@ updated: 2026-11-06
 
 ## Phase 0: 준비
 
-- [ ] T001 계약 잠금 3.14.0 확인(이미 올라가 있으면 건너뜀) — `service-contracts.lock`
+- [x] T001 계약 잠금을 5.0.0(quality-service 3.0.0, ADR-0018)으로 올리고 생성 클라이언트를 모두 다시 만듦(`scripts/fetch-service-contracts.sh --update 5.0.0`, `scripts/generate-clients.sh`) — `service-contracts.lock`, `libs/*-client/src/*/models.py`
 - [ ] T002 `evals` 멤버 뼈대(`vlm-evals`, 패키지 `evals`, 워크스페이스·mypy·pytest 등록, `NotImplementedError` 인터페이스) — `evals/pyproject.toml`, 루트 `pyproject.toml`
 
 ## Phase 1: US-2 매칭 규칙 (P1)
