@@ -787,6 +787,8 @@ class StreamHarness(Harness):
     zones: FakeZones = field(default_factory=FakeZones)
     snapshot_every: int = 30
     judge_limit: int = 20
+    # 재고 비교 주기(SPEC-028 R-19, 기본 600초). 창이 20초라 테스트는 줄여 쓴다.
+    inventory_interval_s: int = 600
 
     def service(self) -> "AggregatorService":
         loaded = profile()
@@ -795,6 +797,7 @@ class StreamHarness(Harness):
                 update={
                     "snapshot_every_windows": self.snapshot_every,
                     "judge_call_limit": self.judge_limit,
+                    "stream_inventory_interval_s": self.inventory_interval_s,
                 }
             ),
             loaded.version,

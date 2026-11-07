@@ -72,9 +72,9 @@ updated: 2026-11-07
 
 ## Phase 8: v5.1 추가(계약 묶음 4.0.0)
 
-- [ ] T031 [R-19] `ChunkManifest` 4.0.0 선택 필드, `STREAM` 재고 파일 저장, `inventory_due`와 주기 계산(재고 비교·장비 방치·예측), 확정 재고 이벤트를 다음 창 fold 입력으로 — 테스트 `libs/contracts/tests/test_event_contracts.py`, `t/test_aggregator_stream_inventory.py`, 구현 `vlm_contracts/events.py`, `agg/stream.py`, `agg/profile.py`
-- [ ] T032 [R-19] 세션당 판정 상한을 Redis 계수로(SPEC-027 T053과 같은 계수), 업로드는 기존 계수 유지 — 테스트 `t/test_aggregator_judge_budget.py`(integration), 구현 `agg/judge_budget.py`, `agg/judge.py`
-- [ ] T033 [R-19] 회전 세션의 직전 끝 재고를 첫 청크 앞에 놓기, 세션 마무리의 마지막 계산과 `forecasts` — 테스트 `t/test_aggregator_stream_inventory.py`, 구현 `agg/stream.py`
+- [x] T031 [R-19] `ChunkManifest` 4.0.0 선택 필드, `STREAM` 재고 파일 저장, `inventory_due`와 주기 계산(재고 비교·장비 방치·예측), 확정 재고 이벤트를 다음 창 fold 입력으로 — 테스트 `libs/contracts/tests/test_event_contracts.py`, `t/test_aggregator_stream_inventory.py`, 구현 `vlm_contracts/events.py`, `agg/stream.py`, `agg/profile.py`
+- [x] T032 [R-19] 세션당 판정 상한을 Redis 계수로(SPEC-027 T053과 같은 계수), 업로드는 기존 계수 유지 — 테스트 `t/test_aggregator_judge_budget.py`(integration), 구현 `agg/judge_budget.py`, `agg/judge.py`
+- [x] T033 [R-19] 회전 세션의 직전 끝 재고를 첫 청크 앞에 놓기, 세션 마무리의 마지막 계산과 `forecasts` — 테스트 `t/test_aggregator_stream_inventory.py`, 구현 `agg/stream.py`
 
 ## 측정 기록
 

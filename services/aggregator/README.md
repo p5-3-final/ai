@@ -3,13 +3,17 @@
 job 하나의 판정 이벤트를 병합하고 위험 상태 전이·노출·체류·배회·타임라인·요약을 계산해 결과 파일
 `source-result.json`을 저장하고 `source.completed`를 발행한다. 실시간(STREAM) 세션은 창마다
 상태를 접어(fold) `state.updated`를 내고, 세션이 끝나면 창 기록으로 같은 결과 파일을 만든다.
+청크마다 정적 객체 재고를 저장해 시간순으로 이어 맞추고, 방호벽 이동·제거·미복구와 장비 방치를
+판정해 상태 계산에 넣고, 영상 끝 활성 위험마다 노출 확률을 예측한다(SPEC-028).
 
-- spec: docs `docs/specs/SPEC-027-aggregator/spec.md`, plan: `specs/SPEC-027-aggregator/plan.md`
+- spec: docs `docs/specs/SPEC-027-aggregator/spec.md`, `docs/specs/SPEC-028-aggregator-inventory/spec.md`,
+  plan: `specs/SPEC-027-aggregator/plan.md`, `specs/SPEC-028-aggregator-inventory/plan.md`
 - 계약: docs `service-contracts/asyncapi/aggregator.yaml`, `events/source.completed.schema.json`,
-  `events/state.updated.schema.json`, `aggregates/v1/source-result.schema.json`
+  `events/state.updated.schema.json`, `aggregates/v1/source-result.schema.json`,
+  `aggregates/v1/chunk-inventory.schema.json`
 - 읽기: analysis-api 내부 API(`libs/analysis-client`), 실시간 구역은 stream-service 내부 API
-  (`libs/stream-client`), 요약·재판정은 ai-gateway(`libs/ai-client`, taskType `source_summary`·
-  `event_judge`). ai-gateway 프로필의 `[callers] allowed`에 `aggregator`가 있어야 한다.
+  (`libs/stream-client`), 요약·재판정·재고 판정·예측은 ai-gateway(`libs/ai-client`, taskType
+  `source_summary`·`event_judge`·`state_compare`·`risk_forecast`). ai-gateway 프로필의 `[callers] allowed`에 `aggregator`가 있어야 한다.
 
 ## 실행
 
@@ -24,7 +28,7 @@ uv run --package aggregator python -m aggregator
 | `AGGREGATOR_ANALYSIS_API_URL` | (필수) | analysis-api 내부 주소(예: `http://analysis-api:8085`) |
 | `AGGREGATOR_STREAM_SERVICE_URL` | (없음) | stream-service 내부 주소. 비우면 STREAM 메시지는 재시도 뒤 DLQ로 간다 |
 | `AGGREGATOR_REDIS_URL` | (없음) | 대기 집합·세션 상태·재판정 계수용 Redis. 운영 필수다. 비우면 업로드 기본 경로만 동작한다 |
-| `AGGREGATOR_PROFILE_PATH` | 이미지 `/app/profiles/aggregate-v1.toml` | 집계 프로필(병합 간격, 체류·배회 기준, 재판정 상한) |
+| `AGGREGATOR_PROFILE_PATH` | 이미지 `/app/profiles/aggregate-v1.toml` | 집계 프로필(병합 간격, 체류·배회 기준, 재판정 상한, 재고 IoU·이동 창·방호·장비 클래스·방치 기준·실시간 재고 주기) |
 | `AGGREGATOR_READ_TIMEOUT_S` | `300` | 메시지 하나의 내부 읽기 전체 마감(R-3) |
 | `AGGREGATOR_READ_CALL_TIMEOUT_S` | `30` | 읽기 시도 하나의 제한 시간 상한 |
 | `AGGREGATOR_PAGE_LIMIT` | `1000` | 쪽 크기(계약 상한 1000) |
@@ -58,6 +62,24 @@ uv run --package aggregator python -m aggregator
   발행한다.
 - STREAM 계약에는 머문 구간이 없어 실시간 결과의 체류·배회 이벤트는 없고 구역 노출은 0이다.
 
+### 재고(SPEC-028)
+
+- `chunk.manifest`(업로드·STREAM 모두)의 정적 객체 재고를 청크 재고 파일로 저장한다. 같은 청크의
+  파일이 이미 있으면 아무것도 하지 않는다(처음 쓴 실행이 이긴다).
+- 업로드 job 집계 때 재고 파일 수가 `counts.chunks`보다 적으면 재시도한다. 마지막 시도에서도 모자라면
+  재고 단계 없이 나머지 결과를 발행한다(재고 필드 없음). `chunk.manifest` 생산자가 없으면 job마다
+  재시도 지연(기본 5회, 약 15초)만큼 늦어진다.
+- 이웃 청크(세션이면 직전 영상 `final-state.staticObjects`를 첫 청크 앞에)의 같은 클래스 객체를
+  IoU가 큰 쌍부터 이어 `removed`·`appeared`·`moved`·`not_restored` 후보를 만든다. `appeared`를 뺀
+  후보는 `state_compare`, 통로·위험구역 장비 방치는 `event_judge`로 판정한다(job당 `judge_call_limit`).
+  직전 영상 프레임은 `aggregate/frames/blurred/`로 복사해 보낸다. confirmed 재고 이벤트는 상태
+  계산·노출·타임라인(`inventory_event`)에 들어간다.
+- 영상 끝 활성 위험마다 `risk_forecast`를 부른다. 미설정이면 `not_configured`, 실패면 `failed`다.
+- STREAM은 프로필 `stream_inventory_interval_s`(기본 600초)마다 그때까지의 재고 파일로 비교·판정하고,
+  확정 이벤트를 다음 창 fold에 넣는다. 판정 상한은 `agg:judge-calls:<jobId>`를 접근 재판정과 함께
+  센다. 예측은 세션 마무리에서 한 번 한다. 실시간에는 머문 구간이 없어 장비 방치의 사람 겹침을 보지
+  않는다.
+
 ## 저장 키
 
 | 저장소 | 키 | TTL | 내용 |
@@ -67,10 +89,12 @@ uv run --package aggregator python -m aggregator
 | Redis | `agg:state:<sourceId>` | 48시간 | 실시간 세션의 현재 상태 |
 | Redis | `agg:window:<sourceId>:<chunkId>` | 48시간 | 처리한 창의 sequence |
 | Redis | `agg:zones:<sourceId>` | 48시간 | stream-service에서 읽은 세션 구역 |
-| Redis | `agg:judge-calls:<jobId>` | 48시간 | 재판정 호출 수 |
+| Redis | `agg:judge-calls:<jobId>` | 48시간 | 재판정·재고 판정 호출 수(실시간 세션) |
 | S3 | `sources/<sourceId>/jobs/<jobId>/aggregate/source-result.json` | - | 결과 파일 |
 | S3 | `sources/<sourceId>/jobs/<jobId>/aggregate/source-result.meta.json` | - | revision, 입력 이벤트 id, partial |
 | S3 | `sources/<sourceId>/jobs/<jobId>/aggregate/windows/<sequence>.json` | - | 창 기록(세션 마무리 입력) |
+| S3 | `sources/<sourceId>/jobs/<jobId>/aggregate/inventory/<chunkId>.json` | - | 청크 재고 파일(SPEC-028) |
+| S3 | `sources/<sourceId>/jobs/<jobId>/aggregate/frames/blurred/<changeId>-before.<ext>` | - | `state_compare`에 보낸 직전 영상 프레임 사본 |
 | S3 | `sources/<sourceId>/state/<sequence>.json`, `state/latest.json` | - | 30창마다 남기는 세션 상태 스냅샷. Redis를 잃으면 여기서 복구한다 |
 
 ## 테스트

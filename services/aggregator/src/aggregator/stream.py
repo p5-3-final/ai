@@ -12,6 +12,10 @@ confirmed 이벤트로 세션 상태를 fold해 `state.updated`를 한 건 낸�
 - 구역: Redis `agg:zones:<sourceId>`(R-33)
 
 업로드와 달리 stream 계약에는 구역 머문 구간이 없어 체류·배회 규칙 이벤트와 구역 노출은 0이다.
+
+재고(SPEC-028 R-19): 창마다가 아니라 프로필 주기마다 그때까지의 청크 재고 파일로 재고 비교·장비
+방치를 계산한다. 확정된 재고 이벤트는 다음 창 fold에 넣고, 예측은 세션 마무리에서 한 번 한다
+(`state.updated`에 예측 필드가 없어 주기마다 예측할 쓸모가 없다).
 """
 
 import asyncio
@@ -28,7 +32,14 @@ from pydantic.alias_generators import to_camel
 from vlm_ai_client.client import AiGatewayError
 from vlm_ai_client.models import AnalyzeRequest, ImageRef
 from vlm_common.http_call import Deadline
-from vlm_contracts.aggregates import CarriedRisk, InitialState, StateSnapshot, ZoneState, result_key
+from vlm_contracts.aggregates import (
+    CarriedRisk,
+    InitialState,
+    InventoryEvent,
+    StateSnapshot,
+    ZoneState,
+    result_key,
+)
 from vlm_contracts.events import (
     AnalysisCompleted,
     ChunkManifest,
@@ -48,9 +59,14 @@ from vlm_storage.storage import ObjectNotFoundError, ObjectStorage
 from vlm_stream_client.models import ZoneList as StreamZoneList
 
 from aggregator import ids
-from aggregator.compute import compute
+from aggregator.compute import compute, inventory_input
+from aggregator.equipment import abandoned_equipment
 from aggregator.exposure import exposure_of, overlap
 from aggregator.fold import FoldDelta, RiskRecord, SessionState, fold
+from aggregator.forecast import forecast_risks
+from aggregator.inventory import compare
+from aggregator.inventory_store import InventoryStore
+from aggregator.judge import InventoryJudge, SessionBudget
 from aggregator.judge_budget import JudgeBudget
 from aggregator.kv import KeyValueStore
 from aggregator.model import AggregateInput, InputEvent, TrackSpan, ZoneInfo
@@ -66,6 +82,7 @@ from aggregator.ports import CountMismatchError, EventPublisher, ServiceConfig
 from aggregator.profile import LoadedProfile
 from aggregator.result import (
     AggregateMeta,
+    InventoryResult,
     build_result,
     encode_result,
     meta_key,
@@ -178,6 +195,8 @@ class StreamAggregator:
         self._windows = PendingWindows(store)
         self._states = SessionStateStore(store, storage)
         self._budget = JudgeBudget(store)
+        self._inventory = InventoryStore(storage)
+        self._inventory_judge = InventoryJudge(gateway, storage, profile.profile)
 
     # ---- 대기 집합(R-29) ----
 
@@ -228,6 +247,9 @@ class StreamAggregator:
                 message, inputs, state, zones, tracks, crops, mismatch, ctx
             )
             block.count = len(inputs.events)
+        next_state = await self._inventory_tick(
+            message, next_state, zones, record.state_updated.window_end_ms, ctx
+        )
         await asyncio.to_thread(self._put_window, source, message.job_id, record)
         every = self._profile.profile.snapshot_every_windows
         await self._states.save(source, next_state, snapshot=record.sequence % every == 0)
@@ -249,11 +271,13 @@ class StreamAggregator:
         start, end, gap = _window_range(inputs.manifest, state, inputs.events)
         names = {z.zone_id: z.name for z in zones}
         stored = await self._rejudged(message, inputs.events, state, end, crops, names, ctx)
-        confirmed = confirmed_in_order([e.to_input() for e in stored])
+        # 직전 주기 계산에서 확정된 재고 이벤트를 이 창에 넣는다(SPEC-028 R-19).
+        stocked = [inventory_input(e) for e in _pending_inventory(state)]
+        confirmed = confirmed_in_order([*(e.to_input() for e in stored), *stocked])
         folded, delta = await asyncio.to_thread(fold, state, confirmed, job_id=job)
         sequence = state.last_sequence + 1
         next_state = folded.model_copy(
-            update={"last_sequence": sequence, "last_window_end_ms": end}
+            update={"last_sequence": sequence, "last_window_end_ms": end, "pending_inventory": ()}
         )
         update = StateUpdated(
             event_id=ids.state_updated_id(job, sequence),
@@ -394,6 +418,66 @@ class StreamAggregator:
             )
             return None
 
+    # ---- 재고 주기 계산(SPEC-028 R-19) ----
+
+    async def _inventory_tick(
+        self,
+        message: AnalysisCompleted,
+        state: SessionState,
+        zones: Sequence[ZoneInfo],
+        window_end_ms: int,
+        ctx: MessageContext,
+        *,
+        force: bool = False,
+    ) -> SessionState:
+        """주기가 됐으면(`force`면 언제나) 그때까지의 재고로 비교·장비 방치·판정을 한다.
+
+        이미 판정한 후보와 재고 이벤트는 다시 부르지 않고 그대로 쓴다. 새로 확정된 재고 이벤트는
+        다음 창 fold에 넣도록 `pending_inventory`에 둔다.
+        """
+        loaded = self._profile.profile
+        interval = loaded.stream_inventory_interval_s
+        if not force and not inventory_due(state, window_end_ms, interval_s=interval):
+            return state
+        source, job = message.source_id, message.job_id
+        with ctx.timing.stage("aggregate.inventory_compare", unit="objects") as block:
+            chunks = await asyncio.to_thread(self._inventory.load_all, source, job)
+            comparison = await asyncio.to_thread(
+                compare, chunks, state.previous_inventory, job_id=job, profile=loaded
+            )
+            # stream 계약에는 구역 머문 구간이 없어 사람이 같은 구역에 있었는지 볼 수 없다. 통로·
+            # 위험구역은 event_judge가 프레임으로 다시 본다(보고 항목).
+            abandoned = abandoned_equipment(comparison.chains, (), (), loaded, job_id=job)
+            block.count = sum(len(c.static_objects) for c in chunks)
+        with ctx.timing.stage("aggregate.judge", unit="calls") as block:
+            judged = await self._inventory_judge.judge(
+                comparison,
+                abandoned,
+                source_id=source,
+                job_id=job,
+                zones=zones,
+                budget=SessionBudget(self._budget, job, loaded.judge_call_limit),
+                traceparent=ctx.traceparent,
+                known_changes={c.change_id: c for c in state.inventory_changes},
+                known_events={e.event_id: e for e in state.inventory_events},
+            )
+            block.count = judged.calls
+        seen = {e.event_id for e in state.inventory_events}
+        fresh = tuple(
+            e.event_id
+            for e in judged.events
+            if e.event_id not in seen and e.analysis.verification_status == "confirmed"
+        )
+        return state.model_copy(
+            update={
+                "inventory_at_ms": window_end_ms,
+                "inventory": comparison.end_inventory,
+                "inventory_changes": judged.changes,
+                "inventory_events": judged.events,
+                "pending_inventory": (*state.pending_inventory, *fresh),
+            }
+        )
+
     # ---- 세션 마무리(R-32) ----
 
     async def on_session_completed(self, message: AnalysisCompleted, ctx: MessageContext) -> None:
@@ -402,6 +486,11 @@ class StreamAggregator:
         state = await self._states.load(source, previous)
         records = await asyncio.to_thread(self._all_windows, source, message.job_id, state)
         zones = await self._session_zones(source)
+        state = await self._inventory_tick(
+            message, state, zones, state.last_window_end_ms, ctx, force=True
+        )
+        # 회전한 다음 세션이 끝 재고를 이어받도록 마지막 계산을 상태에 남긴다(R-6, R-19).
+        await self._states.save(source, state, snapshot=True)
         begin = records[0].state_before if records else state
         events: dict[UUID, InputEvent] = {}
         tracks: dict[UUID, TrackSpan] = {}
@@ -424,7 +513,19 @@ class StreamAggregator:
             zones=tuple(zones),
         )
         # 창 상태(state.updated)와 같은 위험이 나오도록 청크 경계 병합을 하지 않는다.
-        computed = await asyncio.to_thread(compute, aggregate, self._profile, merge=False)
+        computed = await asyncio.to_thread(
+            compute, aggregate, self._profile, merge=False, inventory=state.inventory_events
+        )
+        with ctx.timing.stage("aggregate.forecast", unit="risks") as block:
+            forecasts = await forecast_risks(
+                self._gateway,
+                aggregate,
+                computed,
+                self._profile.profile,
+                traceparent=ctx.traceparent,
+            )
+            block.count = len(forecasts)
+        stocked = InventoryResult(state.inventory, state.inventory_changes, state.inventory_events)
         summary = await summarize(self._gateway, aggregate, computed, traceparent=ctx.traceparent)
         missing_events = sum(r.missing_events for r in records)
         partial = any(r.state_updated.partial for r in records)
@@ -437,6 +538,8 @@ class StreamAggregator:
             occurred_at=self._now(),
             missing=MissingCounts(events=missing_events) if partial else None,
             job_type="STREAM",
+            inventory=stocked,
+            forecasts=forecasts,
         )
         meta = AggregateMeta(
             revision=1,
@@ -444,7 +547,16 @@ class StreamAggregator:
             partial=partial,
             completed=message,
         )
-        data = encode_result(build_result(aggregate, computed, summary, self._profile.version))
+        data = encode_result(
+            build_result(
+                aggregate,
+                computed,
+                summary,
+                self._profile.version,
+                inventory=stocked,
+                forecasts=forecasts,
+            )
+        )
         await asyncio.to_thread(self._put_result, aggregate, data, meta)
         await self._publish(SOURCE_COMPLETED, event, ctx)
         logger.info(
@@ -527,6 +639,18 @@ class StreamAggregator:
             key=str(event.source_id),
             traceparent=ctx.traceparent,
         )
+
+
+def inventory_due(state: SessionState, window_end_ms: int, *, interval_s: int) -> bool:
+    """재고 주기 계산을 할 때인지(SPEC-028 R-19). 처음이거나 마지막 계산 뒤 주기가 지났으면 True."""
+    return (
+        state.inventory_at_ms is None or window_end_ms - state.inventory_at_ms >= interval_s * 1000
+    )
+
+
+def _pending_inventory(state: SessionState) -> list[InventoryEvent]:
+    pending = set(state.pending_inventory)
+    return [e for e in state.inventory_events if e.event_id in pending]
 
 
 def window_of(message: AnalysisCompleted) -> UUID:
@@ -612,4 +736,4 @@ def _initial(state: SessionState) -> InitialState:
     )
 
 
-__all__ = ["StreamAggregator", "WindowRecord"]
+__all__ = ["StreamAggregator", "WindowRecord", "inventory_due"]

@@ -290,4 +290,9 @@ async def test_spec027_r34_window_fold_stage_is_recorded() -> None:
 
     await service.on_analysis_completed(stream_completed(1, events=1), ctx)
 
-    assert {t.stage_id: t.count for t in ctx.timing.timings} == {"aggregate.fold": 1}
+    # 첫 창은 재고 주기 계산도 한다(SPEC-028 R-19).
+    assert {t.stage_id: t.count for t in ctx.timing.timings} == {
+        "aggregate.fold": 1,
+        "aggregate.inventory_compare": 0,
+        "aggregate.judge": 0,
+    }
