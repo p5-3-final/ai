@@ -26,6 +26,7 @@ from vlm_messaging.worker import MessageContext, NonRetryableError
 from vlm_storage.storage import ObjectNotFoundError, ObjectStorage
 
 from aggregator.compute import compute
+from aggregator.inventory_store import InventoryStore
 from aggregator.kv import KeyValueStore, StoreUnavailableError
 from aggregator.model import AggregateInput, InputEvent
 from aggregator.pending import PendingVectors, StoredEvent
@@ -104,6 +105,7 @@ class AggregatorService:
         self._profile = profile
         self._config = config
         self._pending = PendingVectors(store) if store is not None else None
+        self._inventory = InventoryStore(storage)
         self._stream = stream
         self._clock = clock
         self._now = now
@@ -155,7 +157,9 @@ class AggregatorService:
             await self._require_stream().on_track_detected(message)
 
     async def on_chunk_manifest(self, message: ChunkManifest, ctx: MessageContext) -> None:
-        """청크 manifest(R-30). 실시간 창의 범위·빈 시간만 쓴다. 업로드 재고는 SPEC-028이 쓴다."""
+        """청크 manifest. 재고를 청크 재고 파일로 남기고(SPEC-028 R-1, R-19), 실시간 창이면 범위·빈
+        시간도 쓴다(R-30)."""
+        await self._inventory.save(message, ctx)
         if message.job_type == "STREAM":
             await self._require_stream().on_chunk_manifest(message)
 

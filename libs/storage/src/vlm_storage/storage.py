@@ -43,6 +43,13 @@ class ObjectStorage(Protocol):
         """`key`에 객체가 있으면 True."""
         ...
 
+    def list_keys(self, prefix: str) -> list[str]:
+        """`prefix`로 시작하는 키를 사전 순으로 모두 돌려준다.
+
+        청크 재고 파일 수를 셀 때 쓴다(SPEC-028 R-2).
+        """
+        ...
+
     def delete_prefix(self, prefix: str) -> int:
         """`prefix`로 시작하는 객체를 모두 지우고 지운 수를 돌려준다(영상 삭제 전파용)."""
         ...

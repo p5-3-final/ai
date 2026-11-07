@@ -34,3 +34,25 @@ def snapshot_id(job_id: UUID, related_event_id: UUID, zone_id: str) -> UUID:
 
 def risk_id(job_id: UUID, zone_id: str, risk_type: str, first_event_id: UUID) -> UUID:
     return _id(f"vlm:aggregate:risk:{job_id}:{zone_id}:{risk_type}:{first_event_id}")
+
+
+def object_id(chunk_id: UUID, object_local_id: str) -> str:
+    """영상 안 정적 객체 ID(SPEC-028 R-17). 사슬을 처음 본 청크와 그 청크의 로컬 ID로 정한다.
+
+    계약 설명은 "chunkId 앞 8자 + objectLocalId"지만 같은 job의 chunkId(UUIDv7)는 앞 8자가 시각이라
+    겹칠 수 있다. 앞 8자 뒤에 (chunkId, 로컬 ID)의 해시 16자를 붙여 겹치지 않게 하고 64자 안에 둔다.
+    """
+    digest = _id(f"vlm:aggregate:object:{chunk_id}:{object_local_id}").hex[:16]
+    return f"{chunk_id.hex[:8]}-{digest}"
+
+
+def change_id(job_id: UUID, kind: str, before: str | None, after: str | None) -> UUID:
+    return _id(f"vlm:aggregate:change:{job_id}:{kind}:{before or '-'}:{after or '-'}")
+
+
+def inventory_event_id(job_id: UUID, change: UUID) -> UUID:
+    return _id(f"vlm:aggregate:inventory-event:{job_id}:{change}")
+
+
+def equipment_event_id(job_id: UUID, object_id_: str) -> UUID:
+    return _id(f"vlm:aggregate:equipment:{job_id}:{object_id_}")

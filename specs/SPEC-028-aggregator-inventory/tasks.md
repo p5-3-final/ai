@@ -18,24 +18,24 @@ updated: 2026-11-07
 
 ## Phase 0: 준비
 
-- [ ] T001 계약 잠금 4.0.0 확인(SPEC-027 T001에서 올렸으면 건너뜀) — `service-contracts.lock`
-- [ ] T002 [R-18] 단계 ID 4개(`aggregate.inventory_store`·`inventory_compare`·`judge`·`forecast`) — 테스트 `libs/contracts/tests/test_stage_contracts.py`, 구현 `vlm_contracts/stages.py`
-- [ ] T003 [P] [R-1] `ChunkManifest`·`ChunkInventory` 모델(계약 비교, 예시 왕복) — 테스트 `libs/contracts/tests/test_event_contracts.py`, `test_aggregate_contracts.py`, 구현 `vlm_contracts/{events,aggregates}.py`
-- [ ] T004 [P] [R-13] `SourceResult` 확장 필드·타임라인 `inventory_event`, `SourceCompleted.counts` 선택 필드 — 같은 테스트
-- [ ] T005 [P] [R-2] 저장소 `list_keys(prefix)`(S3·메모리 같은 결과) — 테스트 `libs/storage/tests/test_storage.py`, 구현 `vlm_storage/{storage,s3,memory}.py`
+- [x] T001 계약 잠금 확인(4.1.0, SPEC-021에서 이미 올림. `_risk-forecast.horizons` 최소 0개가 들어 있다) — `service-contracts.lock`
+- [x] T002 [R-18] 단계 ID 4개(`aggregate.inventory_store`·`inventory_compare`·`judge`·`forecast`) — 테스트 `libs/contracts/tests/test_stage_contracts.py`, 구현 `vlm_contracts/stages.py`
+- [x] T003 [P] [R-1] `ChunkManifest`·`ChunkInventory` 모델(계약 비교, 예시 왕복) — 테스트 `libs/contracts/tests/test_event_contracts.py`, `test_aggregate_contracts.py`, 구현 `vlm_contracts/{events,aggregates}.py`
+- [x] T004 [P] [R-13] `SourceResult` 확장 필드·타임라인 `inventory_event`, `SourceCompleted.counts` 선택 필드 — 같은 테스트
+- [x] T005 [P] [R-2] 저장소 `list_keys(prefix)`(S3·메모리 같은 결과) — 테스트 `libs/storage/tests/test_storage.py`, 구현 `vlm_storage/{storage,s3,memory}.py`
 
 ## Phase 1: 재고 저장
 
-- [ ] T006 [R-1] `chunk.manifest`면 청크 재고 파일을 없을 때만 저장, 있으면 아무것도 안 함 — 테스트 `t/test_aggregator_inventory_store.py`, 구현 `agg/inventory_store.py`
+- [x] T006 [R-1] `chunk.manifest`면 청크 재고 파일을 없을 때만 저장, 있으면 아무것도 안 함 — 테스트 `t/test_aggregator_inventory_store.py`, 구현 `agg/inventory_store.py`
 - [ ] T007 [R-2] 재고 파일 수 < `counts.chunks`면 발행 없이 재시도 가능 오류 — 테스트 `t/test_aggregator_reader.py`, 구현 `agg/reader.py`
 
 ## Phase 2: US-1 이어 맞추기와 변화 후보 (P1)
 
-- [ ] T008 [R-3] 소유 범위 순, 같은 클래스 IoU 기준 이상 쌍을 큰 순서로 하나씩 짝지어 사슬, objectId 규칙 — 테스트 `t/test_aggregator_inventory.py`, 구현 `agg/inventory.py`
-- [ ] T009 [R-4] 짝 없는 앞 객체 `removed`(직전 시각), 뒤 객체 `appeared`(이후 시각) — 테스트 `t/test_aggregator_inventory.py`
-- [ ] T010 [R-5] 같은 클래스 제거·등장이 이동 창 안이면 가까운 쌍부터 `moved` — 테스트 `t/test_aggregator_inventory.py`
-- [ ] T011 [R-13] 영상 끝 재고 = 마지막 청크 객체의 사슬 — 테스트 `t/test_aggregator_inventory.py`
-- [ ] T012 [R-17] 변화·재고 이벤트 ID 결정성 — 테스트 `t/test_aggregator_ids.py`, 구현 `agg/ids.py`
+- [x] T008 [R-3] 소유 범위 순, 같은 클래스 IoU 기준 이상 쌍을 큰 순서로 하나씩 짝지어 사슬, objectId 규칙 — 테스트 `t/test_aggregator_inventory.py`, 구현 `agg/inventory.py`
+- [x] T009 [R-4] 짝 없는 앞 객체 `removed`(직전 시각), 뒤 객체 `appeared`(이후 시각) — 테스트 `t/test_aggregator_inventory.py`
+- [x] T010 [R-5] 같은 클래스 제거·등장이 이동 창 안이면 가까운 쌍부터 `moved` — 테스트 `t/test_aggregator_inventory.py`
+- [x] T011 [R-13] 영상 끝 재고 = 마지막 청크 객체의 사슬 — 테스트 `t/test_aggregator_inventory.py`
+- [x] T012 [R-17] 변화·재고 이벤트 ID 결정성 — 테스트 `t/test_aggregator_ids.py`, 구현 `agg/ids.py`
 
 ## Phase 3: US-1 판정 (P1)
 
@@ -51,7 +51,7 @@ updated: 2026-11-07
 
 ## Phase 5: US-3 장비 방치 (P2)
 
-- [ ] T019 [R-11] 장비 클래스가 방치 기준 이상 머물고 같은 구역에 사람이 없으면 `equipment_abandoned`, 구역 없으면 제외 — 테스트 `t/test_aggregator_equipment.py`, 구현 `agg/equipment.py`
+- [x] T019 [R-11] 장비 클래스가 방치 기준 이상 머물고 같은 구역에 사람이 없으면 `equipment_abandoned`, 구역 없으면 제외 — 테스트 `t/test_aggregator_equipment.py`, 구현 `agg/equipment.py`
 - [ ] T020 [R-12] `aisle`·`hazard`면 `event_judge`로 `rule+vlm`(상한에 셈), 아니면 템플릿 `rule`·`confirmed` — 테스트 `t/test_aggregator_judge.py`
 
 ## Phase 6: US-4 예측 (P3)

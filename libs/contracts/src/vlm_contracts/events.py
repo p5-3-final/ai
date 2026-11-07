@@ -1404,3 +1404,6 @@ EVENT_MODELS: dict[str, type[Event]] = {
     "embedding.ready": EmbeddingReady,
 }
 """토픽 이름 → 이벤트 모델. 계약 테스트는 여기 등록된 모델을 모두 검증한다."""
+
+BLURRED_IMAGE_PATTERN = _BLURRED_IMAGE
+"""블러 사본 경로(`segment.ready` `$defs/imageKey`). 다른 계약 모델이 같은 규칙을 쓴다(SPEC-028)."""
