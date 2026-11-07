@@ -1,4 +1,4 @@
-"""판정 결과와 재판정·최종 판정 규칙(SPEC-020 R-3~R-7, R-12, R-13).
+"""판정 결과와 재판정·최종 판정 규칙(SPEC-020 R-3~R-7, R-12, R-13, SPEC-023 R-6·R-7).
 
 I/O 없는 규칙만 둔다. 호출과 발행은 `service`가 한다.
 """
@@ -7,15 +7,31 @@ from dataclasses import dataclass
 from typing import Literal
 from uuid import UUID
 
-from vlm_contracts.events import DetectableEventType, Judgment, VLMAnalysis
+from vlm_contracts.events import (
+    DetectableEventType,
+    Judgment,
+    JudgmentMethod,
+    UnverifiedReason,
+    VLMAnalysis,
+)
 
 type Stage = Literal["judge", "escalate"]
-type Method = Literal["vector+vlm", "vector+vlm+escalate"]
+# 후보가 어느 경로에서 왔는지. 판정 방식의 접두가 된다(벡터 SPEC-020, 탐지기·규칙 SPEC-023).
+type Path = Literal["vector", "rule"]
+type Method = Literal["vector+vlm", "vector+vlm+escalate", "rule+vlm", "rule+vlm+escalate"]
+# Decision이 담는 판정 방식. VLM을 부르지 않는 rule·rule+carry도 같은 결과 형식으로 발행한다.
 type ReviewReason = Literal["judgment_disagreement"]
 
 _TASK_TYPES: dict[Stage, Literal["event_judge", "event_judge_escalate"]] = {
     "judge": "event_judge",
     "escalate": "event_judge_escalate",
+}
+CALL_CAP_REACHED = "CALL_CAP_REACHED"
+_METHODS: dict[tuple[Path, bool], Method] = {
+    ("vector", False): "vector+vlm",
+    ("vector", True): "vector+vlm+escalate",
+    ("rule", False): "rule+vlm",
+    ("rule", True): "rule+vlm+escalate",
 }
 # 판정이 정해진 상태. 나머지(unverified·unknown)는 모델이 판단하지 못한 것이다.
 _DECIDED = frozenset({"confirmed", "rejected"})
@@ -32,6 +48,8 @@ class Outcome:
     prompt_version: str | None = None
     # None이 아니면 호출이 실패했고 `analysis`는 event-analyzer가 만든 unknown이다.
     error_code: str | None = None
+    # ai-gateway가 unverified로 답한 이유(SPEC-020 R-21). 그 밖에는 None이다.
+    unverified_reason: UnverifiedReason | None = None
 
     @classmethod
     def called(
@@ -41,14 +59,38 @@ class Outcome:
         model_id: str | None,
         prompt_version: str,
         analysis: VLMAnalysis,
+        *,
+        unverified_reason: UnverifiedReason | None = None,
     ) -> "Outcome":
         """ai-gateway가 돌려준 결과. 모델 미설정·예산 초과면 `model_id`가 None이다."""
-        return cls(stage, analysis, call_id, model_id, prompt_version)
+        return cls(
+            stage, analysis, call_id, model_id, prompt_version, unverified_reason=unverified_reason
+        )
+
+    def final_unverified_reason(self) -> UnverifiedReason | None:
+        """이 결과가 최종 분석일 때 `event.analyzed.unverifiedReason`. unverified가 아니면 None."""
+        if self.analysis.verification_status != "unverified":
+            return None
+        return self.unverified_reason
 
     @classmethod
     def failed(cls, stage: Stage, event_type: DetectableEventType, error_code: str) -> "Outcome":
         """호출이 결과 없이 끝났다. 후보를 버리지 않고 `unknown`으로 남긴다(R-12)."""
         return cls(stage, VLMAnalysis.unknown(event_type), error_code=error_code)
+
+    @classmethod
+    def capped(cls, event_type: DetectableEventType) -> "Outcome":
+        """실행당 호출 상한으로 부르지 않은 1차 판정(SPEC-023 R-19).
+
+        계약은 rule+vlm에 호출 기록 1개 이상을 요구하므로, 실패 호출과 같이 호출 ID 없는 기록을
+        남기고 오류 코드로 상한임을 적는다.
+        """
+        analysis = VLMAnalysis.unknown(event_type).model_copy(
+            update={"verification_status": "unverified"}
+        )
+        return cls(
+            "judge", analysis, error_code=CALL_CAP_REACHED, unverified_reason="call_cap_reached"
+        )
 
     def record(self) -> Judgment:
         """`event.analyzed`의 `judgments` 항목."""
@@ -68,36 +110,47 @@ class Decision:
     """후보 하나의 최종 판정."""
 
     analysis: VLMAnalysis
-    method: Method
+    method: JudgmentMethod
     judgments: list[Judgment]
     review_required: bool
     review_reasons: list[ReviewReason]
+    unverified_reason: UnverifiedReason | None = None
 
 
-def needs_escalation(first: Outcome) -> bool:
-    """1차 판정을 더 강한 모델로 다시 볼지(R-3, R-4).
+def needs_escalation(first: Outcome, *, ambiguous: bool = False) -> bool:
+    """1차 판정을 더 강한 모델로 다시 볼지(SPEC-020 R-3·R-4, SPEC-023 R-6).
 
-    호출 실패나 모델 미설정은 다시 불러도 같은 이유로 판정하지 못하므로 올리지 않는다.
+    `ambiguous`는 탐지 점수가 프로필의 애매 구간 안이라는 뜻이다. 호출 실패나 모델 미설정은 다시
+    불러도 같은 이유로 판정하지 못하므로 애매해도 올리지 않는다.
     """
     if first.error_code is not None or first.analysis.verification_status == "unverified":
         return False
-    return first.analysis.severity == "high" or first.analysis.event_detected is None
+    return ambiguous or first.analysis.severity == "high" or first.analysis.event_detected is None
 
 
-def decide(first: Outcome, escalated: Outcome | None) -> Decision:
-    """1차와 재판정에서 최종 분석·판정 방식·검토 표시를 정한다(R-5~R-7, R-13)."""
+def decide(first: Outcome, escalated: Outcome | None, path: Path = "vector") -> Decision:
+    """1차와 재판정에서 최종 분석·판정 방식·검토 표시를 정한다(R-5~R-7, R-13).
+
+    판정 규칙은 두 경로가 같고 판정 방식의 접두만 `path`로 다르다(SPEC-023 R-7).
+    """
     if escalated is None:
-        return Decision(first.analysis, "vector+vlm", [first.record()], False, [])
+        return Decision(
+            first.analysis,
+            _METHODS[(path, False)],
+            [first.record()],
+            False,
+            [],
+            first.final_unverified_reason(),
+        )
     statuses = {first.analysis.verification_status, escalated.analysis.verification_status}
-    final = (
-        escalated.analysis if escalated.analysis.verification_status in _DECIDED else first.analysis
-    )
+    final = escalated if escalated.analysis.verification_status in _DECIDED else first
     # 두 모델이 정반대로 판정했으면 어느 쪽도 믿기 어려워 사람이 본다(R-7).
     disagreement = statuses == _DECIDED
     return Decision(
-        final,
-        "vector+vlm+escalate",
+        final.analysis,
+        _METHODS[(path, True)],
         [first.record(), escalated.record()],
         disagreement,
         ["judgment_disagreement"] if disagreement else [],
+        final.final_unverified_reason(),
     )

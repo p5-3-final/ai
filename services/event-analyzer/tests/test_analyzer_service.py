@@ -1,4 +1,5 @@
 from dataclasses import replace
+from typing import Literal
 
 import pytest
 from ea_support import (
@@ -18,7 +19,13 @@ from ea_support import (
 from event_analyzer.service import AnalyzerConfig, EventAnalyzerService
 from vlm_ai_client.client import AiGatewayError
 from vlm_ai_client.models import AnalyzeRequest
-from vlm_contracts.events import Event, EventAnalyzed, EventCandidateVector, VLMAnalysis
+from vlm_contracts.events import (
+    Event,
+    EventAnalyzed,
+    EventCandidateVector,
+    JobType,
+    VLMAnalysis,
+)
 from vlm_messaging.publisher import PublishError
 from vlm_messaging.timing import StageRecorder
 from vlm_messaging.worker import MessageContext, NonRetryableError
@@ -355,3 +362,41 @@ async def test_spec021_r14_deadline_exceeded_is_recorded_as_failed_call() -> Non
     [judgment] = event.judgments
     assert (judgment.error_code, judgment.call_id) == ("AI_DEADLINE_EXCEEDED", None)
     assert gateway.task_types() == ["event_judge"]
+
+
+@pytest.mark.parametrize("reason", ["budget_exceeded", "model_unavailable"])
+async def test_spec020_r21_unverified_reason_is_copied_from_response(
+    reason: Literal["budget_exceeded", "model_unavailable"],
+) -> None:
+    gateway = FakeGateway(
+        reply=lambda r: judged(str(r.variables["eventType"]), "unverified"),
+        unverified_reason=reason,
+    )
+
+    _, [event] = await _run(candidates_message(candidate(0)), gateway)
+
+    assert event.unverified_reason == reason
+    assert event_errors(event) == []
+
+
+async def test_spec020_r21_decided_result_has_no_unverified_reason() -> None:
+    _, [event] = await _run(candidates_message(candidate(0)))
+
+    assert event.unverified_reason is None
+    assert "unverifiedReason" not in event.model_dump(by_alias=True, mode="json")
+
+
+@pytest.mark.parametrize("job_type", ["FULL", "REANALYZE", "STREAM"])
+async def test_spec020_r22_job_type_is_copied_from_message(job_type: JobType) -> None:
+    message = candidates_message(candidate(0)).model_copy(update={"job_type": job_type})
+
+    _, [event] = await _run(message)
+
+    assert event.job_type == job_type
+    assert event_errors(event) == []
+
+
+async def test_spec020_r22_missing_job_type_is_omitted() -> None:
+    _, [event] = await _run(candidates_message(candidate(0)))
+
+    assert "jobType" not in event.model_dump(by_alias=True, mode="json")

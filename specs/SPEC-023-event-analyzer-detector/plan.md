@@ -27,28 +27,28 @@ event-analyzer에 처음으로 프로필 파일(TOML)과 저장소 읽기(`libs/
 
 | 요구사항 | 담당 모듈 / 컴포넌트 | 검증 테스트 |
 | --- | --- | --- |
-| R-1 | `ea/candidates.py` `load_candidates`, `vlm_contracts.events.EventCandidate` | `t/test_analyzer_candidates.py`, `t/test_analyzer_detector_service.py` |
+| R-1 | `ea/candidates.py` `load_candidates`, `vlm_contracts.events.EventCandidate`·`DetectorCandidate`, `vlm_contracts.candidates.CandidateFile` | `t/test_analyzer_candidates.py`, `t/test_analyzer_detector_service.py`, `lc/tests/test_candidate_file_contract.py` |
 | R-2 | `ea/candidates.py`(→ `NonRetryableError`) | `t/test_analyzer_candidates.py`, `t/test_analyzer_worker_e2e.py` |
 | R-3 | `ea/merge.py` `merge_candidates` | `t/test_analyzer_merge.py` |
 | R-4 | `ea/rules.py` `rule_analysis` | `t/test_analyzer_rules.py`, `t/test_analyzer_detector_service.py` |
-| R-5 | `ea/service.py` `_detector_request` | `t/test_analyzer_detector_service.py` |
+| R-5 | `ea/detector.py` `detector_request`(`ea/calls.py` `judge_request`) | `t/test_analyzer_detector_service.py` |
 | R-6 | `ea/judgment.py` `needs_escalation`(애매 구간 인자) | `t/test_judgment.py`, `t/test_analyzer_detector_service.py` |
-| R-7 | `ea/judgment.py` `decide`(판정 경로 인자), `ea/service.py` 실패 처리 공용 | `t/test_judgment.py`, `t/test_analyzer_detector_service.py` |
-| R-8 | `ea/service.py` `handle_detector`, `ea/ids.py` `analyzed_event_id` | `t/test_analyzer_detector_service.py`(계약 스키마 통과) |
+| R-7 | `ea/judgment.py` `decide`(판정 경로 인자), `ea/calls.py` `judge`(세 경로 공용 실패 처리) | `t/test_judgment.py`, `t/test_analyzer_detector_service.py` |
+| R-8 | `ea/detector.py` `DetectorAnalyzerService.handle`, `ea/ids.py` `analyzed_event_id` | `t/test_analyzer_detector_service.py`(계약 스키마 통과) |
 | R-9 | `vlm_contracts.events.EventAnalyzed`·`DetectorEvidence` | `lc/tests/test_event_contracts.py`, `lc/tests/test_analysis_contracts.py`, `t/test_analyzer_detector_service.py` |
-| R-10 | `ea/service.py` `_manifest`, `ea/ids.py` `manifest_event_id`, `vlm_contracts.events.EventManifest` | `t/test_analyzer_detector_service.py`, `lc/tests/test_event_contracts.py` |
-| R-11 | `ea/service.py`(후보 0개 경로) | `t/test_analyzer_detector_service.py` |
-| R-12 | `ea/service.py`(SPEC-020과 같은 `asyncio.Semaphore`) | `t/test_analyzer_detector_service.py` |
-| R-13 | `ea/service.py` 단계 블록, `vlm_contracts.stages.StageId` | `t/test_analyzer_detector_service.py`, `lc/tests/test_stage_contracts.py` |
+| R-10 | `ea/detector.py` `_manifest`, `ea/ids.py` `manifest_event_id`, `vlm_contracts.events.EventManifest` | `t/test_analyzer_detector_service.py`, `lc/tests/test_event_contracts.py` |
+| R-11 | `ea/detector.py`(후보 0개 경로) | `t/test_analyzer_detector_service.py` |
+| R-12 | `ea/detector.py`(SPEC-020과 같은 `asyncio.Semaphore`) | `t/test_analyzer_detector_service.py` |
+| R-13 | `ea/detector.py` 단계 블록, `vlm_contracts.stages.StageId` | `t/test_analyzer_detector_service.py`, `lc/tests/test_stage_contracts.py` |
 | R-14 | `EventCandidate` 검증 → 워커가 DLQ | `t/test_analyzer_worker_e2e.py` |
 | R-15 | 워커 재시도(SPEC-013 공통). 발행 오류를 그대로 던짐 | `t/test_analyzer_detector_service.py` |
-| R-16 | `ea/profile.py` `EventAnalyzerProfile`, `ea/__main__.py` | `t/test_analyzer_profile.py`, `t/test_analyzer_main.py` |
-| R-17 | `ea/carry.py` `plan_carry`(상태형 유형의 구간 규칙, 순수 함수), `ea/service.py` `handle_detector` | `t/test_analyzer_carry.py`, `t/test_analyzer_detector_service.py::test_spec023_r17_*` |
-| R-18 | `ea/rejudge_state.py`(`RejudgeState` Protocol, `RedisRejudgeState`, `NoRejudgeState`), `ea/settings.py`(`EVENT_ANALYZER_REDIS_URL` 선택) | `t/test_analyzer_rejudge_state.py`(integration, Redis), `t/test_analyzer_detector_service.py::test_spec023_r18_*` |
-| R-19 | `ea/cap.py` `call_cap`, `ea/profile.py`(`[cap] floor` 3, `per_minute` 3), `ea/service.py` | `t/test_analyzer_cap.py`, `t/test_analyzer_detector_service.py::test_spec023_r19_*` |
-| R-20 | `ea/service.py` `_manifest`, `vlm_contracts.events.EventManifest` | `t/test_analyzer_detector_service.py::test_spec023_r20_*`, `lc/tests/test_event_contracts.py` |
+| R-16 | `ea/profile.py` `EventAnalyzerProfile`, `ea/__main__.py` `load_dependencies` | `t/test_analyzer_profile.py`, `t/test_analyzer_main.py` |
+| R-17 | `ea/carry.py` `plan_carry`(상태형 유형의 구간 규칙, 순수 함수), `ea/detector.py` | `t/test_analyzer_carry.py`, `t/test_analyzer_detector_service.py::test_spec023_r17_*` |
+| R-18 | `ea/rejudge_state.py`(`RejudgeState` Protocol, `RedisRejudgeState`, `NoRejudgeState`), `ea/settings.py`(`EVENT_ANALYZER_REDIS_URL` 선택) | `t/test_analyzer_rejudge_state.py`(Redis 부분은 integration), `t/test_analyzer_detector_service.py::test_spec023_r18_*` |
+| R-19 | `ea/cap.py` `call_cap`, `ea/profile.py`(`[cap] floor` 3, `per_minute` 3), `ea/detector.py` | `t/test_analyzer_cap.py`, `t/test_analyzer_detector_service.py::test_spec023_r19_*` |
+| R-20 | `ea/detector.py` `_manifest`, `vlm_contracts.events.EventManifest` | `t/test_analyzer_detector_service.py::test_spec023_r20_*`, `lc/tests/test_event_contracts.py` |
 | R-21, R-23 | `ea/alerts.py` `handle_alert`, `ea/ids.py` `alert_event_id`, `vlm_contracts.events.AlertCandidate`·`AlertRaised` | `t/test_analyzer_alert_service.py`(pending → confirmed·dismissed, `unverified`·`unknown`은 dismissed), `lc/tests/test_event_contracts.py` |
-| R-22 | `ea/alerts.py`가 `ea/service.py` `_detector_request`를 그대로 씀 | `t/test_analyzer_alert_service.py::test_spec023_r22_*`(같은 candidateId의 두 경로 요청 본문이 같음) |
+| R-22 | `ea/alerts.py` `alert_request`와 `ea/detector.py` `detector_request`가 같은 `ea/calls.py` `judge_request`를 씀 | `t/test_analyzer_alert_service.py::test_spec023_r22_*`(같은 candidateId의 두 경로 요청 본문이 같음) |
 | R-24 | `ea/alerts.py` 단계 블록, `vlm_contracts.stages.StageId`(`analyzer.alert`) | `t/test_analyzer_alert_service.py::test_spec023_r24_*`, `lc/tests/test_stage_contracts.py` |
 | NFR-1 | 동시 판정, mock 프로필 | 로컬 compose 측정(tasks.md 측정 기록) |
 | NFR-2 | `KafkaWorker`(하나씩 처리, 발행 뒤 커밋, 긴 핸들러 중 poll 유지) | `t/test_analyzer_worker_e2e.py`(`event.candidate` 경로) |
@@ -58,7 +58,7 @@ event-analyzer에 처음으로 프로필 파일(TOML)과 저장소 읽기(`libs/
 | 원칙 | 준수 | 비고 |
 | --- | --- | --- |
 | I 스펙 우선 | ☑ | SPEC-023 Approved (docs #118) |
-| II 계약 우선 | ☑ | docs #118 머지. 잠금은 첫 태스크에서 3.14.0으로 올린다 |
+| II 계약 우선 | ☑ | docs #118 머지. 잠금 4.1.0(SPEC-021 PR #44) |
 | III 테스트 우선 | ☑ | R-1~R-16, NFR-2 테스트 매핑. NFR-1은 로컬 측정. 태스크마다 요구사항 하나의 Red→Green |
 | IV 서비스 자율성 | ☑ | DB 없음. 후보 파일은 chunk-processor가 실행 폴더에 쓴 것을 읽기만 한다. chunk-processor·pipeline·analysis-api 코드는 건드리지 않는다 |
 | V 단순성 | ☑ | 새 외부 패키지 없음. 프로필은 frame-encoder와 같은 TOML + `vlm_common.profile.load_profile`. 판정·실패 처리 코드는 벡터 경로와 공유한다 |
@@ -89,8 +89,12 @@ event-analyzer에 처음으로 프로필 파일(TOML)과 저장소 읽기(`libs/
 | `ea/candidates.py` | 메시지 또는 후보 파일에서 후보 목록 읽기와 검증 |
 | `ea/merge.py` | 쿨다운 병합(I/O 없음) |
 | `ea/rules.py` | 규칙 후보의 템플릿 `VLMAnalysis`(I/O 없음) |
-| `ea/judgment.py` | 판정 방식에 경로(`vector`·`rule`)를 받도록 넓히고, 재판정 조건에 애매 구간을 더함 |
-| `ea/service.py` | `handle_vector`(지금의 `handle`), `handle_detector`. 판정·재판정·실패 처리는 두 경로가 함께 쓴다 |
+| `ea/judgment.py` | 판정 방식에 경로(`vector`·`rule`)를 받도록 넓히고, 재판정 조건에 애매 구간을 더함. `Outcome.capped`(상한) |
+| `ea/calls.py` | 판정 호출 `judge`·실패 처리·`judge_request`·발행. 벡터·탐지기·긴급 경로가 함께 쓴다 |
+| `ea/service.py` | 벡터 경로 `EventAnalyzerService.handle`(SPEC-020, 동작 그대로) |
+| `ea/detector.py` | 탐지기 경로 `DetectorAnalyzerService.handle`: 병합·규칙·carry·상한·판정·발행·Redis 갱신 |
+| `ea/alerts.py` | 긴급 경로 `AlertService.handle` |
+| `ea/carry.py`, `ea/cap.py`, `ea/rejudge_state.py` | 구간 규칙(순수 함수), 호출 상한, 실시간 재판정 상태 |
 | `ea/ids.py` | `manifest_event_id(execution_id)` = uuid5(`vlm:event.manifest:<executionId>`) |
 | `ea/settings.py` | `EVENT_ANALYZER_PROFILE_PATH`, 저장소 설정(`S3_*`, `vlm_storage.s3.StorageSettings`) |
 | `ea/__main__.py` | 프로필 로드(실패하면 기동 실패), 저장소, 두 route 조립 |
@@ -105,7 +109,7 @@ event-analyzer에 처음으로 프로필 파일(TOML)과 저장소 읽기(`libs/
 cooldown_s = 10            # R-3. 0 이하면 기동 실패(R-16)
 
 [rule_text]
-missing_zone_name = "이름 없는 구역"   # 구역이 null일 때 넣는 자리값(확인 필요 2)
+missing_zone_name = "이름 없는 구역"   # 구역이 null일 때 넣는 자리값(D-9)
 
 [rules.hazard_zone_access] # R-4. 탐지 가능 유형 8종 모두 필요(아래)
 template = "{zoneName} 구역에 사람이 들어왔다."   # 자리값. 문안은 AI 담당자 몫
@@ -115,8 +119,8 @@ severity = "medium"
 ambiguous_score = [0.4, 0.6]
 ```
 
-- `[rules.<유형>]`은 분류 체계 v2의 탐지 가능 유형 8종이 모두 있어야 한다. 어떤 유형을 `rule`로 보낼지는 chunk-processor의 이벤트 정의 목록이 정하고, event-analyzer는 그 목록을 모른다. 기동할 때 모든 유형을 요구해야 R-16("규칙 판정이 가능한 유형")이 판정 중에 빠진 템플릿을 만나지 않는다(사용자 확인 필요 1).
-- 템플릿의 자리 표시는 `{zoneName}` 하나다. `str.replace`로 바꾸므로 다른 중괄호는 글자 그대로 남는다. 구역이 null이면 `[rule_text] missing_zone_name` 값을 넣는다(사용자 확인 필요 2).
+- `[rules.<유형>]`은 분류 체계 v2의 탐지 가능 유형 8종이 모두 있어야 한다. 어떤 유형을 `rule`로 보낼지는 chunk-processor의 이벤트 정의 목록이 정하고, event-analyzer는 그 목록을 모른다. 기동할 때 모든 유형을 요구해야 R-16("규칙 판정이 가능한 유형")이 판정 중에 빠진 템플릿을 만나지 않는다(D-8, 2026-11-07 결정).
+- 템플릿의 자리 표시는 `{zoneName}` 하나다. `str.replace`로 바꾸므로 다른 중괄호는 글자 그대로 남는다. 구역이 null이면 `[rule_text] missing_zone_name` 값을 넣는다(D-9, 2026-11-07 결정).
 - 템플릿 길이는 900자 이하다. 구역 이름(100자)을 넣어도 `description` 상한(1000자) 안이다.
 - 애매 구간은 양 끝을 포함한다. 0~1 밖이거나 시작이 끝보다 크면 기동 실패(R-16).
 - 프로필 검증 실패는 `ProfileError`로 기동을 멈춘다(frame-encoder와 같다).
@@ -155,7 +159,7 @@ ambiguous_score = [0.4, 0.6]
   - `judgments`: 0~2개. `rule`이면 0개, 그 밖이면 1개 이상(계약의 if/then)
   - 검증: `vector*`면 `vector_candidate` 필수, `rule*`면 `detector_candidate` 필수
 - `EventCandidate`: `candidates`와 `candidatesKey` 중 정확히 하나(계약 `oneOf`), `candidates` 256개 이하, `candidatesKey`는 메시지 식별자로 만든 실행 폴더의 `candidates.json`과 같아야 한다(계약 패턴은 형식만 본다. SPEC-019 `SegmentReady` 선례).
-- 근거 프레임 경로가 메시지 실행 폴더(`execution_prefix()` + `blurred/`) 안인지 모델에서 확인할지는 사용자 확인 필요 3이다. 기본안은 확인한다(SPEC-019 R-16·SPEC-024 R-6과 같은 이유: 규칙 후보는 ai-gateway를 거치지 않아 다른 영상 경로가 그대로 발행된다).
+- 근거 프레임 경로가 메시지 실행 폴더(`execution_prefix()` + `blurred/`) 안인지 모델에서 확인한다(D-10, 2026-11-07 결정. SPEC-019 R-16·SPEC-024 R-6과 같은 이유: 규칙 후보는 ai-gateway를 거치지 않아 다른 영상 경로가 그대로 발행된다). 후보 파일의 후보도 `load_candidates`가 같은 검사를 한다. `alert.candidate`도 같은 이유로 확인한다.
 
 ### 상호작용
 
@@ -187,7 +191,7 @@ sequenceDiagram
 | --- | --- | --- | --- |
 | 한 서비스 클래스에 두 핸들러, 판정 코드 공유 | 실패 처리·재판정 규칙이 한 곳 | 클래스가 커짐 | ☑ |
 | 탐지기 경로 서비스를 따로 만듦 | 파일이 나뉨 | 판정·실패 처리 코드가 두 벌 | |
-| 규칙 템플릿을 8종 모두 요구 | 판정 중 템플릿 없음이 생기지 않음 | 쓰지 않는 유형도 자리값이 필요 | ☑ (확인 필요 1) |
+| 규칙 템플릿을 8종 모두 요구 | 판정 중 템플릿 없음이 생기지 않음 | 쓰지 않는 유형도 자리값이 필요 | ☑ (D-8) |
 | 규칙 템플릿을 프로필에 적은 유형만 요구 | 프로필이 짧음 | 적지 않은 유형의 `rule` 후보 처리가 spec에 없음 | |
 | 프로필 TOML(frame-encoder 방식) | 템플릿 문장·구간을 Git으로 관리, 기동 검증 | 이미지에 파일을 넣어야 함 | ☑ |
 | 환경변수만 | 지금 설정과 같음 | 유형별 문장·구간을 담기 어렵고 AGENTS.md "기준값은 프로필" 원칙에 맞지 않음 | |
@@ -223,11 +227,11 @@ sequenceDiagram
 
 ### 상태형 유형과 간격(R-17 전제)
 
-상태형 여부와 간격은 분류 체계 `taxonomy/v2`의 이벤트 정의(`rejudgeIntervalS`)가 원본이다. 워커 이미지에 분류 체계 파일을 넣는 대신 프로필 `[rejudge]`에 `<eventType> = <초>`를 두고, 계약 테스트(`lc/tests/test_taxonomy_contracts.py`)가 분류 체계와 같은지 대조한다(SPEC-013 `StageId`와 같은 방식). `alertImmediately`는 stream-ingestor(SPEC-037)가 읽고 event-analyzer는 읽지 않는다.
+상태형 여부와 간격은 이벤트 정의 목록(`rejudgeIntervalS`, 항목 형식은 `taxonomy/v2`의 `eventDefinition`)이 원본이다. 워커 이미지에 목록 파일을 넣는 대신 프로필 `[rejudge]`에 `<eventType> = <초>`를 둔다. 계약에는 목록 값(`event-definitions.json`)이 없고 항목 형식만 있어 값은 대조할 수 없다. 프로필 테스트(`t/test_analyzer_profile.py`)가 계약의 하한(`exclusiveMinimum: 0`)과 같은 검증을 하는지 확인하고, 값은 아키텍처 v5.1 8.2절 기본값(화재 60, 보호구 120, 방호 300, 위험구역 120초)이다. `alertImmediately`는 stream-ingestor(SPEC-037)가 읽고 event-analyzer는 읽지 않는다.
 
 ### R-17 메시지 안 구간 규칙(`rule+carry`)
 
-1. R-3 병합 뒤 남은 후보 중 상태형 유형을 `(trackLocalId, eventType)`로 묶고 `startMs` 순으로 놓는다.
+1. R-3 병합 뒤 남은 후보 중 상태형 유형의 `judgment: vlm` 후보를 `(trackLocalId, eventType)`로 묶고 `startMs` 순으로 놓는다. 규칙 후보는 호출 비용이 없고 후보마다 구역 문장이 달라 복사하지 않는다. 트랙이 없는 후보도 묶지 않는다.
 2. 묶음의 첫 후보는 판정 대상이다. 그 뒤 후보는 직전 판정 대상의 `startMs` + 간격 이하이면 carry, 넘으면 새 판정 대상이다.
 3. carry 후보는 자기 candidateId로 eventId를 만들고(R-8), `analysis`는 판정 대상의 결과를 복사하며 판정 방식 `rule+carry`, 호출 기록 `[]`로 발행한다. 판정 대상이 `unverified`·`unknown`이면 같은 상태를 복사한다(검토 표시 포함).
 4. 판정 대상만 R-5~R-7(호출·재판정)을 거친다. `plan_carry`는 입력 후보 목록과 간격 표만 받는 순수 함수라 같은 메시지면 같은 결과다.
@@ -235,13 +239,17 @@ sequenceDiagram
 ### R-18 `STREAM`의 창 넘김
 
 - 메시지의 `jobType`이 `STREAM`이면 "직전 판정"을 Redis 키 `rejudge:<sourceId>:<trackId>:<eventType>`(값: 마지막 `confirmed` 판정의 `startMs`와 분석 JSON, TTL 간격 × 2)에서 찾는다. 창의 첫 후보도 키가 있고 간격 안이면 carry다. 판정해서 `confirmed`가 나오면 키를 갱신한다.
-- Redis 미설정이거나 연결이 끊기면 판정한다(경고 로그 1회, 처리는 계속). 키 읽기·쓰기는 판정 대상마다 각 1회라 창당 호출 수가 작다.
+- Redis 미설정이거나 연결이 끊기면 판정한다(경고 로그는 30초에 1회, 처리는 계속). 읽기는 메시지당 `MGET` 1회, 쓰기는 (트랙, 유형)마다 가장 늦은 `confirmed` 판정 1회다.
+- 쓰기는 `event.analyzed`·`event.manifest`를 모두 발행한 뒤에 한다. 또 첫 후보보다 앞선 판정만 이어 받는다. 발행이 실패해 다시 처리할 때 이번 메시지의 판정을 직전 판정으로 읽어 결과가 바뀌는 일을 막는다.
+- carry의 `carriedFromEventId`는 메시지 안이면 판정 대상의 eventId, Redis면 저장한 eventId다.
 - `redis` 패키지는 ai-gateway가 이미 쓰는 workspace 의존성이라 새 외부 패키지가 아니다. `EVENT_ANALYZER_REDIS_URL`은 선택이고 `.env.example`·로컬 compose에 둔다.
 
 ### R-19 실행당 호출 상한
 
 - `cap = max(floor, ceil(per_minute × (ownedRange.endMs − ownedRange.startMs) / 60000))`. 기본 `floor` 3, `per_minute` 3(2분 청크 6회, 20초 창 3회).
-- 판정 대상을 `startMs` 순으로 처리하면서 1차 판정·재판정 호출을 모두 센다. 남은 횟수가 0이면 그 후보와 뒤 후보는 호출 없이 `verificationStatus: unverified`, `unverifiedReason: call_cap_reached`, 검토 표시로 발행한다. 재판정은 남은 횟수가 있을 때만 하고, 없으면 1차 결과를 쓰고 검토 표시를 한다.
+- 판정 대상(carry가 아닌 VLM 후보)을 (`startMs`, candidateId) 순으로 놓고 앞에서부터 상한까지 1차 판정한다. 넘는 후보는 호출 없이 `verificationStatus: unverified`, `unverifiedReason: call_cap_reached`로 발행한다. 재판정은 1차 판정 뒤 남은 횟수 안에서 시작순으로 한다.
+- 계약은 `rule+vlm`에 호출 기록 1개 이상을 요구한다. 상한 후보는 실패 호출과 같이 호출 ID 없는 기록(`stage: judge`, `verificationStatus: unverified`, `errorCode: CALL_CAP_REACHED`)을 하나 남기고 판정 방식은 `rule+vlm`이다.
+- 상한·재판정 생략에 `reviewRequired`는 켜지 않는다. 계약의 `reviewReasons`에 맞는 사유가 없고, quality-service는 `unverifiedReason`으로 재판정 큐를 만든다(예산 초과와 같다).
 - 동시 판정(R-12)은 상한 안에서 고른 대상에만 적용한다. 대상 선정이 순서 기반이라 공유 상태 없이 결정적이다. `alert.candidate`(후보 1개)에는 상한을 적용하지 않는다.
 
 ### R-20 `event.manifest` 계수
@@ -253,7 +261,10 @@ sequenceDiagram
 - 새 경로 `alert.candidate`(같은 소비 그룹). 검증 실패는 DLQ.
 - 받자마자 단계 `analyzer.alert` 안에서 `alert.raised(status: pending)`를 낸다. 본문은 후보의 유형·트랙·구역·근거 프레임·사유다. eventId는 `uuid5(vlm:alert.raised:<candidateId>:pending)`.
 - 그 뒤 같은 후보를 `_detector_request`로 만든 요청(이미지 순서·변수 동일)으로 `event_judge`에 보낸다. 같은 candidateId의 창 후보가 나중에 같은 요청을 보내므로 ai-gateway 결과 캐시(SPEC-016 R-2)가 적중한다(R-22). 재판정(R-6)은 하지 않는다(알림은 1차 결과로 닫는다).
-- `confirmed`면 `alert.raised(status: confirmed, analysis)`, `eventDetected: false`면 `dismissed(dismissReason: not_detected)`, `unverified`·`unknown`이면 `dismissed(dismissReason: unverified 또는 unknown)`(R-23). eventId는 상태별로 `uuid5(...:<status>)`. `event.analyzed`는 내지 않는다.
+- `confirmed`이고 `eventDetected: true`면 `alert.raised(status: confirmed, analysis)`, `unverified`·`unknown`이면 `dismissed(dismissReason: unverified 또는 unknown)`(R-23), 그 밖(`rejected` 등)은 `dismissed(dismissReason: rejected)`다(계약 enum). eventId는 상태별로 `uuid5(...:<status>)`. `event.analyzed`는 내지 않는다.
+- severity는 pending·dismissed가 프로필 `[rules.<유형>] severity`(기본 severity), confirmed는 판정 severity(null이면 기본값)다.
+- pending을 낸 뒤의 판정 실패는 그 밖의 4xx까지 모두 `dismissed(unknown)`로 닫고 DLQ로 보내지 않는다. pending이 열린 채 남는 편이 더 나쁘다.
+- 요청은 `judge_request`로 창 후보와 같은 모양이다. 시작은 `firstSeenMs`, 끝은 `observedMs`, 관측 수는 `observations`다. `alert.candidate`에 `triggerClass`·`zoneName`이 없어 근거의 `triggerClass`와 `zoneName`(null)이 창 후보와 다를 수 있다. 완전히 같게 하려면 계약 변경이 필요하다.
 - 핸들러가 pending 발행 뒤 실패하면 재시도에서 pending을 같은 eventId로 다시 내므로 소비자는 중복을 버릴 수 있다. 단계 `analyzer.alert`의 count는 1, 측정 구간은 받은 시각부터 pending 발행까지다.
 
 ### plan에서 정한 것(보고 대상)
@@ -263,3 +274,4 @@ sequenceDiagram
 | carry 판정 대상이 `unknown`일 때 | 같은 상태를 복사한다. 다음 간격에서 다시 판정한다 |
 | 재판정이 상한에 걸릴 때 | 1차 결과를 쓰고 검토 표시. `unverifiedReason`은 싣지 않는다(판정은 했다) |
 | 긴급 후보의 재판정 | 하지 않는다. 지연이 목적이라 1차 결과로 닫는다 |
+| `capReachedCount`·`budgetExceededCount` | 그 사유로 `unverified`인 `event.analyzed` 수. 그 결과를 복사한 `rule+carry`도 센다 |

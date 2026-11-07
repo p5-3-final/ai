@@ -483,18 +483,22 @@ name = "event-analyzer"
 version = "0.1.0"
 source = { editable = "services/event-analyzer" }
 dependencies = [
+    { name = "redis" },
     { name = "vlm-ai-client" },
     { name = "vlm-common" },
     { name = "vlm-contracts" },
     { name = "vlm-messaging" },
+    { name = "vlm-storage" },
 ]
 
 [package.metadata]
 requires-dist = [
+    { name = "redis", specifier = ">=5" },
     { name = "vlm-ai-client", editable = "libs/ai-client" },
     { name = "vlm-common", editable = "libs/common" },
     { name = "vlm-contracts", editable = "libs/contracts" },
     { name = "vlm-messaging", editable = "libs/messaging" },
+    { name = "vlm-storage", editable = "libs/storage" },
 ]
 
 [[package]]

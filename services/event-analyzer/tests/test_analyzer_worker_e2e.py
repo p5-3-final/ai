@@ -10,12 +10,31 @@ from collections.abc import Callable, Iterator
 import httpx
 import pytest
 from confluent_kafka import Consumer, TopicPartition
-from ea_support import candidate, candidates_message, judged
-from event_analyzer.__main__ import build_client, build_worker
+from ea_support import (
+    PROFILE_PATH,
+    alert_candidate,
+    candidate,
+    candidates_message,
+    detected,
+    detector_message,
+    file_message,
+    judged,
+)
+from event_analyzer.__main__ import Dependencies, build_client, build_worker
+from event_analyzer.profile import EventAnalyzerProfile
+from event_analyzer.rejudge_state import NoRejudgeState
 from event_analyzer.settings import EventAnalyzerSettings, WorkerSettings
 from vlm_common.health import HealthState
-from vlm_contracts.events import EventAnalyzed, EventCandidateVector
+from vlm_common.profile import load_profile
+from vlm_contracts.events import (
+    AlertRaised,
+    Event,
+    EventAnalyzed,
+    EventCandidateVector,
+    EventManifest,
+)
 from vlm_messaging.publisher import KafkaPublisher
+from vlm_storage.memory import InMemoryStorage
 from vlm_testing import containers
 
 pytestmark = pytest.mark.integration
@@ -29,15 +48,30 @@ POLL_INTERVAL_MS = 6000
 FORBIDDEN_SOURCE = uuid.UUID("0192f0d2-0000-7000-8000-00000000f403")
 
 
+DETECTOR_TOPIC = "event.candidate"
+ALERT_TOPIC = "alert.candidate"
+
+
 def _topics(group: str) -> list[str]:
-    return [f"{TOPIC}.{group}.retry", f"{group}.dlq"]
+    retries = [f"{t}.{group}.retry" for t in (TOPIC, DETECTOR_TOPIC, ALERT_TOPIC)]
+    return [*retries, f"{group}.dlq"]
 
 
 @pytest.fixture(scope="module")
 def bootstrap() -> Iterator[str]:
     with containers.kafka() as address:
         containers.create_topics(
-            address, [TOPIC, "event.analyzed", *_topics(GROUP), *_topics(SLOW_GROUP)]
+            address,
+            [
+                TOPIC,
+                DETECTOR_TOPIC,
+                ALERT_TOPIC,
+                "event.analyzed",
+                "event.manifest",
+                "alert.raised",
+                *_topics(GROUP),
+                *_topics(SLOW_GROUP),
+            ],
         )
         yield address
 
@@ -73,6 +107,11 @@ def _start(
         settings,
         build_client(settings, transport=transport),
         health,
+        Dependencies(
+            storage=InMemoryStorage(),
+            profile=load_profile(PROFILE_PATH, EventAnalyzerProfile),
+            rejudge=NoRejudgeState(),
+        ),
         kafka=kafka,
     )
     thread = threading.Thread(target=worker.run, daemon=True)
@@ -87,20 +126,30 @@ def running(bootstrap: str) -> Iterator[HealthState]:
     yield from _start(bootstrap, httpx.MockTransport(_gateway))
 
 
-def _message(count: int = 2, source: uuid.UUID | None = None) -> EventCandidateVector:
-    message = candidates_message(*(candidate(i) for i in range(count)))
-    # 테스트끼리 결과를 나누려고 영상·메시지마다 다른 ID를 쓴다. 이미지 경로도 그 영상 폴더로
-    # 바꾼다.
+def _reissued[M: Event](message: M, source: uuid.UUID | None = None) -> M:
+    """테스트끼리 결과를 나누려고 영상·메시지마다 다른 ID를 쓴다. 이미지 경로도 그 영상 폴더로
+    바꾼다."""
     source_id = source or uuid.uuid4()
     body = json.loads(message.model_dump_json(by_alias=True))
     text = json.dumps({**body, "eventId": str(uuid.uuid4())}).replace(
         str(message.source_id), str(source_id)
     )
-    return EventCandidateVector.model_validate_json(text)
+    return type(message).model_validate_json(text)
 
 
-def _publish(bootstrap: str, message: EventCandidateVector) -> None:
-    KafkaPublisher(bootstrap=bootstrap, client_id="test").publish(TOPIC, message)
+def _message(count: int = 2, source: uuid.UUID | None = None) -> EventCandidateVector:
+    return _reissued(candidates_message(*(candidate(i) for i in range(count))), source)
+
+
+def _publish(bootstrap: str, message: Event, topic: str = TOPIC) -> None:
+    KafkaPublisher(bootstrap=bootstrap, client_id="test").publish(topic, message)
+
+
+def _send_raw(bootstrap: str, topic: str, message: Event, body: dict[str, object]) -> None:
+    source = str(message.source_id)
+    KafkaPublisher(bootstrap=bootstrap, client_id="test").send_raw(
+        topic, source, json.dumps(body).encode(), []
+    )
 
 
 def _collect(
@@ -239,3 +288,74 @@ def _wait_until(condition: Callable[[], bool], timeout_s: float) -> bool:
             return True
         time.sleep(0.5)
     return False
+
+
+def test_spec023_us1_us2_detector_candidates_become_analyzed_and_manifest(
+    running: HealthState, bootstrap: str
+) -> None:
+    message = _reissued(
+        detector_message(
+            detected(1, "ppe_missing"),
+            detected(2, "hazard_zone_access", judgment="rule", track="t2", zone_name="A"),
+        )
+    )
+    _publish(bootstrap, message, DETECTOR_TOPIC)
+
+    analyzed = _collect(bootstrap, "event.analyzed", message.source_id, 2, timeout_s=60)
+    [manifest] = _collect(bootstrap, "event.manifest", message.source_id, 1, timeout_s=30)
+
+    events = [EventAnalyzed.model_validate(p) for p in analyzed]
+    assert {e.judgment_method for e in events} == {"rule+vlm", "rule"}
+    parsed = EventManifest.model_validate(manifest)
+    assert set(parsed.analyzed_event_ids) == {e.event_id for e in events}
+
+
+def test_spec023_r14_invalid_detector_message_goes_to_dlq(
+    running: HealthState, bootstrap: str
+) -> None:
+    message = _reissued(detector_message(detected(1)))
+    body = json.loads(message.model_dump_json(by_alias=True))
+    body["candidateCount"] = 5
+    _send_raw(bootstrap, DETECTOR_TOPIC, message, body)
+
+    [dead] = _collect(bootstrap, f"{GROUP}.dlq", message.source_id, 1, timeout_s=60)
+
+    assert dead["eventId"] == str(message.event_id)
+
+
+def test_spec023_r2_missing_candidate_file_goes_to_dlq_without_output(
+    running: HealthState, bootstrap: str
+) -> None:
+    message = _reissued(file_message(detected(1)))
+    _publish(bootstrap, message, DETECTOR_TOPIC)
+
+    [dead] = _collect(bootstrap, f"{GROUP}.dlq", message.source_id, 1, timeout_s=60)
+
+    assert dead["eventId"] == str(message.event_id)
+    _collect(bootstrap, "event.manifest", message.source_id, 0, timeout_s=3)
+
+
+def test_spec023_r21_alert_candidate_becomes_pending_then_confirmed(
+    running: HealthState, bootstrap: str
+) -> None:
+    message = _reissued(alert_candidate("fall"))
+    _publish(bootstrap, message, ALERT_TOPIC)
+
+    raised = _collect(bootstrap, "alert.raised", message.source_id, 2, timeout_s=60)
+
+    statuses = [AlertRaised.model_validate(r).status for r in raised]
+    assert statuses == ["pending", "confirmed"]
+    _collect(bootstrap, "event.analyzed", message.source_id, 0, timeout_s=3)
+
+
+def test_spec023_r21_invalid_alert_candidate_goes_to_dlq(
+    running: HealthState, bootstrap: str
+) -> None:
+    message = _reissued(alert_candidate())
+    body = json.loads(message.model_dump_json(by_alias=True))
+    body["jobType"] = "FULL"
+    _send_raw(bootstrap, ALERT_TOPIC, message, body)
+
+    [dead] = _collect(bootstrap, f"{GROUP}.dlq", message.source_id, 1, timeout_s=60)
+
+    assert dead["eventId"] == str(message.event_id)
