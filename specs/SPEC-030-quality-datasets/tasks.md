@@ -32,7 +32,7 @@ updated: 2026-11-06
 
 - [x] T007 [R-19] `quality-service.yaml` 생성 모델과 생성 코드 비교 CI — 구현 `ev/quality_models.py`(생성), 생성 스크립트·`.github/workflows/checks.yml`
 - [x] T008 [R-19] `evaluateStageGate` 호출: 요청 본문·`X-Caller`, 503·연결 실패 2회 재시도, 응답 검증 — 테스트 `et/test_evals_stage_gate.py`, 구현 `ev/stage_gate.py`
-- [ ] T009 [R-19] CLI 종료 코드(`passed` true 0, false 1, 호출·입력 오류 2)와 단계별 JSON 로그 — 테스트 `et/test_evals_stage_gate.py`
+- [x] T009 [R-19] CLI 종료 코드(`passed` true 0, false 1, 호출·입력 오류 2)와 단계별 JSON 로그 — 테스트 `et/test_evals_stage_gate.py`
 - [ ] T010 README(명령, 환경변수), `.env.example`
 
 ## 완료 조건
