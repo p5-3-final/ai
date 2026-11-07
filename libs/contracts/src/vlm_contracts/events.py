@@ -1166,11 +1166,6 @@ class ManifestCounts(_Part):
     tracks: int = Field(ge=0)
 
 
-class DetectorModel(_Part):
-    model_id: str = Field(max_length=128)
-    available: bool
-
-
 class DetectorCapability(_Part):
     """실행 하나의 탐지기 능력 선언."""
 
